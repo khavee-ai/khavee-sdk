@@ -3,14 +3,14 @@
   "version": "0.3.3",
   "description": "Core VRM AI avatar functionality",
   "keywords": ["vrm", "avatar", "ai", "3d", "animation"],
-  "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
+  "homepage": "https://github.com/khavee-ai/khavee-sdk#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SolveServeSolution/khaveeai-sdk.git",
+    "url": "git+https://github.com/khavee-ai/khavee-sdk.git",
     "directory": "packages/core"
   },
   "bugs": {
-    "url": "https://github.com/SolveServeSolution/khaveeai-sdk/issues"
+    "url": "https://github.com/khavee-ai/khavee-sdk/issues"
   },
   "author": "KhaveeAI <support@khaveeai.com>",
   "license": "MIT",

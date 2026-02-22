@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-rag",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "RAG (Retrieval-Augmented Generation) provider for Khavee AI SDK",
   "keywords": [
     "rag",
@@ -9,14 +9,14 @@
     "embedding",
     "ai"
   ],
-  "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
+  "homepage": "https://github.com/khavee-ai/khavee-sdk#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SolveServeSolution/khaveeai-sdk.git",
+    "url": "git+https://github.com/khavee-ai/khavee-sdk.git",
     "directory": "packages/providers/rag"
   },
   "bugs": {
-    "url": "https://github.com/SolveServeSolution/khaveeai-sdk/issues"
+    "url": "https://github.com/khavee-ai/khavee-sdk/issues"
   },
   "author": "KhaveeAI <support@khaveeai.com>",
   "license": "MIT",

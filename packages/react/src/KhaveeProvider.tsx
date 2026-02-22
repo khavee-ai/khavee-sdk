@@ -18,6 +18,7 @@ interface KhaveeContextType {
   animate: (animationName: string) => void;
   stopAnimation: () => void;
   availableAnimations: string[];
+  setAvailableAnimations: (animations: string[]) => void;
   // Realtime provider
   realtimeProvider: RealtimeProvider | null;
   chatStatus: import('@khaveeai/core').ChatStatus;
@@ -258,6 +259,7 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
       animate,
       stopAnimation,
       availableAnimations,
+      setAvailableAnimations,
       realtimeProvider,
       chatStatus,
     }}>

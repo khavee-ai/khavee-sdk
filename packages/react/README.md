@@ -11,7 +11,7 @@
 - 🎤 **Real-time Voice Chat** - OpenAI Realtime API integration with WebRTC
 - 👄 **Automatic Lip Sync** - MFCC-based phoneme detection works automatically with OpenAI Realtime
 - 💬 **Talking Animations** - Automatic gesture animations during AI speech
-- 🎬 **Animation System** - FBX animation loading with automatic Mixamo remapping
+- 🎬 **Animation System** - FBX/GLB animation loading with automatic Mixamo remapping
 - 😊 **Facial Expressions** - Smooth VRM expression control with transitions
 - 👁️ **Natural Blinking** - Randomized blinking animations for lifelike characters
 - 🔊 **Audio Lip Sync** - File-based lip sync analysis with MFCC and DTW algorithms
@@ -59,7 +59,46 @@ function App() {
 }
 ```
 
-### Animation System
+### GLB Models with Embedded Animations
+
+Use `GLBAvatar` for GLB files that contain both the model AND animations in one file:
+
+```tsx
+import { Canvas } from '@react-three/fiber';
+import { KhaveeProvider, GLBAvatar, useAnimations } from '@khaveeai/react';
+
+function Controls() {
+  const { animate } = useAnimations();
+  
+  return (
+    <>
+      <button onClick={() => animate('idle')}>Idle</button>
+      <button onClick={() => animate('walk')}>Walk</button>
+      <button onClick={() => animate('run')}>Run</button>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <KhaveeProvider>
+      <Canvas>
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 10, 5]} />
+        
+        <GLBAvatar 
+          src="/models/dragon.glb"    // GLB with model + animations
+          autoPlayAnimation="idle"     // or use index: 0, 1, 2
+          position={[0, 0, 0]}
+        />
+      </Canvas>
+      <Controls />
+    </KhaveeProvider>
+  );
+}
+```
+
+### Animation System (Separate Files)
 
 ```tsx
 import { VRMAvatar, useVRMAnimations } from '@khaveeai/react';
@@ -67,10 +106,10 @@ import { VRMAvatar, useVRMAnimations } from '@khaveeai/react';
 function AnimatedAvatar() {
   const { animate } = useVRMAnimations();
   
-  // Define animations (just provide URLs!)
+  // Define animations (supports both FBX and GLB!)
   const animations = {
-    idle: '/animations/idle.fbx',           // Auto-plays
-    dance: '/animations/dance.fbx',
+    idle: '/animations/idle.fbx',           // Auto-plays (FBX)
+    dance: '/animations/dance.glb',         // GLB with embedded animation
     wave: '/animations/wave.fbx'
   };
   
@@ -171,7 +210,7 @@ interface VRMAvatarProps {
   position?: [number, number, number];
   rotation?: [number, number, number];  
   scale?: [number, number, number];
-  animations?: AnimationConfig;   // FBX animation URLs
+  animations?: AnimationConfig;   // FBX or GLB animation URLs
   enableBlinking?: boolean;       // Enable natural blinking (default: true)
   enableTalkingAnimations?: boolean; // Enable gestures during AI speech (default: true)
 }
@@ -180,22 +219,71 @@ interface VRMAvatarProps {
 **Animation Config:**
 ```tsx
 interface AnimationConfig {
-  [name: string]: string;  // Animation name -> FBX file URL
+  [name: string]: string;  // Animation name -> FBX or GLB file URL
 }
 
-// Example
+// Example - Mix FBX and GLB formats!
 const animations = {
-  idle: '/animations/breathing.fbx',     // Auto-plays on load
-  walk: '/animations/walking.fbx',
+  idle: '/animations/breathing.fbx',     // Auto-plays on load (FBX)
+  walk: '/animations/walking.glb',       // GLB file with animation
   dance: '/animations/dancing.fbx',
-  talking: '/animations/talking.fbx',    // Played during AI speech
+  talking: '/animations/talking.glb',    // Played during AI speech (GLB)
   gesture1: '/animations/gesture.fbx'    // Also played during speech
 };
 // Note: Animations with 'talk', 'gesture', or 'speak' in the name
 // are automatically played randomly when chatStatus === 'speaking'
 ```
 
+**Supported Animation Formats:**
+- **FBX** - Automatically remaps Mixamo bone names to VRM bones
+- **GLB/GLTF** - Uses embedded animations directly
+  - If GLB contains Mixamo animation (name includes "mixamo"), it will be remapped
+  - Otherwise, animations are used as-is (supports VRM-compatible or generic animations)
+  - If multiple animations exist in one GLB, they are all loaded with indexed names
+
+#### `<GLBAvatar>`
+
+Component for GLB/GLTF models that contain both the 3D model and animations in a single file.
+
+```tsx
+interface GLBAvatarProps {
+  src: string;                    // Path to .glb or .gltf file
+  position?: [number, number, number];
+  rotation?: [number, number, number];  
+  scale?: [number, number, number];
+  autoPlayAnimation?: string | number;  // Animation name or index to auto-play
+}
+```
+
+**Example:**
+```tsx
+// GLB file with embedded animations (like dragon.glb from your example)
+<GLBAvatar 
+  src="/models/character.glb"
+  autoPlayAnimation="idle"  // or use index: 0, 1, 2
+  position={[0, 0, 0]}
+/>
+```
+
+**Use Cases:**
+- Models exported from Blender with animations
+- Downloaded models with embedded animations
+- Generic GLB models (not VRM-specific)
+- When you don't need VRM expressions/blinking
+
+**Control animations:**
+```tsx
+const { animate } = useAnimations();
+
+// Switch between animations in the GLB
+<button onClick={() => animate('walk')}>Walk</button>
+<button onClick={() => animate('run')}>Run</button>
+```
+
+
 ### Hooks
+
+**Note:** For animation control, use `useAnimations()` - it works with both `VRMAvatar` and `GLBAvatar`. The `useVRMAnimations()` hook is deprecated but still available for backward compatibility.
 
 #### `useRealtime()`
 
@@ -260,9 +348,9 @@ const {
 } = useVRMExpressions();
 ```
 
-#### `useVRMAnimations()`
+#### `useAnimations()`
 
-Control VRM body animations with smooth transitions.
+Control animations for VRM or GLB models with smooth transitions.
 
 ```tsx
 const {
@@ -270,6 +358,21 @@ const {
   animate: (name: string) => void,       // Play animation by name
   stopAnimation: () => void,             // Stop current animation
   availableAnimations: string[]          // List of loaded animations
+} = useAnimations();
+```
+
+#### `useVRMAnimations()`
+
+⚠️ **Deprecated:** Use `useAnimations()` instead.
+
+Alias for `useAnimations()` - kept for backward compatibility.
+
+```tsx
+const {
+  currentAnimation: string | null,
+  animate: (name: string) => void,
+  stopAnimation: () => void,
+  availableAnimations: string[]
 } = useVRMAnimations();
 ```
 
@@ -412,6 +515,56 @@ function EmotionalPresets() {
       ))}
       <button onClick={resetExpressions}>Reset</button>
     </div>
+  );
+}
+```
+
+### GLB Animation Discovery
+
+Automatically list and play all animations from a GLB file:
+
+```tsx
+import { GLBAvatar, useAnimations } from '@khaveeai/react';
+import { Canvas } from '@react-three/fiber';
+
+function AnimationList() {
+  const { animate, currentAnimation, availableAnimations } = useAnimations();
+  
+  return (
+    <div>
+      <h3>Available Animations ({availableAnimations.length})</h3>
+      <p>Current: {currentAnimation || 'None'}</p>
+      
+      {availableAnimations.length > 0 ? (
+        <div>
+          {availableAnimations.map((animName) => (
+            <button
+              key={animName}
+              onClick={() => animate(animName)}
+              style={{
+                fontWeight: currentAnimation === animName ? 'bold' : 'normal',
+                background: currentAnimation === animName ? '#4CAF50' : '#2196F3'
+              }}
+            >
+              {currentAnimation === animName ? '▶ ' : ''}{animName}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p>Loading animations...</p>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <KhaveeProvider>
+      <Canvas>
+        <GLBAvatar src="/models/character.glb" />
+      </Canvas>
+      <AnimationList />
+    </KhaveeProvider>
   );
 }
 ```
@@ -672,9 +825,9 @@ if (!isAnalyzing) {
 
 **Animations Not Playing:**
 ```tsx
-// Check FBX file paths and format
+// Check FBX/GLB file paths and format
 const animations = {
-  idle: '/animations/idle.fbx',  // Must be accessible FBX files
+  idle: '/animations/idle.fbx',  // Must be accessible FBX or GLB files
   walk: '/animations/walk.fbx'
 };
 

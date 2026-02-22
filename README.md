@@ -16,7 +16,7 @@ Build immersive AI experiences with realistic 3D avatars that can talk, express 
 - 👄 **Automatic Lip Sync** - MFCC-based phoneme detection syncs with AI speech
 - 💬 **Talking Animations** - Auto-plays gestures during AI conversations
 - 🎨 **Facial Expressions** - Control 30+ VRM expressions with smooth transitions
-- 💃 **Body Animations** - Load and play Mixamo animations via simple URLs
+- 💃 **Body Animations** - Load FBX/GLB animations or full GLB models via simple URLs
 - 🔍 **RAG Support** - Built-in vector search with Qdrant for knowledge bases
 - 👁️ **Natural Blinking** - Randomized blinking for lifelike avatars
 - 🛠️ **Function Calling** - OpenAI tools for custom functions and RAG
@@ -108,10 +108,10 @@ export default function App() {
 
 ```tsx
 const animations = {
-  idle: '/animations/idle.fbx',        // Auto-plays on load
-  walk: '/animations/walk.fbx',
+  idle: '/animations/idle.fbx',        // Auto-plays on load (FBX)
+  walk: '/animations/walk.glb',        // GLB with animation
   dance: '/animations/dance.fbx',
-  talking: '/animations/talking.fbx',  // Played during AI speech
+  talking: '/animations/talking.glb',  // Played during AI speech (GLB)
   gesture1: '/animations/gesture.fbx'  // Also played during speech
 };
 
@@ -132,6 +132,44 @@ function App() {
 ```
 
 **Note:** Animations with 'talk', 'gesture', or 'speak' in the name are automatically played randomly when the AI is speaking.
+
+### GLB Models with Embedded Animations
+
+For GLB files that contain both model AND animations in one file:
+
+```tsx
+import { GLBAvatar, useAnimations } from '@khaveeai/react';
+
+function Controls() {
+  const { animate, availableAnimations } = useAnimations();
+  
+  return (
+    <div>
+      <h3>Animations ({availableAnimations.length})</h3>
+      {availableAnimations.map(name => (
+        <button key={name} onClick={() => animate(name)}>
+          {name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <KhaveeProvider>
+      <Canvas>
+        <GLBAvatar 
+          src="/models/dragon.glb"
+          autoPlayAnimation="idle"
+          position={[0, 0, 0]}
+        />
+      </Canvas>
+      <Controls />
+    </KhaveeProvider>
+  );
+}
+```
 
 ### With OpenAI Realtime (Voice Chat + Lip Sync)
 
@@ -328,7 +366,7 @@ Renders a VRM 3D character with animations and expressions.
 
 **Props:**
 - `src` - URL to VRM model file (required)
-- `animations?` - Animation configuration (URLs to FBX files)
+- `animations?` - Animation configuration (URLs to FBX or GLB files)
 - `position?` - 3D position `[x, y, z]` (default: `[0, 0, 0]`)
 - `rotation?` - 3D rotation `[x, y, z]` (default: `[0, Math.PI, 0]`)
 - `scale?` - 3D scale `[x, y, z]` (default: `[1, 1, 1]`)

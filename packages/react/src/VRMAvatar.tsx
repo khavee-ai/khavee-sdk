@@ -7,6 +7,15 @@ import { lerp } from "three/src/math/MathUtils.js";
 import { useKhavee } from "./KhaveeProvider";
 import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
 
+// Define GLTF type locally
+interface GLTFResult {
+  scene: THREE.Group;
+  animations: THREE.AnimationClip[];
+  scenes: THREE.Group[];
+  cameras: THREE.Camera[];
+  asset: any;
+}
+
 interface VRMAvatarProps {
   src: string; // URL or path to the VRM model
   position?: [number, number, number];
@@ -20,17 +29,18 @@ interface VRMAvatarProps {
 /**
  * AnimationConfig - Simple animation configuration using URLs
  *
- * Just provide URLs to your FBX animation files. The SDK automatically:
- * - Loads the FBX files
- * - Remaps Mixamo bone names to VRM bone names
+ * Just provide URLs to your animation files (FBX or GLB). The SDK automatically:
+ * - Loads FBX or GLB files based on file extension
+ * - For FBX files: Remaps Mixamo bone names to VRM bone names
+ * - For GLB files: Uses embedded animations directly (with optional Mixamo remapping)
  * - Creates AnimationClips
  * - Auto-plays the "idle" animation if present
  *
  * @example
  * ```tsx
  * const animations: AnimationConfig = {
- *   idle: '/animations/idle.fbx',      // Auto-plays on load
- *   walk: '/animations/walk.fbx',
+ *   idle: '/animations/idle.fbx',      // FBX file - Auto-plays on load
+ *   walk: '/animations/walk.glb',      // GLB file with embedded animation
  *   dance: '/animations/dance.fbx',
  * };
  *
@@ -38,18 +48,26 @@ interface VRMAvatarProps {
  * ```
  */
 export interface AnimationConfig {
-  [name: string]: string; // Just the URL to the FBX file! SDK handles loading & remapping
+  [name: string]: string; // URL to FBX or GLB file! SDK handles loading & remapping
 }
 
-// Internal component to load FBX files
-function useFBXAnimations(animationUrls: AnimationConfig | undefined) {
-  const loadedAnimations: Record<string, THREE.Group> = {};
+// Internal component to load FBX and GLB animation files
+function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
+  const loadedAnimations: Record<string, { type: 'fbx' | 'glb', data: THREE.Group | GLTFResult }> = {};
 
   if (animationUrls) {
     Object.entries(animationUrls).forEach(([name, url]) => {
-      // Hook rules are satisfied - we're calling this consistently
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      loadedAnimations[name] = useFBX(url);
+      const extension = url.toLowerCase().split('.').pop();
+      
+      if (extension === 'fbx') {
+        // eslint-disable-next-line react-hooks/rules-of-hooks
+        const fbxData = useFBX(url);
+        loadedAnimations[name] = { type: 'fbx', data: fbxData };
+      } else if (extension === 'glb' || extension === 'gltf') {
+        // eslint-disable-next-line react-hooks/rules-of-hooks
+        const gltfData = useGLTF(url) as GLTFResult;
+        loadedAnimations[name] = { type: 'glb', data: gltfData };
+      }
     });
   }
 
@@ -193,15 +211,15 @@ export function VRMAvatar({
 
   const currentVrm: VRM = userData.vrm;
 
-  // SDK automatically loads FBX files from URLs!
-  const loadedFBXAnimations = useFBXAnimations(animations);
+  // SDK automatically loads FBX and GLB files from URLs!
+  const loadedAnimations = useAnimationFiles(animations);
 
   // Process and remap animations automatically - SDK handles EVERYTHING!
   const processedClips = useMemo(() => {
     if (
       !animations ||
       !currentVrm ||
-      Object.keys(loadedFBXAnimations).length === 0
+      Object.keys(loadedAnimations).length === 0
     ) {
       console.log("[VRM Animation] Waiting for animations or VRM to load...");
       return [];
@@ -209,13 +227,43 @@ export function VRMAvatar({
 
     const clips: THREE.AnimationClip[] = [];
 
-    Object.entries(loadedFBXAnimations).forEach(([name, fbxGroup]) => {
+    Object.entries(loadedAnimations).forEach(([name, { type, data }]) => {
       try {
-        // Automatically remap Mixamo animation to VRM format
-        // @ts-ignore - VRM type compatibility with remap function
-        const remappedClip = remapMixamoAnimationToVrm(currentVrm, fbxGroup);
-        remappedClip.name = name;
-        clips.push(remappedClip);
+        if (type === 'fbx') {
+          // FBX files - Automatically remap Mixamo animation to VRM format
+          // @ts-ignore - VRM type compatibility with remap function
+          const remappedClip = remapMixamoAnimationToVrm(currentVrm, data as THREE.Group);
+          remappedClip.name = name;
+          clips.push(remappedClip);
+        } else if (type === 'glb') {
+          // GLB files - Extract animations from GLTF
+          const gltf = data as GLTFResult;
+          
+          if (gltf.animations && gltf.animations.length > 0) {
+            // Check if this is a Mixamo animation that needs remapping
+            const isMixamoAnimation = gltf.animations.some(
+              (anim: THREE.AnimationClip) => anim.name.includes('mixamo')
+            );
+            
+            if (isMixamoAnimation && gltf.scene) {
+              // Remap Mixamo GLB animation to VRM
+              // @ts-ignore - VRM type compatibility
+              const remappedClip = remapMixamoAnimationToVrm(currentVrm, gltf.scene);
+              remappedClip.name = name;
+              clips.push(remappedClip);
+            } else {
+              // Use animation directly (already VRM-compatible or generic)
+              // If multiple animations in GLB, use the first one or all of them
+              gltf.animations.forEach((clip: THREE.AnimationClip, index: number) => {
+                const clipCopy = clip.clone();
+                clipCopy.name = gltf.animations.length === 1 ? name : `${name}_${index}`;
+                clips.push(clipCopy);
+              });
+            }
+          } else {
+            console.warn(`[VRM Animation] No animations found in GLB file: ${name}`);
+          }
+        }
       } catch (error) {
         console.error(
           `[VRM Animation] ❌ Failed to load/remap ${name}:`,
@@ -225,7 +273,7 @@ export function VRMAvatar({
     });
 
     return clips;
-  }, [loadedFBXAnimations, currentVrm]);
+  }, [loadedAnimations, currentVrm]);
 
   // Initialize animation mixer and maintain animation state
   useEffect(() => {
@@ -613,8 +661,73 @@ export function useVRMExpressions() {
 }
 
 /**
- * useVRMAnimations - Control VRM character animations
+ * useAnimations - Control animations for VRM or GLB models
  *
+ * Generic hook to play, stop, and manage animations. Works with both VRMAvatar and GLBAvatar.
+ * Animations are smoothly transitioned with fade-in/fade-out effects.
+ *
+ * @returns Object containing:
+ *   - currentAnimation: Name of the currently playing animation
+ *   - animate: Function to play an animation by name
+ *   - stopAnimation: Function to stop all animations
+ *   - availableAnimations: Array of loaded animation names
+ *
+ * @example
+ * // Basic animation control (works with VRM or GLB)
+ * ```tsx
+ * import { useAnimations } from '@khaveeai/react';
+ *
+ * function AnimationControls() {
+ *   const { animate, currentAnimation, availableAnimations } = useAnimations();
+ *
+ *   return (
+ *     <div>
+ *       <p>Current: {currentAnimation}</p>
+ *       {availableAnimations.map(name => (
+ *         <button key={name} onClick={() => animate(name)}>
+ *           {name}
+ *         </button>
+ *       ))}
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
+ * @example
+ * // With GLBAvatar
+ * ```tsx
+ * function App() {
+ *   const { animate } = useAnimations();
+ *   
+ *   return (
+ *     <>
+ *       <Canvas>
+ *         <GLBAvatar src="/model.glb" />
+ *       </Canvas>
+ *       <button onClick={() => animate('walk')}>Walk</button>
+ *     </>
+ *   );
+ * }
+ * ```
+ */
+export function useAnimations() {
+  const { currentAnimation, animate, stopAnimation, availableAnimations } =
+    useKhavee();
+
+  return {
+    currentAnimation,
+    animate,
+    stopAnimation,
+    availableAnimations,
+  };
+}
+
+/**
+ * useVRMAnimations - Control VRM character animations
+ * 
+ * @deprecated Use `useAnimations()` instead - works for both VRM and GLB models
+ * 
+ * Alias for useAnimations() for backward compatibility.
  * Provides functions to play, stop, and manage VRM animations. Animations are smoothly
  * transitioned with fade-in/fade-out effects. The "idle" animation auto-plays when loaded.
  *
@@ -725,13 +838,5 @@ export function useVRMExpressions() {
  * ```
  */
 export function useVRMAnimations() {
-  const { currentAnimation, animate, stopAnimation, availableAnimations } =
-    useKhavee();
-
-  return {
-    currentAnimation,
-    animate,
-    stopAnimation,
-    availableAnimations,
-  };
+  return useAnimations();
 }

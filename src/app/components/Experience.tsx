@@ -12,6 +12,7 @@ export const Experience = () => {
     avatar: {
       value: "amongus.vrm",
       options: [
+        "happy.glb",
         "amongus.vrm",
         "blacknwhitecat.vrm",
         "male.vrm",

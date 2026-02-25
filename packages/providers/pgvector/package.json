@@ -1,0 +1,42 @@
+{
+  "name": "@khaveeai/providers-pgvector",
+  "version": "0.1.0",
+  "description": "PostgreSQL + pgvector provider for Khavee AI SDK",
+  "keywords": ["pgvector", "postgres", "vector-database", "embedding", "rag", "khavee-ai"],
+  "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SolveServeSolution/khaveeai-sdk.git",
+    "directory": "packages/providers/pgvector"
+  },
+  "author": "KhaveeAI <support@khaveeai.com>",
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "files": ["dist/**/*", "package.json", "README.md"],
+  "exports": {
+    ".": {
+      "types":   "./dist/index.d.ts",
+      "import":  "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "main":  "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev":   "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "openai": "^4.0.0",
+    "pg":     "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/pg":   "^8.0.0",
+    "typescript":  "^5.0.0"
+  },
+  "peerDependencies": {
+    "@khaveeai/core": "^0.1.0"
+  }
+}

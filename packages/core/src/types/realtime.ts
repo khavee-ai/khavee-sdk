@@ -2,6 +2,40 @@ import { RealtimeMessage, Conversation, ChatStatus } from './conversation';
 import { MouthState, PhonemeData } from './audio';
 
 /**
+ * Minimal interface a vector-search backend must satisfy to be used as a
+ * RAG source inside OpenAIRealtimeProvider.
+ * Both PgVectorProvider and the existing RAGProvider satisfy this contract.
+ */
+export interface VectorSearchProvider {
+  search(query: string, topK?: number, threshold?: number): Promise<Array<{
+    id: string | number;
+    content?: string;
+    /** Qdrant RAGProvider uses `payload` instead of `content` */
+    payload?: Record<string, unknown>;
+    similarity?: number;
+    score?: number;
+    metadata?: Record<string, unknown>;
+  }>>;
+}
+
+/**
+ * RAG configuration for OpenAIRealtimeProvider
+ */
+export interface RAGConfig {
+  /** Any provider that implements VectorSearchProvider */
+  provider: VectorSearchProvider;
+  /** Max documents to retrieve per query (default: 5) */
+  topK?: number;
+  /** Min similarity score (default: 0.3) */
+  threshold?: number;
+  /**
+   * Text prepended before the injected context in the system message.
+   * Default: "Answer based on the following context:"
+   */
+  systemPromptPrefix?: string;
+}
+
+/**
  * Tool definition for function calling
  */
 export interface RealtimeTool {
@@ -48,6 +82,13 @@ export interface RealtimeConfig {
    * Required when useProxy is true
    */
   proxyEndpoint?: string;
+
+  /**
+   * Optional RAG (Retrieval Augmented Generation) configuration.
+   * When set, a `search_knowledge_base` tool is automatically registered
+   * and context is injected into the conversation before each AI response.
+   */
+  rag?: RAGConfig;
 }
 
 /**

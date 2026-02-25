@@ -51,3 +51,51 @@ body {
     transform: translateX(0);
   }
 }
+
+/* ── Vector page utilities ───────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: #6366f1;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+.btn-primary:hover:not(:disabled) { background-color: #4f46e5; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: #374151;
+  color: #e5e7eb;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+.btn-secondary:hover:not(:disabled) { background-color: #4b5563; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.input {
+  background-color: #111827;
+  border: 1px solid #374151;
+  border-radius: 0.5rem;
+  color: #f9fafb;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+  transition: border-color 150ms;
+}
+.input:focus { border-color: #6366f1; }
+.input::placeholder { color: #6b7280; }

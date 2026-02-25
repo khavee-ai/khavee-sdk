@@ -51,7 +51,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   public onToolCall?: (toolName: string, args: any, result: any) => void;
   public onAudioData?: (
     analyser: AnalyserNode,
-    audioContext: AudioContext
+    audioContext: AudioContext,
   ) => void;
 
   constructor(config: RealtimeConfig) {
@@ -68,7 +68,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     if (!this.config.useProxy && !this.config.apiKey) {
       throw new Error(
         "Either apiKey or useProxy must be provided. " +
-        "For security in production, use useProxy to keep your API key server-side."
+          "For security in production, use useProxy to keep your API key server-side.",
       );
     }
 
@@ -149,14 +149,14 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
               "Content-Type": "application/sdp",
             },
             body: offer.sdp,
-          }
+          },
         );
       }
 
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(
-          `Failed to negotiate WebRTC session: ${response.status} ${errorText}`
+          `Failed to negotiate WebRTC session: ${response.status} ${errorText}`,
         );
       }
 
@@ -321,7 +321,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
             if (required === true) {
               requiredFields.push(key);
             }
-          }
+          },
         );
 
         return {
@@ -407,7 +407,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
         case "response.audio_transcript.delta":
           this.setChatStatus(
-            this.hasHeardFirstGreeting ? "speaking" : "starting"
+            this.hasHeardFirstGreeting ? "speaking" : "starting",
           );
           this.handleAssistantTranscript(msg.delta);
           break;
@@ -429,6 +429,17 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           await this.handleToolCall(msg);
           break;
 
+        case "response.done":
+          // Handle any function calls embedded in the completed response
+          if (msg.response?.output) {
+            for (const item of msg.response.output) {
+              if (item.type === "function_call" && item.name) {
+                await this.handleToolCall(item);
+              }
+            }
+          }
+          break;
+          
         default:
           console.warn("Unhandled message type:", msg.type);
           break;
@@ -483,7 +494,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     this.setChatStatus("thinking");
 
     try {
-      const args = JSON.parse(msg.arguments);
+      const args = JSON.parse(msg.arguments || "{}");
       const result = await this.toolExecutor.execute(msg.name, args);
 
       this.onToolCall?.(msg.name, args, result);
@@ -613,7 +624,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
         if (audioTrack) {
           // Create HTMLAudioElement for actual playback (required for Chromium browsers)
-          this.audioElement = document.createElement('audio');
+          this.audioElement = document.createElement("audio");
           this.audioElement.autoplay = true;
           this.audioElement.srcObject = stream;
 

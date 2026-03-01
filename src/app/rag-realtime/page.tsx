@@ -11,27 +11,26 @@ const provider = new OpenAIRealtimeProvider({
   proxyEndpoint: "/api/negotiate",
   voice: "echo",
   instructions:
-    "ตอบคำถามแบบใช้ a lot of emoji อย่างเดียวเท่านั้น"
-    // "When the user asks a question, use the search_knowledge_base tool to find relevant information, " +
-    // "then answer based on what you find. Be concise and conversational.",
-//   tools: [
-//     {
-//       name: "search_knowledge_base",
-//       description: "Search the knowledge base for relevant information to answer the user's question.",
-//       parameters: {
-//         query: {
-//           type: "string",
-//           required: true,
-//           description: "The search query to find relevant documents.",
-//         },
-//       },
-//       execute: async ({ query }: { query: string }) => {
-//         const context = await searchKnowledgeBase(query);
-//         console.log(context)
-//         return { success: true, message: context };
-//       },
-//     },
-//   ],
+    "When the user asks a question, use the search_knowledge_base tool to find relevant information, " +
+    "then answer based on what you find. Be concise and conversational.",
+  tools: [
+    {
+      name: "search_knowledge_base",
+      description: "Search the knowledge base for relevant information to answer the user's question.",
+      parameters: {
+        query: {
+          type: "string",
+          required: true,
+          description: "The search query to find relevant documents.",
+        },
+      },
+      execute: async ({ query }: { query: string }) => {
+        const context = await searchKnowledgeBase(query);
+        console.log(context)
+        return { success: true, message: context };
+      },
+    },
+  ],
 });
 
 // ── Chat UI ───────────────────────────────────────────────────────────────────

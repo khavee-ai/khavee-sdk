@@ -1,12 +1,12 @@
 {
   "name": "@khaveeai/providers-pgvector",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "PostgreSQL + pgvector provider for Khavee AI SDK",
   "keywords": ["pgvector", "postgres", "vector-database", "embedding", "rag", "khavee-ai"],
-  "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
+  "homepage": "https://github.com/khavee-ai/khavee-sdk#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SolveServeSolution/khaveeai-sdk.git",
+    "url": "git+https://github.com/khavee-ai/khavee-sdk.git",
     "directory": "packages/providers/pgvector"
   },
   "author": "KhaveeAI <support@khaveeai.com>",

@@ -169,8 +169,18 @@ export class PgVectorProvider {
     // ── List / browse ──────────────────────────────────────────────────────────
     /**
      * Return the most recently inserted documents (no embeddings).
+     * Pass `metadataFilter` to scope results to a specific user/project.
+     * Example: { userId: 'u1', projectId: 'p1' }
      */
-    async listDocuments(limit = 20) {
+    async listDocuments(limit = 20, metadataFilter) {
+        if (metadataFilter && Object.keys(metadataFilter).length > 0) {
+            const { rows } = await this.pool.query(`SELECT id, content, metadata, created_at AS "createdAt"
+         FROM ${this.tableName}
+         WHERE metadata @> $1::jsonb
+         ORDER BY id DESC
+         LIMIT $2`, [JSON.stringify(metadataFilter), limit]);
+            return rows;
+        }
         const { rows } = await this.pool.query(`SELECT id, content, metadata, created_at AS "createdAt"
        FROM ${this.tableName}
        ORDER BY id DESC
@@ -182,16 +192,32 @@ export class PgVectorProvider {
      * Cosine-similarity search. Embeds the query then finds the most similar
      * documents stored in the table.
      *
-     * @param query     Natural language query string
-     * @param topK      Max number of results (default: config.defaultTopK)
-     * @param threshold Min cosine similarity 0–1 (default: config.defaultThreshold)
+     * @param query          Natural language query string
+     * @param topK           Max number of results (default: config.defaultTopK)
+     * @param threshold      Min cosine similarity 0–1 (default: config.defaultThreshold)
+     * @param metadataFilter Optional JSONB containment filter, e.g. { userId, projectId }
      */
-    async search(query, topK = this.defaultTopK, threshold = this.defaultThreshold) {
-        return this.searchDocuments(query, topK, threshold);
+    async search(query, topK = this.defaultTopK, threshold = this.defaultThreshold, metadataFilter) {
+        return this.searchDocuments(query, topK, threshold, metadataFilter);
     }
-    async searchDocuments(query, topK = this.defaultTopK, threshold = this.defaultThreshold) {
+    async searchDocuments(query, topK = this.defaultTopK, threshold = this.defaultThreshold, metadataFilter) {
         const embedding = await this.embed(query);
         const vec = this.toVectorLiteral(embedding);
+        const hasFilter = metadataFilter && Object.keys(metadataFilter).length > 0;
+        if (hasFilter) {
+            const { rows } = await this.pool.query(`SELECT
+           id,
+           content,
+           metadata,
+           created_at AS "createdAt",
+           1 - (embedding <=> $1::vector) AS similarity
+         FROM ${this.tableName}
+         WHERE 1 - (embedding <=> $1::vector) >= $2
+           AND metadata @> $4::jsonb
+         ORDER BY embedding <=> $1::vector
+         LIMIT $3`, [vec, threshold, topK, JSON.stringify(metadataFilter)]);
+            return rows;
+        }
         const { rows } = await this.pool.query(`SELECT
          id,
          content,

@@ -46,18 +46,21 @@ export declare class PgVectorProvider implements VectorSearchProvider {
     parseCSV(csvText: string): Record<string, string>[];
     /**
      * Return the most recently inserted documents (no embeddings).
+     * Pass `metadataFilter` to scope results to a specific user/project.
+     * Example: { userId: 'u1', projectId: 'p1' }
      */
-    listDocuments(limit?: number): Promise<PgVectorDocument[]>;
+    listDocuments(limit?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorDocument[]>;
     /**
      * Cosine-similarity search. Embeds the query then finds the most similar
      * documents stored in the table.
      *
-     * @param query     Natural language query string
-     * @param topK      Max number of results (default: config.defaultTopK)
-     * @param threshold Min cosine similarity 0–1 (default: config.defaultThreshold)
+     * @param query          Natural language query string
+     * @param topK           Max number of results (default: config.defaultTopK)
+     * @param threshold      Min cosine similarity 0–1 (default: config.defaultThreshold)
+     * @param metadataFilter Optional JSONB containment filter, e.g. { userId, projectId }
      */
-    search(query: string, topK?: number, threshold?: number): Promise<PgVectorSearchResult[]>;
-    searchDocuments(query: string, topK?: number, threshold?: number): Promise<PgVectorSearchResult[]>;
+    search(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>;
+    searchDocuments(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>;
     deleteDocument(id: number): Promise<void>;
     destroy(): Promise<void>;
 }

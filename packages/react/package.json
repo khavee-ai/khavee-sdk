@@ -3,14 +3,14 @@
   "version": "0.2.6",
   "description": "React components and hooks for VRM AI avatars",
   "keywords": ["react", "vrm", "avatar", "ai", "3d", "hooks", "components"],
-  "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
+  "homepage": "https://github.com/khavee-ai/khavee-sdk#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SolveServeSolution/khaveeai-sdk.git",
+    "url": "git+https://github.com/khavee-ai/khavee-sdk.git",
     "directory": "packages/react"
   },
   "bugs": {
-    "url": "https://github.com/SolveServeSolution/khaveeai-sdk/issues"
+    "url": "https://github.com/khavee-ai/khavee-sdk/issues"
   },
   "author": "KhaveeAI <support@khaveeai.com>",
   "license": "MIT",

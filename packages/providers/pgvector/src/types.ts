@@ -82,5 +82,10 @@ export interface CSVImportOptions {
 // ── RAG interface (for OpenAI Realtime integration) ───────────────────────────
 
 export interface VectorSearchProvider {
-  search(query: string, topK?: number, threshold?: number): Promise<PgVectorSearchResult[]>;
+  search(
+    query: string,
+    topK?: number,
+    threshold?: number,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]>;
 }

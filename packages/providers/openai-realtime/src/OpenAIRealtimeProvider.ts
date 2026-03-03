@@ -36,7 +36,6 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   // Audio streams for lip sync
   private audioOutputAnalyser: AnalyserNode | null = null;
   private audioOutputContext: AudioContext | null = null;
-  private audioElement: HTMLAudioElement | null = null;
 
   // Event handlers
   public onConnect?: () => void;
@@ -51,7 +50,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   public onToolCall?: (toolName: string, args: any, result: any) => void;
   public onAudioData?: (
     analyser: AnalyserNode,
-    audioContext: AudioContext,
+    audioContext: AudioContext
   ) => void;
 
   constructor(config: RealtimeConfig) {
@@ -60,17 +59,8 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       voice: "shimmer",
       temperature: 0.8,
       speed: 1.4,
-      proxyEndpoint: "/api/negotiate",
       ...config,
     };
-
-    // Validate configuration
-    if (!this.config.useProxy && !this.config.apiKey) {
-      throw new Error(
-        "Either apiKey or useProxy must be provided. " +
-          "For security in production, use useProxy to keep your API key server-side.",
-      );
-    }
 
     this.toolExecutor = new ToolExecutor();
 
@@ -124,39 +114,50 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      let response: Response;
+      // Resolve the bearer token — either via the backend proxy (ephemeral) or a direct API key.
+      let bearerToken: string;
+      if (this.config.useProxy && this.config.proxyEndpoint) {
+        const tokenRes = await fetch(this.config.proxyEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!tokenRes.ok) {
+          const errText = await tokenRes.text();
+          throw new Error(
+            `Failed to fetch ephemeral token: ${tokenRes.status} ${errText}`
+          );
+        }
+        const tokenData = (await tokenRes.json()) as {
+          data: { ephemeralToken: string; sessionId: string };
+        };
+        bearerToken = tokenData.data.ephemeralToken;
+      } else if (this.config.apiKey) {
+        bearerToken = this.config.apiKey;
+      } else {
+        throw new Error(
+          "No authentication method provided: set useProxy+proxyEndpoint or apiKey."
+        );
+      }
 
-      if (this.config.useProxy) {
-        // Security: Send SDP to your server proxy endpoint
-        // Your server will forward it to OpenAI with API key server-side
-        response = await fetch(this.config.proxyEndpoint!, {
+      // Send SDP offer directly to the OpenAI Realtime API using the resolved token.
+      const response = await fetch(
+        `https://api.openai.com/v1/realtime?model=${
+          this.config.model || "gpt-4o-realtime-preview-2025-06-03"
+        }&voice=${this.config.voice || "coral"}`,
+        {
           method: "POST",
           headers: {
+            Authorization: `Bearer ${bearerToken}`,
             "Content-Type": "application/sdp",
           },
           body: offer.sdp,
-        });
-      } else {
-        // Direct connection to OpenAI (API key exposed on client - not recommended for production)
-        response = await fetch(
-          `https://api.openai.com/v1/realtime?model=${
-            this.config.model || "gpt-4o-realtime-preview-2025-06-03"
-          }&voice=${this.config.voice || "coral"}`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${this.config.apiKey}`,
-              "Content-Type": "application/sdp",
-            },
-            body: offer.sdp,
-          },
-        );
-      }
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(
-          `Failed to negotiate WebRTC session: ${response.status} ${errorText}`,
+          `Failed to negotiate WebRTC session: ${response.status} ${errorText}`
         );
       }
 
@@ -198,11 +199,6 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     }
 
     this.audioOutputAnalyser = null;
-
-    if (this.audioElement) {
-      this.audioElement.srcObject = null;
-      this.audioElement = null;
-    }
 
     if (this.audioStream) {
       this.audioStream.getTracks().forEach((track) => track.stop());
@@ -321,7 +317,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
             if (required === true) {
               requiredFields.push(key);
             }
-          },
+          }
         );
 
         return {
@@ -407,7 +403,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
         case "response.audio_transcript.delta":
           this.setChatStatus(
-            this.hasHeardFirstGreeting ? "speaking" : "starting",
+            this.hasHeardFirstGreeting ? "speaking" : "starting"
           );
           this.handleAssistantTranscript(msg.delta);
           break;
@@ -429,17 +425,6 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           await this.handleToolCall(msg);
           break;
 
-        case "response.done":
-          // Handle any function calls embedded in the completed response
-          if (msg.response?.output) {
-            for (const item of msg.response.output) {
-              if (item.type === "function_call" && item.name) {
-                await this.handleToolCall(item);
-              }
-            }
-          }
-          break;
-          
         default:
           console.warn("Unhandled message type:", msg.type);
           break;
@@ -494,7 +479,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     this.setChatStatus("thinking");
 
     try {
-      const args = JSON.parse(msg.arguments || "{}");
+      const args = JSON.parse(msg.arguments);
       const result = await this.toolExecutor.execute(msg.name, args);
 
       this.onToolCall?.(msg.name, args, result);
@@ -623,11 +608,6 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         const audioTrack = stream.getAudioTracks()[0];
 
         if (audioTrack) {
-          // Create HTMLAudioElement for actual playback (required for Chromium browsers)
-          this.audioElement = document.createElement("audio");
-          this.audioElement.autoplay = true;
-          this.audioElement.srcObject = stream;
-
           // Create audio context for analyzing OpenAI's output
           this.audioOutputContext = new AudioContext();
           const source =
@@ -638,8 +618,11 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           this.audioOutputAnalyser.fftSize = 2048;
           this.audioOutputAnalyser.smoothingTimeConstant = 0.6;
 
-          // Connect source to analyser (no need to connect to destination, HTMLAudioElement handles playback)
+          // Connect source to analyser
           source.connect(this.audioOutputAnalyser);
+
+          // Also connect to destination for audio playback
+          source.connect(this.audioOutputContext.destination);
 
           // Notify listeners that audio analysis is available
           this.onAudioData?.(this.audioOutputAnalyser, this.audioOutputContext);

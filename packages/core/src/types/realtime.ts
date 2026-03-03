@@ -2,40 +2,6 @@ import { RealtimeMessage, Conversation, ChatStatus } from './conversation';
 import { MouthState, PhonemeData } from './audio';
 
 /**
- * Minimal interface a vector-search backend must satisfy to be used as a
- * RAG source inside OpenAIRealtimeProvider.
- * Both PgVectorProvider and the existing RAGProvider satisfy this contract.
- */
-export interface VectorSearchProvider {
-  search(query: string, topK?: number, threshold?: number): Promise<Array<{
-    id: string | number;
-    content?: string;
-    /** Qdrant RAGProvider uses `payload` instead of `content` */
-    payload?: Record<string, unknown>;
-    similarity?: number;
-    score?: number;
-    metadata?: Record<string, unknown>;
-  }>>;
-}
-
-/**
- * RAG configuration for OpenAIRealtimeProvider
- */
-export interface RAGConfig {
-  /** Any provider that implements VectorSearchProvider */
-  provider: VectorSearchProvider;
-  /** Max documents to retrieve per query (default: 5) */
-  topK?: number;
-  /** Min similarity score (default: 0.3) */
-  threshold?: number;
-  /**
-   * Text prepended before the injected context in the system message.
-   * Default: "Answer based on the following context:"
-   */
-  systemPromptPrefix?: string;
-}
-
-/**
  * Tool definition for function calling
  */
 export interface RealtimeTool {
@@ -69,26 +35,14 @@ export interface RealtimeConfig {
   speed?: number;
   enableLipSync?: boolean;
   language?: string;
-  
-  /**
-   * Security: Use server-side proxy to keep API key secure
-   * When enabled, SDK sends SDP to your API endpoint instead of OpenAI directly
-   */
+  /** When true, fetch an ephemeral token from the backend before connecting. */
   useProxy?: boolean;
-  
   /**
-   * Your server endpoint that proxies SDP negotiation to OpenAI
-   * Defaults to '/api/negotiate'
-   * Required when useProxy is true
+   * Full URL of the backend token endpoint.
+   * e.g. `https://api.example.com/api/v1/projects/{projectId}/chat/token`
+   * The endpoint must return `{ data: { ephemeralToken: string, sessionId: string } }`.
    */
   proxyEndpoint?: string;
-
-  /**
-   * Optional RAG (Retrieval Augmented Generation) configuration.
-   * When set, a `search_knowledge_base` tool is automatically registered
-   * and context is injected into the conversation before each AI response.
-   */
-  rag?: RAGConfig;
 }
 
 /**

@@ -46,6 +46,18 @@ export interface RealtimeConfig {
 }
 
 /**
+ * Token usage breakdown reported after each AI response
+ */
+export interface UsageReport {
+  sessionId: string;
+  inputTextTokens: number;
+  inputAudioTokens: number;
+  inputCachedTokens: number;
+  outputTextTokens: number;
+  outputAudioTokens: number;
+}
+
+/**
  * Events from realtime provider
  */
 export interface RealtimeEvents {
@@ -61,6 +73,8 @@ export interface RealtimeEvents {
   onMouthStateChange?: (state: MouthState) => void;
   onPhonemeDetected?: (phoneme: PhonemeData) => void;
   onToolCall?: (toolName: string, args: any, result: any) => void;
+  /** Fired after each OpenAI response.done event with the token breakdown. */
+  onUsageReport?: (usage: UsageReport) => void;
 }
 
 /**

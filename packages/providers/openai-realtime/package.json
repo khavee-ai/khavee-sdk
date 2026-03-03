@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-openai-realtime",
-  "version": "0.2.13",
+  "version": "0.3.0",
   "description": "OpenAI Realtime API provider for Khavee AI SDK",
   "keywords": [
     "openai",
@@ -42,7 +42,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@khaveeai/core": "^0.1.7",
+    "@khaveeai/core": "^0.2.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

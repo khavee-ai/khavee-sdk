@@ -7,6 +7,7 @@ import {
   RealtimeProvider,
   RealtimeConfig,
   RealtimeTool,
+  UsageReport,
   Conversation,
   ChatStatus,
 } from "@khaveeai/core";
@@ -27,11 +28,15 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   public conversation: Conversation[] = [];
   public currentVolume = 0;
 
+  // Session tracking
+  private sessionId: string | null = null;
+
   // Audio refs
   private volumeInterval: number | null = null;
   private ephemeralUserMessageId: string | null = null;
   private micEnabled = false;
   private hasHeardFirstGreeting = false;
+  private audioOutputElement: HTMLAudioElement | null = null;
 
   // Audio streams for lip sync
   private audioOutputAnalyser: AnalyserNode | null = null;
@@ -48,6 +53,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   public onAudioEnd?: () => void;
   public onVolumeChange?: (volume: number) => void;
   public onToolCall?: (toolName: string, args: any, result: any) => void;
+  public onUsageReport?: (usage: UsageReport) => void;
   public onAudioData?: (
     analyser: AnalyserNode,
     audioContext: AudioContext
@@ -131,6 +137,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           data: { ephemeralToken: string; sessionId: string };
         };
         bearerToken = tokenData.data.ephemeralToken;
+        this.sessionId = tokenData.data.sessionId;
       } else if (this.config.apiKey) {
         bearerToken = this.config.apiKey;
       } else {
@@ -200,6 +207,12 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
     this.audioOutputAnalyser = null;
 
+    if (this.audioOutputElement) {
+      this.audioOutputElement.srcObject = null;
+      this.audioOutputElement.pause();
+      this.audioOutputElement = null;
+    }
+
     if (this.audioStream) {
       this.audioStream.getTracks().forEach((track) => track.stop());
       this.audioStream = null;
@@ -211,6 +224,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     }
 
     this.ephemeralUserMessageId = null;
+    this.sessionId = null;
     this.currentVolume = 0;
     this.conversation = [];
     this.setChatStatus("stopped");
@@ -273,6 +287,13 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
    */
   registerFunction(tool: RealtimeTool): void {
     this.toolExecutor.register(tool.name, tool.execute);
+  }
+
+  /**
+   * Return the current chat session ID (set after successful token fetch)
+   */
+  getSessionId(): string | null {
+    return this.sessionId;
   }
 
   /**
@@ -421,12 +442,35 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           this.setChatStatus("ready");
           break;
 
+        case "response.done":
+          if (msg.response?.usage && this.onUsageReport) {
+            const u = msg.response.usage as {
+              input_token_details?: {
+                text_tokens?: number;
+                audio_tokens?: number;
+                cached_tokens?: number;
+              };
+              output_token_details?: {
+                text_tokens?: number;
+                audio_tokens?: number;
+              };
+            };
+            this.onUsageReport({
+              sessionId: this.sessionId ?? "",
+              inputTextTokens: u.input_token_details?.text_tokens ?? 0,
+              inputAudioTokens: u.input_token_details?.audio_tokens ?? 0,
+              inputCachedTokens: u.input_token_details?.cached_tokens ?? 0,
+              outputTextTokens: u.output_token_details?.text_tokens ?? 0,
+              outputAudioTokens: u.output_token_details?.audio_tokens ?? 0,
+            });
+          }
+          break;
+
         case "response.function_call_arguments.done":
           await this.handleToolCall(msg);
           break;
 
         default:
-          console.warn("Unhandled message type:", msg.type);
           break;
       }
     } catch (error) {
@@ -608,7 +652,21 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         const audioTrack = stream.getAudioTracks()[0];
 
         if (audioTrack) {
-          // Create audio context for analyzing OpenAI's output
+          // ── Reliable audio playback via HTMLAudioElement ──────────────────
+          // AudioContext.destination alone is unreliable — browsers suspend the
+          // context when it is created outside a direct user gesture. An
+          // HTMLAudioElement with autoplay is the correct path for playback.
+          if (!this.audioOutputElement) {
+            this.audioOutputElement = document.createElement("audio");
+            this.audioOutputElement.autoplay = true;
+          }
+          this.audioOutputElement.srcObject = stream;
+          void this.audioOutputElement.play().catch(() => {
+            // Silently ignore autoplay policy errors — the element will play
+            // as soon as the user interacts with the page.
+          });
+
+          // ── AudioContext for lip-sync / volume analysis ───────────────────
           this.audioOutputContext = new AudioContext();
           const source =
             this.audioOutputContext.createMediaStreamSource(stream);
@@ -618,11 +676,12 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           this.audioOutputAnalyser.fftSize = 2048;
           this.audioOutputAnalyser.smoothingTimeConstant = 0.6;
 
-          // Connect source to analyser
+          // Connect source → analyser only (playback handled by the element)
           source.connect(this.audioOutputAnalyser);
 
-          // Also connect to destination for audio playback
-          source.connect(this.audioOutputContext.destination);
+          // Resume the context — it may start suspended if created outside
+          // a synchronous click handler.
+          void this.audioOutputContext.resume();
 
           // Notify listeners that audio analysis is available
           this.onAudioData?.(this.audioOutputAnalyser, this.audioOutputContext);

@@ -1,5 +1,5 @@
-import { RealtimeMessage, Conversation, ChatStatus } from './conversation';
-import { MouthState, PhonemeData } from './audio';
+import { RealtimeMessage, Conversation, ChatStatus } from "./conversation";
+import { MouthState, PhonemeData } from "./audio";
 
 /**
  * Tool definition for function calling
@@ -9,7 +9,7 @@ export interface RealtimeTool {
   description: string;
   parameters: {
     [key: string]: {
-      type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+      type: "string" | "number" | "boolean" | "array" | "object";
       required?: boolean;
       enum?: string[];
       description?: string;
@@ -26,8 +26,18 @@ export interface RealtimeTool {
  */
 export interface RealtimeConfig {
   apiKey?: string;
-  model?: 'gpt-4o-realtime-preview' | 'gpt-4o-mini-realtime-preview';
-  voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' | 'coral' | 'sage';
+  model?: "gpt-4o-realtime-preview" | "gpt-4o-mini-realtime-preview";
+  voice?:
+    | "alloy"
+    | "ash"
+    | "ballad"
+    | "coral"
+    | "echo"
+    | "sage"
+    | "shimmer"
+    | "verse"
+    | "marin"
+    | "cedar";
   instructions?: string;
   temperature?: number;
   tools?: RealtimeTool[];
@@ -100,7 +110,10 @@ export interface RealtimeProvider extends RealtimeEvents {
   onAudioData?: (analyser: AnalyserNode, audioContext: AudioContext) => void;
 
   // Audio analysis
-  getAudioAnalyser(): { analyser: AnalyserNode; audioContext: AudioContext } | null;
+  getAudioAnalyser(): {
+    analyser: AnalyserNode;
+    audioContext: AudioContext;
+  } | null;
 
   // Microphone control
   toggleMicrophone(): boolean;

@@ -309,6 +309,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         language: this.config.language || "en",
       },
       voice: this.config.voice || "shimmer",
+      speed: this.config.speed || 1.4,
       instructions:
         this.config.instructions || "You are a helpful AI assistant.",
       temperature: this.config.temperature ?? 0.8,

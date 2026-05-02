@@ -148,8 +148,8 @@ importers:
   packages/providers/openai-realtime:
     dependencies:
       '@khaveeai/core':
-        specifier: ^0.2.0
-        version: 0.2.0
+        specifier: ^0.2.2
+        version: 0.2.6
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.1.0
@@ -1217,8 +1217,8 @@ packages:
   '@khaveeai/core@0.1.5':
     resolution: {integrity: sha512-ayraY5b75iXkLUNgfeaqxgM6/bxzS7C69Yla49eqkvR1L+UJK1ieMObuSawL4r9CVNILwZ8laW9Da5eOjRK/UQ==}
 
-  '@khaveeai/core@0.2.0':
-    resolution: {integrity: sha512-iMrb5lB2o1UJYfXE1vQN1X7ozi/IiPozBlxD5XUTkFU+PXrk8hqq99j8l7XsGalTbI0pOTdZpQ/SUF1nlD8G4w==}
+  '@khaveeai/core@0.2.6':
+    resolution: {integrity: sha512-tDSMpBlpHOY9v9p1htJ8oqpkR7HTIs5dAMqD3ptUGMJ8/laCb8elr0nJQSwIvJl1KMvejnb1y6tYN8dB+Bxccg==}
 
   '@mediapipe/tasks-vision@0.10.17':
     resolution: {integrity: sha512-CZWV/q6TTe8ta61cZXjfnnHsfWIdFhms03M9T7Cnd5y2mdpylJM0rF1qRq+wsQVRMLz1OYPVEBU9ph2Bx8cxrg==}
@@ -5607,7 +5607,7 @@ snapshots:
       '@pixiv/three-vrm': 3.4.2(three@0.180.0)
       three: 0.180.0
 
-  '@khaveeai/core@0.2.0':
+  '@khaveeai/core@0.2.6':
     dependencies:
       '@pixiv/three-vrm': 3.4.2(three@0.180.0)
       three: 0.180.0

@@ -21,7 +21,10 @@ export class PgVectorProvider implements VectorSearchProvider {
   private defaultConcurrency: number;
 
   constructor(config: PgVectorConfig) {
-    this.pool = new Pool({ connectionString: config.connectionString });
+    this.pool = new Pool({
+      connectionString: config.connectionString,
+      ssl: config.ssl ?? false,
+    });
     this.openai = new OpenAI({ apiKey: config.openaiApiKey });
     this.tableName = config.tableName ?? "documents";
     this.embeddingModel = config.embeddingModel ?? "text-embedding-3-small";

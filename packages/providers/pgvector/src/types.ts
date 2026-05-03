@@ -36,6 +36,9 @@ export interface PgVectorConfig {
 
   /** Max parallel embedding requests during bulk insert (default: 5) */
   defaultConcurrency?: number;
+
+  /** SSL configuration for PostgreSQL connection (default: false) */
+  ssl?: boolean | { rejectUnauthorized: boolean };
 }
 
 // ── Document ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/core",
-  "version": "0.2.7",
+  "version": "0.3.3",
   "description": "Core VRM AI avatar functionality",
   "keywords": ["vrm", "avatar", "ai", "3d", "animation"],
   "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.4.2",
+    "axios": "^1.12.2",
     "three": "^0.180.0"
   },
   "devDependencies": {

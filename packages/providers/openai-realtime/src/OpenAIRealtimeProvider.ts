@@ -133,10 +133,41 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
       // Resolve the bearer token — either via the backend proxy (ephemeral) or a direct API key.
       let bearerToken: string;
-      if (this.config.useProxy && this.config.proxyEndpoint) {
-        const tokenRes = await fetch(this.config.proxyEndpoint, {
+      const proxyEndpoint = this.config.proxyEndpoint;
+      const usingProxy = Boolean(
+        this.config.useProxy && proxyEndpoint
+      );
+
+      if (usingProxy && proxyEndpoint) {
+        const sessionConfig = {
+          type: "realtime" as const,
+          model: this.config.model || "gpt-realtime-1.5",
+          instructions:
+            this.config.instructions || "You are a helpful AI assistant.",
+          temperature: this.config.temperature ?? 0.8,
+          output_modalities: ["audio"] as const,
+          audio: {
+            input: {
+              transcription: {
+                model: "gpt-4o-transcribe",
+                language: this.config.language || "en",
+              },
+            },
+            output: {
+              format: {
+                type: "audio/pcm" as const,
+                rate: 24000 as const,
+              },
+              voice: this.config.voice || "alloy",
+              speed: this.config.speed || 1.0,
+            },
+          },
+        };
+
+        const tokenRes = await fetch(proxyEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionConfig }),
         });
         if (!tokenRes.ok) {
           const errText = await tokenRes.text();
@@ -167,19 +198,20 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       }
 
       // Send SDP offer directly to the OpenAI Realtime API using the resolved token.
-      const response = await fetch(
-        `https://api.openai.com/v1/realtime?model=${
-          this.config.model || "gpt-4o-realtime-preview-2025-06-03"
-        }&voice=${this.config.voice || "coral"}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${bearerToken}`,
-            "Content-Type": "application/sdp",
-          },
-          body: offer.sdp,
-        }
-      );
+      const callsEndpoint = usingProxy
+        ? "https://api.openai.com/v1/realtime/calls"
+        : `https://api.openai.com/v1/realtime/calls?model=${
+            this.config.model || "gpt-realtime-1.5"
+          }&voice=${this.config.voice || "coral"}`;
+
+      const response = await fetch(callsEndpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearerToken}`,
+          "Content-Type": "application/sdp",
+        },
+        body: offer.sdp,
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -322,29 +354,10 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   private configureSession(): void {
     if (!this.dataChannel) return;
 
-    const sessionConfig: any = {
-      modalities: ["text", "audio"],
-      input_audio_transcription: {
-        model: "gpt-4o-transcribe",
-        language: this.config.language || "en",
-      },
-      voice: this.config.voice || "shimmer",
-      speed: this.config.speed || 1.4,
-      instructions:
-        this.config.instructions || "You are a helpful AI assistant.",
-      temperature: this.config.temperature ?? 0.8,
-      turn_detection: {
-        type: "semantic_vad",
-        eagerness: "high",
-      },
-      input_audio_noise_reduction: {
-        type: "near_field",
-      },
-    };
-
-    // Only add tools and tool_choice if tools are provided
+    // Only send a session.update when tools are present.
+    // Session defaults (model, instructions, audio, etc.) are owned by the backend.
     if (this.config.tools && this.config.tools.length > 0) {
-      sessionConfig.tools = this.config.tools.map((tool) => {
+      const tools = this.config.tools.map((tool) => {
         // Build parameters object, removing the 'required' field from each property
         const properties: any = {};
         const requiredFields: string[] = [];
@@ -373,15 +386,19 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           },
         };
       });
-      sessionConfig.tool_choice = "auto";
+
+      const sessionUpdate = {
+        type: "session.update",
+        session: {
+          type: "realtime",
+          tools,
+          tool_choice: "auto",
+        },
+      };
+
+      this.dataChannel.send(JSON.stringify(sessionUpdate));
     }
 
-    const sessionUpdate = {
-      type: "session.update",
-      session: sessionConfig,
-    };
-
-    this.dataChannel.send(JSON.stringify(sessionUpdate));
     this.dataChannel.send(JSON.stringify({ type: "response.create" }));
     this.setChatStatus("ready");
   }
@@ -397,6 +414,10 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       switch (msg.type) {
         case "session.updated":
           console.log("Session:", msg.session);
+          break;
+
+        case "session.created":
+          console.log("Session created:", msg.session);
           break;
 
         case "error":
@@ -443,16 +464,24 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           this.setChatStatus("thinking");
           break;
 
-        case "response.audio_transcript.delta":
+        case "response.output_text.delta":
+        case "response.output_audio_transcript.delta":
           this.setChatStatus(
             this.hasHeardFirstGreeting ? "speaking" : "starting"
           );
           this.handleAssistantTranscript(msg.delta);
           break;
 
-        case "response.audio_transcript.done":
+        case "response.output_text.done":
+        case "response.output_audio_transcript.done":
           this.finalizeLastAssistantMessage();
           this.setChatStatus(this.hasHeardFirstGreeting ? "ready" : "starting");
+          break;
+
+        case "response.output_audio.delta":
+          if (!this.hasHeardFirstGreeting) {
+            this.setChatStatus("starting");
+          }
           break;
 
         case "output_audio_buffer.stopped":
@@ -561,13 +590,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
       this.dataChannel?.send(JSON.stringify(response));
 
-      const responseCreate = {
-        type: "response.create",
-        response: {
-          modalities: ["text", "audio"],
-          instructions: result.message,
-        },
-      };
+      const responseCreate = { type: "response.create" };
 
       this.dataChannel?.send(JSON.stringify(responseCreate));
     } catch (error) {

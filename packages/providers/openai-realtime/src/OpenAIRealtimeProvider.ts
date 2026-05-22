@@ -14,6 +14,17 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { ToolExecutor } from "./ToolExecutor";
 
+type ProxyTokenResponse = {
+  data?: {
+    ephemeralToken?: string;
+    value?: string;
+    sessionId?: string;
+  };
+  ephemeralToken?: string;
+  value?: string;
+  sessionId?: string;
+};
+
 export class OpenAIRealtimeProvider implements RealtimeProvider {
   private config: RealtimeConfig;
   private peerConnection: RTCPeerConnection | null = null;
@@ -133,11 +144,20 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
             `Failed to fetch ephemeral token: ${tokenRes.status} ${errText}`
           );
         }
-        const tokenData = (await tokenRes.json()) as {
-          data: { ephemeralToken: string; sessionId: string };
-        };
-        bearerToken = tokenData.data.ephemeralToken;
-        this.sessionId = tokenData.data.sessionId;
+        const tokenData = (await tokenRes.json()) as ProxyTokenResponse;
+        bearerToken =
+          tokenData.data?.ephemeralToken ??
+          tokenData.data?.value ??
+          tokenData.ephemeralToken ??
+          tokenData.value ??
+          "";
+
+        if (!bearerToken) {
+          throw new Error("Proxy token response did not include a token value");
+        }
+
+        this.sessionId =
+          tokenData.data?.sessionId ?? tokenData.sessionId ?? this.sessionId;
       } else if (this.config.apiKey) {
         bearerToken = this.config.apiKey;
       } else {

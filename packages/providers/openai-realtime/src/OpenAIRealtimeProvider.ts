@@ -139,7 +139,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       );
 
       if (usingProxy && proxyEndpoint) {
-        const sessionConfig = {
+        const sessionConfig: any = {
           type: "realtime" as const,
           model: this.config.model || "gpt-realtime-1.5",
           instructions:
@@ -163,6 +163,34 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
             },
           },
         };
+
+        // If tools are configured locally, include their function descriptions
+        // in the sessionConfig so the proxy/OpenAI session can register them.
+        if (this.config.tools && this.config.tools.length > 0) {
+          const tools = this.config.tools.map((tool) => {
+            const properties: any = {};
+            const requiredFields: string[] = [];
+
+            Object.entries(tool.parameters).forEach(([key, param]: [string, any]) => {
+              const { required, ...paramSchema } = param;
+              properties[key] = paramSchema;
+              if (required === true) requiredFields.push(key);
+            });
+
+            return {
+              type: "function",
+              name: tool.name,
+              description: tool.description,
+              parameters: {
+                type: "object",
+                properties,
+                required: requiredFields,
+              },
+            };
+          });
+
+          sessionConfig.tools = tools;
+        }
 
         const tokenRes = await fetch(proxyEndpoint, {
           method: "POST",

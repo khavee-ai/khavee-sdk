@@ -86,6 +86,9 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
   // Microphone state
   private micEnabled = false;
 
+  // Prevents concurrent runTurn invocations from VAD double-fire
+  private _isTurnActive = false;
+
   // ── Public interface state ───────────────────────────────────────────────
 
   public isConnected = false;
@@ -341,6 +344,8 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
    * Transcribes via STT then delegates to runTurnFromText.
    */
   private async runTurn(wav: Blob): Promise<void> {
+    if (this._isTurnActive) return;
+    this._isTurnActive = true;
     try {
       this.setChatStatus("thinking");
 
@@ -361,6 +366,8 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
     } catch (error) {
       this.onError?.(error instanceof Error ? error : new Error(String(error)));
       this.setChatStatus("ready");
+    } finally {
+      this._isTurnActive = false;
     }
   }
 
@@ -423,7 +430,8 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
       // 5. Trim history to prevent unbounded growth (T-03-08)
       this.trimHistory();
 
-      // 6. TTS playback
+      // 6. TTS playback — pause mic to prevent bot voice from re-triggering VAD
+      this.disableMicrophone();
       this.setChatStatus("speaking");
       await this.ttsPlayer.speak(
         result.text,
@@ -442,8 +450,10 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
         },
       );
 
+      this.enableMicrophone();
       this.setChatStatus("ready");
     } catch (error) {
+      this.enableMicrophone();
       this.onError?.(error instanceof Error ? error : new Error(String(error)));
       this.setChatStatus("ready");
     }

@@ -17,6 +17,10 @@ import {
 } from "@khaveeai/core";
 import { RealtimeMessage } from "@khaveeai/core";
 import { ToolExecutor } from "./ToolExecutor";
+import { AudioRecorder } from "./AudioRecorder";
+import { STTClient } from "./STTClient";
+import { ChatClient } from "./ChatClient";
+import { TTSPlayer } from "./TTSPlayer";
 
 /**
  * Configuration for the OpenAI STT/TTS pipeline provider.
@@ -51,6 +55,14 @@ type ChatMessage = {
   content: string;
 };
 
+/** Optional dependency injection seam for unit testing. */
+type ProviderDeps = {
+  audioRecorder?: AudioRecorder;
+  sttClient?: STTClient;
+  chatClient?: ChatClient;
+  ttsPlayer?: TTSPlayer;
+};
+
 export class OpenAISTTTTSProvider implements RealtimeProvider {
   // ── Private state ────────────────────────────────────────────────────────
 
@@ -65,11 +77,13 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
   private audioOutputContext: AudioContext | null = null;
   private audioOutputAnalyser: AnalyserNode | null = null;
 
-  // TTS playback handles (wired in Plan 03)
-  private ttsAbortController: AbortController | null = null;
-  private ttsSource: AudioBufferSourceNode | null = null;
+  // Helper instances (injectable for testing)
+  private audioRecorder: AudioRecorder;
+  private sttClient: STTClient;
+  private chatClient: ChatClient;
+  private ttsPlayer: TTSPlayer;
 
-  // Microphone state (full VAD wiring in Plan 02)
+  // Microphone state
   private micEnabled = false;
 
   // ── Public interface state ───────────────────────────────────────────────
@@ -98,7 +112,7 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
 
   // ── Constructor ──────────────────────────────────────────────────────────
 
-  constructor(config: OpenAISTTTTSConfig) {
+  constructor(config: OpenAISTTTTSConfig, deps?: ProviderDeps) {
     this.config = {
       sttModel: "gpt-4o-mini-transcribe",
       ttsModel: "gpt-4o-mini-tts",
@@ -108,6 +122,13 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
     };
 
     this.toolExecutor = new ToolExecutor();
+
+    // Dependency injection seam — use provided instances when testing,
+    // otherwise create real ones.
+    this.audioRecorder = deps?.audioRecorder ?? new AudioRecorder();
+    this.sttClient = deps?.sttClient ?? new STTClient();
+    this.chatClient = deps?.chatClient ?? new ChatClient();
+    this.ttsPlayer = deps?.ttsPlayer ?? new TTSPlayer();
 
     // Register any tools provided at construction time
     if (this.config.tools) {
@@ -144,7 +165,6 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
 
   /**
    * Toggle the microphone on/off.
-   * Full VAD wiring lands in Plan 02 — this skeleton tracks the flag only.
    */
   toggleMicrophone(): boolean {
     if (this.micEnabled) {
@@ -156,13 +176,15 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
     }
   }
 
-  /** Enable the microphone. Full VAD wiring in Plan 02. */
+  /** Enable the microphone. */
   enableMicrophone(): void {
+    void this.audioRecorder.resume();
     this.micEnabled = true;
   }
 
-  /** Disable the microphone. Full VAD wiring in Plan 02. */
+  /** Disable the microphone. */
   disableMicrophone(): void {
+    void this.audioRecorder.pause();
     this.micEnabled = false;
   }
 
@@ -171,41 +193,261 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
     return this.micEnabled;
   }
 
-  // ── Interface methods — stubs (filled by downstream plans) ───────────────
+  /**
+   * Return the current session ID generated at connect() time.
+   * This is a concrete-class-only method — NOT on the RealtimeProvider interface
+   * (RESEARCH Pitfall 6). The web app retrieves it before casting to the interface.
+   */
+  public getSessionId(): string | null {
+    return this.sessionId;
+  }
 
   /**
-   * Start the STT/TTS session (VAD init, audio context setup).
-   * Implemented in Plan 04.
+   * Resolve the bearer token to use for proxy calls.
+   *
+   * For direct SDK development: returns config.apiKey (fallback "").
+   * When useProxy is true, Phase 5 will override this to return a JWT
+   * obtained from the backend. Made `protected` so test subclasses can
+   * call it without an `any` cast.
+   */
+  protected resolveAuthToken(): string {
+    return this.config.apiKey ?? "";
+  }
+
+  // ── Lifecycle methods ────────────────────────────────────────────────────
+
+  /**
+   * Start the STT/TTS session.
+   *
+   * Lifecycle:
+   *   1. Set status "starting"
+   *   2. Generate a fresh session ID (crypto.randomUUID)
+   *   3. Create a FRESH AudioContext (never reused — RESEARCH Pitfall 1)
+   *   4. Wire AudioRecorder callbacks and start VAD
+   *   5. Set status "ready" and fire onConnect
+   *
+   * On any error: fires onError, sets status "stopped", then calls disconnect().
    */
   async connect(): Promise<void> {
-    throw new Error("not implemented: connect — Plan 04");
+    try {
+      this.setChatStatus("starting");
+
+      // Generate a new session ID per connect (T-03-10 audit trail)
+      this.sessionId = crypto.randomUUID();
+
+      // Create a FRESH AudioContext every connect — never reuse across reconnects
+      // (RESEARCH Pitfall 1). Closed by disconnect() when state !== "closed".
+      this.audioOutputContext = new AudioContext();
+
+      // Wire AudioRecorder VAD callbacks
+      this.audioRecorder.onSpeechStart = () => {
+        this.setChatStatus("listening");
+      };
+
+      this.audioRecorder.onUtteranceReady = (wav: Blob) => {
+        void this.runTurn(wav);
+      };
+
+      this.audioRecorder.onError = (error: Error) => {
+        this.onError?.(error);
+        this.setChatStatus("ready");
+      };
+
+      // Start VAD with the relevant config fields
+      await this.audioRecorder.connect({
+        baseAssetPath: this.config.baseAssetPath,
+        onnxWASMBasePath: this.config.onnxWASMBasePath,
+        silenceThresholdMs: this.config.silenceThresholdMs,
+        positiveSpeechThreshold: this.config.positiveSpeechThreshold,
+        negativeSpeechThreshold: this.config.negativeSpeechThreshold,
+      });
+
+      this.isConnected = true;
+      this.micEnabled = true;
+      this.setChatStatus("ready");
+      this.onConnect?.();
+    } catch (error) {
+      this.onError?.(error instanceof Error ? error : new Error(String(error)));
+      this.setChatStatus("stopped");
+      await this.disconnect();
+    }
   }
 
   /**
    * Stop the session and release all resources.
-   * Implemented in Plan 04.
+   *
+   * Teardown order mirrors OpenAIRealtimeProvider:
+   *   1. Mark disconnected
+   *   2. Cancel any in-flight TTS
+   *   3. Tear down AudioRecorder (VAD + mic)
+   *   4. Close AudioContext if not already closed (RESEARCH Pitfall 1 — the
+   *      @khaveeai/react RealtimeAudioAnalyzer.stop() may have closed it already;
+   *      closing a closed context throws an error)
+   *   5. Reset all state fields
+   *   6. Fire onDisconnect
    */
   async disconnect(): Promise<void> {
-    throw new Error("not implemented: disconnect — Plan 04");
-  }
+    this.isConnected = false;
 
-  /**
-   * Send a text message and get a TTS response.
-   * Implemented in Plan 04.
-   */
-  async sendMessage(_text: string): Promise<void> {
-    throw new Error("not implemented: sendMessage — Plan 04");
+    // Stop any TTS playback synchronously
+    this.ttsPlayer.cancel();
+
+    // Tear down the VAD recorder
+    await this.audioRecorder.disconnect();
+
+    // Close AudioContext only if it has not already been closed (Pitfall 1)
+    if (this.audioOutputContext && this.audioOutputContext.state !== "closed") {
+      await this.audioOutputContext.close();
+    }
+    this.audioOutputContext = null;
+    this.audioOutputAnalyser = null;
+
+    // Reset all session-scoped state
+    this.sessionId = null;
+    this.micEnabled = false;
+    this.currentVolume = 0;
+
+    // Reset conversation and message history back to just the system prompt
+    this.conversation = [];
+    const systemMessage = this.messages.find((m) => m.role === "system");
+    this.messages = systemMessage ? [systemMessage] : [];
+
+    this.setChatStatus("stopped");
+    this.onDisconnect?.();
   }
 
   /**
    * Interrupt the current TTS playback.
-   * Implemented in Plan 04.
+   *
+   * Synchronous per RESEARCH Pattern 8 — no await before setChatStatus so the
+   * status resets within one frame (SDK-08).
    */
   interrupt(): void {
-    throw new Error("not implemented: interrupt — Plan 04");
+    this.ttsPlayer.cancel();
+    this.setChatStatus("ready");
+  }
+
+  /**
+   * Send a text message (skips STT — text is already known) and play TTS response.
+   */
+  async sendMessage(text: string): Promise<void> {
+    await this.runTurnFromText(text);
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Full turn pipeline driven by a WAV blob from the VAD.
+   * Transcribes via STT then delegates to runTurnFromText.
+   */
+  private async runTurn(wav: Blob): Promise<void> {
+    try {
+      this.setChatStatus("thinking");
+
+      const transcript = await this.sttClient.transcribe(
+        wav,
+        this.config.sttProxyEndpoint ?? "",
+        this.resolveAuthToken(),
+        this.config.language,
+      );
+
+      // Ignore empty / whitespace-only utterances
+      if (!transcript || !transcript.trim()) {
+        this.setChatStatus("ready");
+        return;
+      }
+
+      await this.runTurnFromText(transcript);
+    } catch (error) {
+      this.onError?.(error instanceof Error ? error : new Error(String(error)));
+      this.setChatStatus("ready");
+    }
+  }
+
+  /**
+   * Turn pipeline from a known text string: append user message → Chat Completions
+   * → usage report → append assistant message → TTS playback → ready.
+   *
+   * Shared by runTurn() (VAD path) and sendMessage() (text path).
+   */
+  private async runTurnFromText(text: string): Promise<void> {
+    try {
+      // 1. Append user message to history and conversation
+      this.messages.push({ role: "user", content: text });
+      const userEntry: Conversation = {
+        id: crypto.randomUUID(),
+        role: "user",
+        text,
+        timestamp: new Date().toISOString(),
+        isFinal: true,
+        status: "final",
+      };
+      this.conversation.push(userEntry);
+      this.onConversationUpdate?.(this.conversation);
+
+      // 2. Call Chat Completions proxy
+      const result = await this.chatClient.complete({
+        messages: this.messages,
+        endpoint: this.config.chatProxyEndpoint ?? "",
+        authToken: this.resolveAuthToken(),
+        model: this.config.model,
+        temperature: this.config.temperature,
+      });
+
+      // 3. Fire usage report with mapped token counts (RESEARCH mapping)
+      if (this.onUsageReport) {
+        const u = result.usage;
+        this.onUsageReport({
+          sessionId: this.sessionId ?? "",
+          inputTextTokens: u?.prompt_tokens ?? 0,
+          inputAudioTokens: 0,
+          inputCachedTokens: u?.prompt_tokens_details?.cached_tokens ?? 0,
+          outputTextTokens: u?.completion_tokens ?? 0,
+          outputAudioTokens: 0,
+        });
+      }
+
+      // 4. Append assistant message to history and conversation
+      this.messages.push({ role: "assistant", content: result.text });
+      const assistantEntry: Conversation = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text: result.text,
+        timestamp: new Date().toISOString(),
+        isFinal: true,
+        status: "final",
+      };
+      this.conversation.push(assistantEntry);
+      this.onConversationUpdate?.(this.conversation);
+
+      // 5. Trim history to prevent unbounded growth (T-03-08)
+      this.trimHistory();
+
+      // 6. TTS playback
+      this.setChatStatus("speaking");
+      await this.ttsPlayer.speak(
+        result.text,
+        {
+          endpoint: this.config.ttsProxyEndpoint ?? "",
+          authToken: this.resolveAuthToken(),
+          voice: this.config.voice ?? "alloy",
+          speed: this.config.speed ?? 1.0,
+          model: this.config.ttsModel ?? "gpt-4o-mini-tts",
+        },
+        // Use a fallback AudioContext if somehow called before connect()
+        this.audioOutputContext ?? new AudioContext(),
+        (analyser: AnalyserNode, ctx: AudioContext) => {
+          this.audioOutputAnalyser = analyser;
+          this.onAudioData?.(analyser, ctx);
+        },
+      );
+
+      this.setChatStatus("ready");
+    } catch (error) {
+      this.onError?.(error instanceof Error ? error : new Error(String(error)));
+      this.setChatStatus("ready");
+    }
+  }
 
   /**
    * Update chatStatus and fire onChatStatusChange only when the value changes.

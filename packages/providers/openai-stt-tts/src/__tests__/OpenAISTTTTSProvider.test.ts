@@ -63,13 +63,7 @@ describe("SDK-02: trimHistory preserves system message", () => {
   });
 });
 
-// ── SDK-04 (placeholder — filled by Plan 02) ────────────────────────────────
-
-describe.skip("SDK-04: STTClient.transcribe posts multipart and returns transcript", () => {
-  it.skip("posts multipart form-data to sttProxyEndpoint and returns transcript text", () => {
-    // filled by Plan 02
-  });
-});
+// ── SDK-04 — tests now live in STTClient.test.ts (filled by Plan 02) ─────────
 
 // ── SDK-05 (ChatClient unit tests live in ChatClient.test.ts; provider-level
 //           messages-trim tests are in Plan 04) ─────────────────────────────

@@ -71,13 +71,8 @@ describe.skip("SDK-04: STTClient.transcribe posts multipart and returns transcri
   });
 });
 
-// ── SDK-05 (placeholder — filled by Plan 04) ────────────────────────────────
-
-describe.skip("SDK-05: Chat Completions appends assistant message and trims history", () => {
-  it.skip("appends assistant reply to messages and calls trimHistory", () => {
-    // filled by Plan 04
-  });
-});
+// ── SDK-05 (ChatClient unit tests live in ChatClient.test.ts; provider-level
+//           messages-trim tests are in Plan 04) ─────────────────────────────
 
 // ── SDK-08 (placeholder — filled by Plan 04) ────────────────────────────────
 

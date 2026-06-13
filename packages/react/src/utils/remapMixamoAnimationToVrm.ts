@@ -73,11 +73,19 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
           )
         );
       } else if (track instanceof THREE.VectorKeyframeTrack) {
-        const value = track.values.map(
+        const scaled = track.values.map(
           (v, i) =>
             (vrm.meta?.metaVersion === "0" && i % 3 !== 1 ? -v : v) *
             hipsPositionScale
         );
+
+        // Normalize Y (vertical axis, index % 3 === 1) by subtracting the
+        // first keyframe's Y. This prevents the avatar from jumping to a
+        // different height when switching between animations that were exported
+        // from Mixamo with different hip Y offsets.
+        const firstY = scaled[1] ?? 0;
+        const value = scaled.map((v, i) => (i % 3 === 1 ? v - firstY : v));
+
         tracks.push(
           new THREE.VectorKeyframeTrack(
             `${vrmNodeName}.${propertyName}`,

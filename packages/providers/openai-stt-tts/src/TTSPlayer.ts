@@ -21,6 +21,8 @@ type SpeakConfig = {
   voice: string;
   speed: number;
   model: string;
+  /** Optional voice style instructions for gpt-4o-mini-tts. */
+  instructions?: string;
 };
 
 /**
@@ -73,6 +75,7 @@ export class TTSPlayer {
           voice: config.voice,
           speed: config.speed,
           model: config.model,
+          ...(config.instructions ? { ttsInstructions: config.instructions } : {}),
         }),
         signal: this.abortController.signal,
       });

@@ -47,6 +47,8 @@ export interface OpenAISTTTTSConfig extends RealtimeConfig {
   baseAssetPath?: string;
   /** Override path for onnxruntime-web WASM files. */
   onnxWASMBasePath?: string;
+  /** Style/tone instructions for the TTS voice (gpt-4o-mini-tts supports this). */
+  ttsInstructions?: string;
 }
 
 /** Shape of a chat message stored in the internal history buffer. */
@@ -244,11 +246,18 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
 
       // Wire AudioRecorder VAD callbacks
       this.audioRecorder.onSpeechStart = () => {
-        this.setChatStatus("listening");
+        // Only switch to "listening" when idle and the mic is intentionally on.
+        if (!this._isTurnActive && this.micEnabled) {
+          this.setChatStatus("listening");
+        }
       };
 
       this.audioRecorder.onUtteranceReady = (wav: Blob) => {
-        void this.runTurn(wav);
+        // Discard buffered audio captured while the mic was disabled
+        // (e.g. pressed the mute button, TTS playing, cooldown window).
+        if (this.micEnabled) {
+          void this.runTurn(wav);
+        }
       };
 
       this.audioRecorder.onError = (error: Error) => {
@@ -430,8 +439,9 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
       // 5. Trim history to prevent unbounded growth (T-03-08)
       this.trimHistory();
 
-      // 6. TTS playback — pause mic to prevent bot voice from re-triggering VAD
-      this.disableMicrophone();
+      // 6. TTS playback — await mic pause so VAD is fully stopped before audio plays
+      await this.audioRecorder.pause();
+      this.micEnabled = false;
       this.setChatStatus("speaking");
       await this.ttsPlayer.speak(
         result.text,
@@ -441,6 +451,7 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
           voice: this.config.voice ?? "alloy",
           speed: this.config.speed ?? 1.0,
           model: this.config.ttsModel ?? "gpt-4o-mini-tts",
+          instructions: this.config.ttsInstructions,
         },
         // Use a fallback AudioContext if somehow called before connect()
         this.audioOutputContext ?? new AudioContext(),
@@ -450,10 +461,17 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
         },
       );
 
-      this.enableMicrophone();
+      // Resume VAD but keep _isTurnActive=true for a brief cooldown so any
+      // TTS echo picked up by the mic after playback ends is discarded.
+      // _isTurnActive is cleared by runTurn()'s finally block after this returns.
+      await this.audioRecorder.resume();
+      this.micEnabled = true;
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
       this.setChatStatus("ready");
     } catch (error) {
-      this.enableMicrophone();
+      await this.audioRecorder.resume();
+      this.micEnabled = true;
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
       this.onError?.(error instanceof Error ? error : new Error(String(error)));
       this.setChatStatus("ready");
     }

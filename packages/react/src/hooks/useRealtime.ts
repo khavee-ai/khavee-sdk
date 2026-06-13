@@ -45,14 +45,9 @@ export function useRealtime() {
 
     provider.onConnect = () => {
       setIsConnected(true);
-      // Auto-start lip sync when connected
-      if (!lipSyncAnalyzer) {
-        startAutoLipSync();
-      }
     };
     provider.onDisconnect = () => {
       setIsConnected(false);
-      // Stop lip sync when disconnected
       if (lipSyncAnalyzer) {
         lipSyncAnalyzer.stop();
         setLipSyncAnalyzer(null);
@@ -66,22 +61,24 @@ export function useRealtime() {
     provider.onChatStatusChange = (status) => {
       setChatStatus(status);
       setIsThinking(status === "thinking");
-      // Lip sync is now started automatically on connect and audio availability
+      // Reset mouth expressions whenever TTS stops so the avatar closes its mouth
+      if (status !== "speaking") {
+        setMultipleExpressions({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+      }
     };
 
     provider.onVolumeChange = (volume) => setCurrentVolume(volume);
 
-    // Handle audio data availability for lip sync
+    // Handle audio data availability for lip sync (TTS output only — never the mic)
     provider.onAudioData = (
       analyser: AnalyserNode,
       audioContext: AudioContext
     ) => {
-      // Auto-start lip sync when audio becomes available
-      if (!lipSyncAnalyzer) {
-        startAutoLipSync();
-      }
       if (lipSyncAnalyzer) {
         lipSyncAnalyzer.updateAudioSource(analyser, audioContext);
+      } else {
+        // Create the analyzer only when TTS audio is available — no mic fallback
+        startAutoLipSync();
       }
     };
 
@@ -98,11 +95,6 @@ export function useRealtime() {
     };
 
     updateStates();
-
-    // Auto-start lip sync if provider is already connected
-    if (provider.isConnected && !lipSyncAnalyzer) {
-      startAutoLipSync();
-    }
 
     // Set up interval to continuously sync state (fallback)
     const stateSyncInterval = setInterval(updateStates, 100);
@@ -328,38 +320,18 @@ class RealtimeAudioAnalyzer {
   }
 
   private async attemptConnection() {
-    try {
-      // Try to get audio from provider first
-      const providerAudio = this.config.realtimeProvider.getAudioAnalyser?.();
+    // Only use audio provided by the realtime provider (TTS output).
+    // Never open the microphone here — that would cause the avatar to lip-sync
+    // with the user's own voice and the bot's TTS audio would re-trigger STT.
+    const providerAudio = this.config.realtimeProvider.getAudioAnalyser?.();
 
-      if (providerAudio) {
-        this.analyser = providerAudio.analyser;
-        this.audioContext = providerAudio.audioContext;
-        this.setupMeydaAnalyzer();
-        return;
-      }
-
-      // Fallback to manual audio capture
-      await this.setupAudioCapture();
-    } catch (error) {
-      console.error("Connection attempt failed:", error);
-
-      // If connection fails, try again after delay
-      if (
-        this.reconnectAttempts < this.maxReconnectAttempts &&
-        this.isRunning
-      ) {
-        this.reconnectAttempts++;
-
-        setTimeout(() => {
-          if (this.isRunning) {
-            this.attemptConnection();
-          }
-        }, 2000);
-      } else {
-        throw error;
-      }
+    if (providerAudio) {
+      this.analyser = providerAudio.analyser;
+      this.audioContext = providerAudio.audioContext;
+      this.setupMeydaAnalyzer();
     }
+    // If provider has no audio yet (e.g. TTS hasn't played), do nothing —
+    // updateAudioSource() will be called when the first TTS response arrives.
   }
 
   updateAudioSource(analyser: AnalyserNode, audioContext: AudioContext) {
@@ -387,7 +359,6 @@ class RealtimeAudioAnalyzer {
   }
 
   stop() {
-    console.log("Stopping realtime audio analyzer");
     this.isRunning = false;
 
     if (this.meydaAnalyzer) {
@@ -400,14 +371,8 @@ class RealtimeAudioAnalyzer {
       this.fallbackInterval = null;
     }
 
-    // Don't close audio context if it came from provider
-    if (this.audioContext && this.audioContext.state !== "closed") {
-      try {
-        this.audioContext.close();
-      } catch (error) {
-        console.warn("Could not close audio context:", error);
-      }
-    }
+    // The audioContext belongs to the provider — do NOT close it here.
+    // The provider manages its own AudioContext lifecycle.
     this.audioContext = null;
     this.analyser = null;
   }

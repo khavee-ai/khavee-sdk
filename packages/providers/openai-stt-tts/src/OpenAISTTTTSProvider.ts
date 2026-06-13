@@ -442,7 +442,7 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
       // 6. TTS playback — await mic pause so VAD is fully stopped before audio plays
       await this.audioRecorder.pause();
       this.micEnabled = false;
-      this.setChatStatus("speaking");
+      let speakingStatusSet = false;
       await this.ttsPlayer.speak(
         result.text,
         {
@@ -456,6 +456,11 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
         // Use a fallback AudioContext if somehow called before connect()
         this.audioOutputContext ?? new AudioContext(),
         (analyser: AnalyserNode, ctx: AudioContext) => {
+          // Set "speaking" only when audio actually starts, not when text is ready
+          if (!speakingStatusSet) {
+            speakingStatusSet = true;
+            this.setChatStatus("speaking");
+          }
           this.audioOutputAnalyser = analyser;
           this.onAudioData?.(analyser, ctx);
         },

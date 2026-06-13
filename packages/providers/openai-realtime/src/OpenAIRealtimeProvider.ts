@@ -67,7 +67,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   public onUsageReport?: (usage: UsageReport) => void;
   public onAudioData?: (
     analyser: AnalyserNode,
-    audioContext: AudioContext
+    audioContext: AudioContext,
   ) => void;
 
   constructor(config: RealtimeConfig) {
@@ -134,9 +134,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       // Resolve the bearer token — either via the backend proxy (ephemeral) or a direct API key.
       let bearerToken: string;
       const proxyEndpoint = this.config.proxyEndpoint;
-      const usingProxy = Boolean(
-        this.config.useProxy && proxyEndpoint
-      );
+      const usingProxy = Boolean(this.config.useProxy && proxyEndpoint);
 
       if (usingProxy && proxyEndpoint) {
         const sessionConfig: any = {
@@ -171,11 +169,13 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
             const properties: any = {};
             const requiredFields: string[] = [];
 
-            Object.entries(tool.parameters).forEach(([key, param]: [string, any]) => {
-              const { required, ...paramSchema } = param;
-              properties[key] = paramSchema;
-              if (required === true) requiredFields.push(key);
-            });
+            Object.entries(tool.parameters).forEach(
+              ([key, param]: [string, any]) => {
+                const { required, ...paramSchema } = param;
+                properties[key] = paramSchema;
+                if (required === true) requiredFields.push(key);
+              },
+            );
 
             return {
               type: "function",
@@ -200,7 +200,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         if (!tokenRes.ok) {
           const errText = await tokenRes.text();
           throw new Error(
-            `Failed to fetch ephemeral token: ${tokenRes.status} ${errText}`
+            `Failed to fetch ephemeral token: ${tokenRes.status} ${errText}`,
           );
         }
         const tokenData = (await tokenRes.json()) as ProxyTokenResponse;
@@ -221,7 +221,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         bearerToken = this.config.apiKey;
       } else {
         throw new Error(
-          "No authentication method provided: set useProxy+proxyEndpoint or apiKey."
+          "No authentication method provided: set useProxy+proxyEndpoint or apiKey.",
         );
       }
 
@@ -244,7 +244,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(
-          `Failed to negotiate WebRTC session: ${response.status} ${errorText}`
+          `Failed to negotiate WebRTC session: ${response.status} ${errorText}`,
         );
       }
 
@@ -400,7 +400,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
             if (required === true) {
               requiredFields.push(key);
             }
-          }
+          },
         );
 
         return {
@@ -443,26 +443,21 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         case "session.updated":
           console.log("Session:", msg.session);
           break;
-
         case "session.created":
           console.log("Session created:", msg.session);
           break;
-
         case "error":
           console.error("❌ OpenAI Error:", msg);
           break;
-
         case "input_audio_buffer.speech_started":
           this.getOrCreateEphemeralUserId();
           this.updateEphemeralUserMessage({ status: "speaking" });
           this.setChatStatus("listening");
           break;
-
         case "input_audio_buffer.speech_stopped":
           this.updateEphemeralUserMessage({ status: "speaking" });
           this.setChatStatus("listening");
           break;
-
         case "input_audio_buffer.committed":
           this.updateEphemeralUserMessage({
             text: "Processing speech...",
@@ -470,7 +465,6 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           });
           this.setChatStatus("thinking");
           break;
-
         case "conversation.item.input_audio_transcription":
           const partialText =
             msg.transcript ?? msg.text ?? "User is speaking...";
@@ -481,7 +475,6 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           });
           this.setChatStatus("listening");
           break;
-
         case "conversation.item.input_audio_transcription.completed":
           this.updateEphemeralUserMessage({
             text: msg.transcript || "",
@@ -491,27 +484,24 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           this.clearEphemeralUserMessage();
           this.setChatStatus("thinking");
           break;
-
         case "response.output_text.delta":
-        case "response.output_audio_transcript.delta":
           this.setChatStatus(
-            this.hasHeardFirstGreeting ? "speaking" : "starting"
+            this.hasHeardFirstGreeting ? "speaking" : "starting",
           );
           this.handleAssistantTranscript(msg.delta);
           break;
-
+        case "response.output_audio_transcript.delta":
+          this.handleAssistantTranscript(msg.delta);
+          break;
         case "response.output_text.done":
         case "response.output_audio_transcript.done":
           this.finalizeLastAssistantMessage();
-          this.setChatStatus(this.hasHeardFirstGreeting ? "ready" : "starting");
           break;
-
-        case "response.output_audio.delta":
-          if (!this.hasHeardFirstGreeting) {
-            this.setChatStatus("starting");
-          }
+        case "output_audio_buffer.started":
+          this.setChatStatus(
+            this.hasHeardFirstGreeting ? "speaking" : "starting",
+          );
           break;
-
         case "output_audio_buffer.stopped":
           if (!this.hasHeardFirstGreeting) {
             this.enableMic();
@@ -519,20 +509,9 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           }
           this.setChatStatus("ready");
           break;
-
         case "response.done":
           if (msg.response?.usage && this.onUsageReport) {
-            const u = msg.response.usage as {
-              input_token_details?: {
-                text_tokens?: number;
-                audio_tokens?: number;
-                cached_tokens?: number;
-              };
-              output_token_details?: {
-                text_tokens?: number;
-                audio_tokens?: number;
-              };
-            };
+            const u = msg.response.usage;
             this.onUsageReport({
               sessionId: this.sessionId ?? "",
               inputTextTokens: u.input_token_details?.text_tokens ?? 0,
@@ -543,11 +522,9 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
             });
           }
           break;
-
         case "response.function_call_arguments.done":
           await this.handleToolCall(msg);
           break;
-
         default:
           break;
       }

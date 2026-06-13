@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-openai-stt-tts",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "description": "OpenAI STT/TTS pipeline provider for Khavee AI SDK",
   "author": "KhaveeAI <support@khaveeai.com>",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-openai-realtime",
-  "version": "0.3.11",
+  "version": "0.3.13",
   "description": "OpenAI Realtime API provider for Khavee AI SDK",
   "keywords": [
     "openai",

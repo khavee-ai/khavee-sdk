@@ -16,36 +16,13 @@ interface GLTFResult {
   asset: any;
 }
 
-/**
- * ChatAnimationsConfig - Map each chat state to an animation key in AnimationConfig.
- *
- * Keys must match names used in the `animations` prop passed to VRMAvatar.
- * Omit a key to use the default name for that state.
- *
- * Defaults: speaking → "talk", thinking → "thinking", listening → "idle"
- */
-export interface ChatAnimationsConfig {
-  /** Animation key to play while the AI is speaking. Default: "talk" */
-  speaking?: string;
-  /** Animation key to play while the AI is thinking. Default: "thinking" */
-  thinking?: string;
-  /** Animation key to play while listening to the user. Default: "idle" */
-  listening?: string;
-}
-
 interface VRMAvatarProps {
   src: string;
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];
   animations?: AnimationConfig;
-  /** Override which animation plays for each chat status. */
-  chatAnimations?: ChatAnimationsConfig;
   enableBlinking?: boolean;
-  /** Enable automatic animation/expression switching based on chat status. Default: true */
-  enableChatAnimations?: boolean;
-  /** @deprecated Use enableChatAnimations instead */
-  enableTalkingAnimations?: boolean;
 }
 
 /**
@@ -204,16 +181,10 @@ export function VRMAvatar({
   rotation = [0, Math.PI, 0],
   scale = [1, 1, 1],
   animations,
-  chatAnimations,
   enableBlinking = true,
-  enableChatAnimations,
-  enableTalkingAnimations,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, realtimeProvider, chatStatus, animate, setExpression, resetExpressions } = useKhavee();
-
-  // enableChatAnimations takes precedence; fall back to enableTalkingAnimations for compat; default true
-  const chatAnimsEnabled = enableChatAnimations ?? enableTalkingAnimations ?? true;
+  const { setVrm, expressions, currentAnimation, animate } = useKhavee();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
@@ -372,29 +343,6 @@ export function VRMAvatar({
       }
     }
   }, [currentAnimation]);
-
-  // Auto-switch animations and expressions based on chat status
-  useEffect(() => {
-    if (!chatAnimsEnabled) return;
-
-    const speakAnim = chatAnimations?.speaking ?? "talk";
-    const thinkAnim = chatAnimations?.thinking ?? "thinking";
-    const listenAnim = chatAnimations?.listening ?? "idle";
-
-    if (chatStatus === "speaking") {
-      setExpression("happy", 0.75);
-      animate(speakAnim);
-    } else if (chatStatus === "listening") {
-      setExpression("surprised", 0.25);
-      animate(listenAnim);
-    } else if (chatStatus === "thinking") {
-      resetExpressions();
-      animate(thinkAnim);
-    } else {
-      resetExpressions();
-      animate("idle");
-    }
-  }, [chatStatus, chatAnimsEnabled, chatAnimations?.speaking, chatAnimations?.thinking, chatAnimations?.listening, animate, setExpression, resetExpressions]);
 
   useEffect(() => {
     if (!currentVrm) return;

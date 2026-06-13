@@ -43,6 +43,11 @@ export function useRealtime() {
   useEffect(() => {
     const provider = realtimeProvider;
 
+    // Preserve any existing onChatStatusChange (e.g. KhaveeProvider's) so both
+    // receive updates. React runs parent effects before child effects, so
+    // KhaveeProvider's callback is already set when this runs.
+    const upstreamChatStatusChange = provider.onChatStatusChange;
+
     provider.onConnect = () => {
       setIsConnected(true);
     };
@@ -59,6 +64,8 @@ export function useRealtime() {
     provider.onConversationUpdate = (conv) => setConversation(conv);
 
     provider.onChatStatusChange = (status) => {
+      // Forward to upstream subscriber (KhaveeProvider) first
+      upstreamChatStatusChange?.(status);
       setChatStatus(status);
       setIsThinking(status === "thinking");
       // Reset mouth expressions whenever TTS stops so the avatar closes its mouth
@@ -100,11 +107,12 @@ export function useRealtime() {
     const stateSyncInterval = setInterval(updateStates, 100);
 
     return () => {
-      // Cleanup listeners
+      // Cleanup listeners — restore upstream callback so KhaveeProvider keeps
+      // receiving status updates even after this hook unmounts.
       provider.onConnect = undefined;
       provider.onDisconnect = undefined;
       provider.onConversationUpdate = undefined;
-      provider.onChatStatusChange = undefined;
+      provider.onChatStatusChange = upstreamChatStatusChange;
       provider.onVolumeChange = undefined;
       provider.onAudioData = undefined;
 

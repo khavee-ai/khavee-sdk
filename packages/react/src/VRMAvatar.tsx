@@ -16,14 +16,36 @@ interface GLTFResult {
   asset: any;
 }
 
+/**
+ * ChatAnimationsConfig - Map each chat state to an animation key in AnimationConfig.
+ *
+ * Keys must match names used in the `animations` prop passed to VRMAvatar.
+ * Omit a key to use the default name for that state.
+ *
+ * Defaults: speaking → "talk", thinking → "thinking", listening → "idle"
+ */
+export interface ChatAnimationsConfig {
+  /** Animation key to play while the AI is speaking. Default: "talk" */
+  speaking?: string;
+  /** Animation key to play while the AI is thinking. Default: "thinking" */
+  thinking?: string;
+  /** Animation key to play while listening to the user. Default: "idle" */
+  listening?: string;
+}
+
 interface VRMAvatarProps {
-  src: string; // URL or path to the VRM model
+  src: string;
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];
-  animations?: AnimationConfig; // User's animation configuration (just URLs!)
-  enableBlinking?: boolean; // Enable random blinking
-  enableTalkingAnimations?: boolean; // Enable talking animations when AI speaks
+  animations?: AnimationConfig;
+  /** Override which animation plays for each chat status. */
+  chatAnimations?: ChatAnimationsConfig;
+  enableBlinking?: boolean;
+  /** Enable automatic animation/expression switching based on chat status. Default: true */
+  enableChatAnimations?: boolean;
+  /** @deprecated Use enableChatAnimations instead */
+  enableTalkingAnimations?: boolean;
 }
 
 /**
@@ -182,11 +204,16 @@ export function VRMAvatar({
   rotation = [0, Math.PI, 0],
   scale = [1, 1, 1],
   animations,
+  chatAnimations,
   enableBlinking = true,
-  enableTalkingAnimations = true,
+  enableChatAnimations,
+  enableTalkingAnimations,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, realtimeProvider, chatStatus, animate } = useKhavee();
+  const { setVrm, expressions, currentAnimation, realtimeProvider, chatStatus, animate, setExpression, resetExpressions } = useKhavee();
+
+  // enableChatAnimations takes precedence; fall back to enableTalkingAnimations for compat; default true
+  const chatAnimsEnabled = enableChatAnimations ?? enableTalkingAnimations ?? true;
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
@@ -197,10 +224,6 @@ export function VRMAvatar({
   const isBlinking = useRef(false);
   const blinkAnimationRef = useRef(0);
 
-  // Talking animation system
-  const animationTimeout = useRef<NodeJS.Timeout | null>(null);
-  const availableTalkingAnimations = useRef<string[]>([]);
-  const lastTalkingAnimationIndex = useRef(0);
 
   const { scene, userData } = useGLTF(src, undefined, undefined, (loader) => {
     // @ts-ignore - VRM loader type compatibility issue
@@ -350,6 +373,29 @@ export function VRMAvatar({
     }
   }, [currentAnimation]);
 
+  // Auto-switch animations and expressions based on chat status
+  useEffect(() => {
+    if (!chatAnimsEnabled) return;
+
+    const speakAnim = chatAnimations?.speaking ?? "talk";
+    const thinkAnim = chatAnimations?.thinking ?? "thinking";
+    const listenAnim = chatAnimations?.listening ?? "idle";
+
+    if (chatStatus === "speaking") {
+      setExpression("happy", 0.75);
+      animate(speakAnim);
+    } else if (chatStatus === "listening") {
+      setExpression("surprised", 0.25);
+      animate(listenAnim);
+    } else if (chatStatus === "thinking") {
+      resetExpressions();
+      animate(thinkAnim);
+    } else {
+      resetExpressions();
+      animate("idle");
+    }
+  }, [chatStatus, chatAnimsEnabled, chatAnimations?.speaking, chatAnimations?.thinking, chatAnimations?.listening, animate, setExpression, resetExpressions]);
+
   useEffect(() => {
     if (!currentVrm) return;
 
@@ -396,70 +442,6 @@ export function VRMAvatar({
         lerpExpression(name, value, delta * 8);
       }
     });
-
-    // Talking animation system that waits for animations to complete
-    if (enableTalkingAnimations && chatStatus === 'speaking') {
-
-      // Collect available talking animations from the loaded animations
-      const talkingAnimNames = Object.keys(animations || {}).filter(name =>
-        name.includes('talk') || name.includes('gesture') || name.includes('speak')
-      );
-
-      availableTalkingAnimations.current = talkingAnimNames;
-
-      if (talkingAnimNames.length > 0) {
-        const isCurrentlyIdle = currentAnimation === 'idle';
-
-        // Play animation immediately if we just started talking or if we're between animations
-        if (isCurrentlyIdle && !animationTimeout.current) {
-          const nextTalkIndex = (lastTalkingAnimationIndex.current + 1) % talkingAnimNames.length;
-          animate(talkingAnimNames[nextTalkIndex]);
-          lastTalkingAnimationIndex.current = nextTalkIndex;
-
-          // Get the duration of the current animation
-          const currentClip = processedClips.find(clip => clip?.name === talkingAnimNames[nextTalkIndex]);
-          const animDuration = currentClip ? currentClip.duration * 1000 : 3000; // Default to 3 seconds
-
-          // Schedule next animation after current one finishes + a few seconds gap
-          const gapDuration = 2000 + Math.random() * 3000; // 2-5 seconds gap
-          const totalDelay = animDuration + gapDuration;
-
-          animationTimeout.current = setTimeout(() => {
-            // Clear the timeout reference
-            animationTimeout.current = null;
-
-            // Only continue if still speaking
-            if (chatStatus === 'speaking') {
-              // Go to idle briefly before next animation
-              animate('idle');
-
-              // Very brief pause before next animation
-              setTimeout(() => {
-                if (chatStatus === 'speaking') {
-                  // This will trigger the main logic again to play next animation
-                }
-              }, 500); // 0.5 second brief pause
-            } else {
-              // If not speaking anymore, go to idle
-              animate('idle');
-            }
-          }, totalDelay);
-        }
-      }
-    } else if (enableTalkingAnimations && chatStatus !== 'speaking' && availableTalkingAnimations.current.length > 0) {
-      // Clear any pending animation timeout
-      if (animationTimeout.current) {
-        clearTimeout(animationTimeout.current);
-        animationTimeout.current = null;
-      }
-
-      // Return to idle when not speaking
-      if (animations?.idle) {
-        animate('idle');
-      }
-      availableTalkingAnimations.current = [];
-      lastTalkingAnimationIndex.current = 0; // Reset index for next conversation
-    }
 
     // Blinking system
     if (enableBlinking) {

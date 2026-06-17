@@ -125,3 +125,14 @@ None - no external service configuration required.
 ---
 *Phase: 01-core-interfaces-tool-calling*
 *Completed: 2026-06-18*
+
+## Self-Check: PASSED
+
+- FOUND: packages/providers/openai-stt-tts/src/OpenAISTTTTSProvider.ts
+- FOUND: packages/providers/openai-realtime/src/OpenAIRealtimeProvider.ts
+- CONFIRMED DELETED: packages/providers/openai-stt-tts/src/ToolExecutor.ts
+- CONFIRMED DELETED: packages/providers/openai-realtime/src/ToolExecutor.ts
+- FOUND: .planning/phases/01-core-interfaces-tool-calling/01-03-SUMMARY.md
+- FOUND commit: 3003944 (Task 1)
+- FOUND commit: eab9217 (Task 2)
+- FOUND commit: 91d2396 (SUMMARY.md)

@@ -487,17 +487,19 @@ private async handleToolCall(msg: any): Promise<void> {
 
 **Resolution note:** A1 and A2 were verified via WebSearch against official-domain sources (`platform.claude.com`, `ai.google.dev`) during this research session, which is the standard verification path for this kind of claim — they are tagged `[CITED]` rather than `[ASSUMED]` in the body text above. They appear in this log only because no non-OpenAI vendor's API is directly testable from inside this codebase (no Anthropic/Gemini SDK or sandbox account available this session) — the planner/discuss-phase should treat the sketch's prose as MEDIUM confidence and welcome a second-source sanity check if available, but should NOT block the phase on this, since the sketch is illustrative documentation, not executable adapter code (no adapter is built until Phase 4+, out of scope here).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the legacy `mock.ts` `LLMProvider`/`TTSProvider` be renamed now, or worked around without touching `mock.ts` at all?**
    - What we know: CLEAN-03 (v2 backlog) defers full *reconciliation*, but says nothing about whether a same-milestone naming collision blocking compilation counts as "reconciliation." The two types are genuinely unrelated in shape and purpose.
    - What's unclear: Whether the project owner considers a rename of the legacy type an acceptable "this milestone" touch to `mock.ts`, given mock.ts is nominally "not in scope."
    - Recommendation: Treat the rename as in-scope and necessary (Pitfall 1) — it's the only way to add the new `LLMProvider` without a compile error, and a rename-only change (no behavior change, no consumer logic change) is a much smaller touch than "reconciliation." Flag this explicitly to the user/planner if they want a different resolution (e.g. namespacing).
+   - **RESOLVED:** Plan 01-02 Task 1 adopts the rename approach (legacy type renamed, consumers repointed).
 
 2. **Should `VADProvider`/`STTProvider`/`LLMProvider`/`TTSProvider` extend the existing unused `Provider` marker interface (`{name, version?}`) from `providers.ts`?**
    - What we know: CONTEXT.md flags this explicitly as worth checking but leaves it to Claude's discretion; `Provider` is currently dead code (confirmed: no concrete class implements it).
    - What's unclear: Whether giving every pipeline-stage interface a `name`/`version` field has value for Phase 2's orchestrator (e.g. logging which vendor is active) or is premature.
    - Recommendation: Low-risk either way since it's purely additive. Lean toward extending `Provider` — it costs nothing, gives Phase 2's orchestrator a free `name`/`version` for diagnostics, and finally gives the orphaned interface a purpose. Not a blocking decision for Phase 1 completion either way.
+   - **RESOLVED:** Plan 01-02 Task 2 has all four interfaces extend `Provider`.
 
 ## Validation Architecture
 

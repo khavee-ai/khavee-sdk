@@ -16,7 +16,7 @@ import {
   PhonemeData,
 } from "@khaveeai/core";
 import { RealtimeMessage } from "@khaveeai/core";
-import { ToolExecutor } from "./ToolExecutor";
+import { ToolExecutor } from "@khaveeai/core";
 import { AudioRecorder } from "./AudioRecorder";
 import { STTClient } from "./STTClient";
 import { ChatClient } from "./ChatClient";

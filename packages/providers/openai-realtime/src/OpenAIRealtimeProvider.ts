@@ -10,9 +10,9 @@ import {
   UsageReport,
   Conversation,
   ChatStatus,
+  ToolExecutor,
 } from "@khaveeai/core";
 import { v4 as uuidv4 } from "uuid";
-import { ToolExecutor } from "./ToolExecutor";
 
 type ProxyTokenResponse = {
   data?: {

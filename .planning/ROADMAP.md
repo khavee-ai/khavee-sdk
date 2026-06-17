@@ -13,7 +13,7 @@ This milestone takes khavee-sdk from a single hardcoded OpenAI voice pipeline to
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Core Interfaces & Tool-Calling** - Define vendor-neutral VAD/STT/LLM/TTS interfaces and a redesigned, shared ToolExecutor in `@khaveeai/core`
+- [x] **Phase 1: Core Interfaces & Tool-Calling** - Define vendor-neutral VAD/STT/LLM/TTS interfaces and a redesigned, shared ToolExecutor in `@khaveeai/core` (completed 2026-06-17)
 - [ ] **Phase 2: Generic Pipeline Orchestrator** - Build the `{vad, stt, llm, tts, tools}`-composing orchestrator that implements `RealtimeProvider`
 - [ ] **Phase 3: Python Backend Services** - Scaffold and harden `thonburian-stt` and `jai-tts` as standalone FastAPI services
 - [ ] **Phase 4: Vendor Adapters & Audio Contract** - Build thin HTTP adapter classes and pin the audio wire format with a round-trip test
@@ -42,8 +42,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Four pipeline-stage interfaces + capability flags + vendor-neutral ToolCall + multi-vendor sketch + mock.ts collision rename
-- [ ] 01-03-PLAN.md — Delete duplicate ToolExecutors, repoint both providers to core, verify builds/tests green
+- [x] 01-02-PLAN.md — Four pipeline-stage interfaces + capability flags + vendor-neutral ToolCall + multi-vendor sketch + mock.ts collision rename
+- [x] 01-03-PLAN.md — Delete duplicate ToolExecutors, repoint both providers to core, verify builds/tests green
 
 ### Phase 2: Generic Pipeline Orchestrator
 
@@ -111,7 +111,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Interfaces & Tool-Calling | 1/3 | In Progress|  |
+| 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
 | 2. Generic Pipeline Orchestrator | 0/TBD | Not started | - |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |

@@ -124,3 +124,11 @@ None - no external service configuration required.
 ---
 *Phase: 01-core-interfaces-tool-calling*
 *Completed: 2026-06-18*
+
+## Self-Check: PASSED
+
+- FOUND: packages/core/src/types/pipeline.ts
+- FOUND: .planning/phases/01-core-interfaces-tool-calling/01-02-SUMMARY.md
+- FOUND commit: 12d2faa (fix: rename legacy LLMProvider/TTSProvider)
+- FOUND commit: 5bdc849 (feat: pipeline.ts interfaces)
+- FOUND commit: f4045e7 (docs: SUMMARY.md)

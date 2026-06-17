@@ -7,6 +7,7 @@ This milestone takes khavee-sdk from a single hardcoded OpenAI voice pipeline to
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
@@ -21,64 +22,84 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Core Interfaces & Tool-Calling
+
 **Goal**: `@khaveeai/core` exposes a fixed, vendor-neutral contract (four provider interfaces plus tool-calling types) that every later phase builds against without redesign
 **Depends on**: Nothing (first phase)
 **Requirements**: CORE-01, CORE-02, CORE-03, CORE-04, CORE-05, CORE-06
 **Success Criteria** (what must be TRUE):
+
   1. `VADProvider`, `STTProvider`, `LLMProvider`, and `TTSProvider` interfaces exist in `@khaveeai/core` and each declares capability flags (e.g. `supportsStreaming`) usable by a branching consumer
   2. A developer can register a tool by passing a plain object `{name, description, parameters, handler}` to a single `addTool()`-style call — no Zod, no decorators, no schema library import required
   3. Tool-call results are normalized to one shape (`{success, message}`) regardless of which LLM vendor produced the call, verified by a unit test exercising at least two differently-shaped mock vendor responses
   4. `ToolExecutor` exists once in `@khaveeai/core` (no byte-for-byte duplicate remains in `openai-stt-tts` or `openai-realtime`) and both existing packages compile/test green against the promoted version
   5. A written sketch (code comment or design note) demonstrates how a non-OpenAI vendor (Anthropic- or Gemini-shaped multi-tool-call round trip) maps onto the `LLMProvider` interface without needing OpenAI-specific field names like `tool_call_id`
+
 **Plans**: 3 plans
 Plans:
+**Wave 1**
+
 - [ ] 01-01-PLAN.md — Promote ToolExecutor to core + Tool/ToolResult types + vitest infra + CORE-04 normalization test
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 01-02-PLAN.md — Four pipeline-stage interfaces + capability flags + vendor-neutral ToolCall + multi-vendor sketch + mock.ts collision rename
 - [ ] 01-03-PLAN.md — Delete duplicate ToolExecutors, repoint both providers to core, verify builds/tests green
 
 ### Phase 2: Generic Pipeline Orchestrator
+
 **Goal**: A developer can assemble a complete voice pipeline from any combination of the Phase 1 interfaces using one orchestrator class, with no changes required in `@khaveeai/react`
 **Depends on**: Phase 1
 **Requirements**: ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05
 **Success Criteria** (what must be TRUE):
+
   1. A developer can construct a working pipeline by passing `{vad, stt, llm, tts, tools}` to a single generic orchestrator class
   2. The orchestrator implements `RealtimeProvider` and runs unmodified through `@khaveeai/react`'s existing hook, verified by exercising it with adapted existing OpenAI helper classes (`STTClient`, `ChatClient`, `TTSPlayer`) as stand-in implementations
   3. Triggering new user speech mid-turn cancels in-flight LLM/TTS work via an `AbortSignal`-style hook, observable as the in-progress response stopping rather than completing
   4. The VAD-to-mic-reopen cooldown is set via a constructor/config value (not a hardcoded constant), and changing it changes observed mic-reopen timing
   5. A provider throwing or rejecting with a non-Error value (e.g. a string or vendor-specific error object) reaches the orchestrator's error callback as a normalized `Error` instance without crashing the active session
+
 **Plans**: TBD
 
 ### Phase 3: Python Backend Services
+
 **Goal**: Two standalone, production-shaped Python services exist (outside the khavee-sdk repo) that turn audio into Thai text and Thai text into audio, safely under concurrent load
 **Depends on**: Nothing (independent of Phases 1-2; only needs the HTTP contract agreed, not built)
 **Requirements**: BACK-01, BACK-02, BACK-03, BACK-04, BACK-05
 **Success Criteria** (what must be TRUE):
+
   1. POSTing a Thai-speech audio utterance to `thonburian-stt` (at `/Users/whitemalt/Documents/thonburian-stt`) returns the correct Thai transcription text using `biodatlab/whisper-th-large-v3-combined` (or its base variant)
   2. POSTing a short or silent audio segment to `thonburian-stt` returns a distinguishable no-speech/rejected result rather than a hallucinated transcription treated as valid speech
   3. POSTing Thai text to `jai-tts` (at `/Users/whitemalt/Documents/jai-tts`) returns synthesized, audibly-correct WAV audio using the JaiTTS-F5TTS voice-cloning model
   4. Calling `jai-tts` with text alone (no reference audio supplied) succeeds and produces speech in the bundled default Thai reference voice
   5. Both services load their model exactly once at startup (not per-request) and reject or queue concurrent requests beyond a configured limit (e.g. semaphore) instead of crashing under concurrent load
+
 **Plans**: TBD
 
 ### Phase 4: Vendor Adapters & Audio Contract
+
 **Goal**: khavee-sdk can talk to both Python services through the Phase 1 interfaces over a pinned, tested audio wire format
 **Depends on**: Phase 1, Phase 3
 **Requirements**: ADPT-01, ADPT-02, ADPT-03
 **Success Criteria** (what must be TRUE):
+
   1. `ThonburianSTTProvider` implements `STTProvider`, posts a whole VAD-segmented utterance to the `thonburian-stt` service over HTTP, and returns the transcribed text through the standard interface method
   2. `JaiTTSProvider` implements `TTSProvider`, posts text to the `jai-tts` service over HTTP, and returns audio the rest of the pipeline can play without additional conversion
   3. The audio wire format (sample rate, encoding, channels) for both directions is written down in one place (code doc comment or README section) and a round-trip test (encode → POST → decode → assert format) passes for both services
+
 **Plans**: TBD
 
 ### Phase 5: End-to-End Mixed-Vendor Demo & Documentation
+
 **Goal**: A real user can run one voice conversation that proves STT and TTS come from different non-OpenAI vendors simultaneously, with tool-calling working, and a beginner can repeat the pattern with their own vendor
 **Depends on**: Phase 2, Phase 4
 **Requirements**: ADPT-04, ADPT-05
 **Success Criteria** (what must be TRUE):
+
   1. Running the demo executes a full voice turn — speech in via VAD, transcription via Thonburian STT, completion via an LLM, speech out via JaiTTS — and the audio played back is recognizably correct Thai speech
   2. The same demo session includes at least one registered tool that the LLM calls and whose result is reflected in the assistant's next reply
   3. The VAD-to-mic-reopen cooldown is validated (and adjusted via the Phase 2 config knob if needed) against JaiTTS's actual audio playback tail, not left at the value tuned for OpenAI's TTS
   4. Documentation/example exists showing a beginner how to implement a new custom `STTProvider` or `TTSProvider` and register a tool, using only the patterns established in Phases 1-4, with no missing steps when followed fresh
+
 **Plans**: TBD
 
 ## Progress

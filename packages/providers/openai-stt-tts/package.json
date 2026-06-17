@@ -28,7 +28,7 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@khaveeai/core": "^0.3.3",
+    "@khaveeai/core": "workspace:*",
     "@ricky0123/vad-web": "^0.0.30",
     "openai": "^4.73.0"
   },

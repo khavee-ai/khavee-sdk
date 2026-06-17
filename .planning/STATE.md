@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-06-17T17:39:50.214Z"
-last_activity: 2026-06-17 -- Phase 01 planning complete
+last_updated: "2026-06-17T17:44:59.165Z"
+last_activity: 2026-06-17 -- Phase 01 execution started
 progress:
   total_phases: 5
   completed_phases: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-17)
 
 **Core value:** A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage.
-**Current focus:** Phase 1 (Core Interfaces & Tool-Calling)
+**Current focus:** Phase 01 — core-interfaces-tool-calling
 
 ## Current Position
 
-Phase: 1 of 5 (Core Interfaces & Tool-Calling)
-Plan: TBD (not yet planned)
-Status: Ready to execute
-Last activity: 2026-06-17 -- Phase 01 planning complete
+Phase: 01 (core-interfaces-tool-calling) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 01
+Last activity: 2026-06-17 -- Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 

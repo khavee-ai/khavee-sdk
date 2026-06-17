@@ -42,7 +42,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@khaveeai/core": "^0.2.2",
+    "@khaveeai/core": "workspace:*",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

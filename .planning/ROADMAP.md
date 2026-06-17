@@ -30,7 +30,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Tool-call results are normalized to one shape (`{success, message}`) regardless of which LLM vendor produced the call, verified by a unit test exercising at least two differently-shaped mock vendor responses
   4. `ToolExecutor` exists once in `@khaveeai/core` (no byte-for-byte duplicate remains in `openai-stt-tts` or `openai-realtime`) and both existing packages compile/test green against the promoted version
   5. A written sketch (code comment or design note) demonstrates how a non-OpenAI vendor (Anthropic- or Gemini-shaped multi-tool-call round trip) maps onto the `LLMProvider` interface without needing OpenAI-specific field names like `tool_call_id`
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — Promote ToolExecutor to core + Tool/ToolResult types + vitest infra + CORE-04 normalization test
+- [ ] 01-02-PLAN.md — Four pipeline-stage interfaces + capability flags + vendor-neutral ToolCall + multi-vendor sketch + mock.ts collision rename
+- [ ] 01-03-PLAN.md — Delete duplicate ToolExecutors, repoint both providers to core, verify builds/tests green
 
 ### Phase 2: Generic Pipeline Orchestrator
 **Goal**: A developer can assemble a complete voice pipeline from any combination of the Phase 1 interfaces using one orchestrator class, with no changes required in `@khaveeai/react`
@@ -86,7 +90,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Interfaces & Tool-Calling | 0/TBD | Not started | - |
+| 1. Core Interfaces & Tool-Calling | 0/3 | Not started | - |
 | 2. Generic Pipeline Orchestrator | 0/TBD | Not started | - |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |

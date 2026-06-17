@@ -139,3 +139,7 @@ None - no external service configuration required.
 ---
 *Phase: 01-core-interfaces-tool-calling*
 *Completed: 2026-06-17*
+
+## Self-Check: PASSED
+
+All created files confirmed present on disk; all 4 commit hashes (f5fedd3, 7744e08, 8c63fb0, fc12ca9) confirmed in git log.

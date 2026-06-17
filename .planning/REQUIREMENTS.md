@@ -7,12 +7,12 @@
 
 ### Core Interfaces & Tool-Calling
 
-- [ ] **CORE-01**: SDK exposes VADProvider, STTProvider, LLMProvider, and TTSProvider interfaces in `@khaveeai/core` that any vendor adapter can implement
-- [ ] **CORE-02**: Each provider interface declares capability flags (e.g. `supportsStreaming`) so the orchestrator and consumers can branch correctly without redesigning the interface later
-- [ ] **CORE-03**: Developer can register a tool with a plain object `{name, description, parameters, handler}` — no schema library (Zod, decorators) required
-- [ ] **CORE-04**: SDK normalizes tool-call results to one shape (`{success, message}`) regardless of which LLM vendor produced the call
-- [ ] **CORE-05**: Tool-execution logic is defined once in `@khaveeai/core` and reused by both the new generic pipeline and existing realtime providers, removing the current byte-for-byte `ToolExecutor.ts` duplication
-- [ ] **CORE-06**: The LLMProvider tool-calling interface avoids encoding OpenAI-specific field names (e.g. `tool_call_id`) so a future non-OpenAI LLM vendor adapter can implement it without an interface redesign
+- [x] **CORE-01**: SDK exposes VADProvider, STTProvider, LLMProvider, and TTSProvider interfaces in `@khaveeai/core` that any vendor adapter can implement
+- [x] **CORE-02**: Each provider interface declares capability flags (e.g. `supportsStreaming`) so the orchestrator and consumers can branch correctly without redesigning the interface later
+- [x] **CORE-03**: Developer can register a tool with a plain object `{name, description, parameters, handler}` — no schema library (Zod, decorators) required
+- [x] **CORE-04**: SDK normalizes tool-call results to one shape (`{success, message}`) regardless of which LLM vendor produced the call
+- [x] **CORE-05**: Tool-execution logic is defined once in `@khaveeai/core` and reused by both the new generic pipeline and existing realtime providers, removing the current byte-for-byte `ToolExecutor.ts` duplication
+- [x] **CORE-06**: The LLMProvider tool-calling interface avoids encoding OpenAI-specific field names (e.g. `tool_call_id`) so a future non-OpenAI LLM vendor adapter can implement it without an interface redesign
 
 ### Generic Pipeline Orchestrator
 
@@ -73,12 +73,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | Phase 1 | Pending |
-| CORE-02 | Phase 1 | Pending |
-| CORE-03 | Phase 1 | Pending |
-| CORE-04 | Phase 1 | Pending |
-| CORE-05 | Phase 1 | Pending |
-| CORE-06 | Phase 1 | Pending |
+| CORE-01 | Phase 1 | Complete |
+| CORE-02 | Phase 1 | Complete |
+| CORE-03 | Phase 1 | Complete |
+| CORE-04 | Phase 1 | Complete |
+| CORE-05 | Phase 1 | Complete |
+| CORE-06 | Phase 1 | Complete |
 | ORCH-01 | Phase 2 | Pending |
 | ORCH-02 | Phase 2 | Pending |
 | ORCH-03 | Phase 2 | Pending |

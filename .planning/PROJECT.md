@@ -16,13 +16,13 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 - ✓ VAD-based audio segmentation into utterances — existing (`AudioRecorder.ts`)
 - ✓ Tool/function-calling execution loop — existing (`ToolExecutor.ts`, duplicated across `openai-stt-tts` and `openai-realtime`)
 - ✓ React hook integration for realtime voice UI (lipsync, status) — existing (`packages/react`)
+- ✓ Define core provider interfaces: STTProvider, TTSProvider, VADProvider, and an LLMProvider with tool-calling support — Validated in Phase 1 (`packages/core/src/types/pipeline.ts`)
+- ✓ Beginner-friendly tool-calling API: plain object `{ name, description, parameters, handler }` — Validated in Phase 1 (`packages/core/src/types/tools.ts`)
+- ✓ Promote/dedupe the existing `ToolExecutor` into `packages/core`, adapted to the new generic LLMProvider interface — Validated in Phase 1 (CORE-05; both provider packages now re-export from `@khaveeai/core` for backward compatibility)
 
 ### Active
 
-- [ ] Define core provider interfaces: STTProvider, TTSProvider, VADProvider, and an LLMProvider with tool-calling support
 - [ ] Build a generic pipeline orchestrator that composes any combination of these interfaces (pipecat-style)
-- [ ] Beginner-friendly tool-calling API: plain object `{ name, description, parameters, handler }`, registered via a simple `addTool()`-style call
-- [ ] Promote/dedupe the existing `ToolExecutor` into `packages/core`, adapted to the new generic LLMProvider interface
 - [ ] New `packages/providers/generic-stt-tts` package implementing the orchestrator + interfaces
 - [ ] New `thonburian-stt` backend service: Python server wrapping `biodatlab/whisper-th-large-v3-combined` (Thonburian Whisper v3), simple HTTP endpoint, audio in → Thai text out
 - [ ] New `jai-tts` backend service: Python server wrapping `JTS-AI/JaiTTS-F5TTS` via F5-TTS's FlowTTSPipeline, bundled default Thai reference voice, simple HTTP endpoint, text in → WAV audio out
@@ -86,4 +86,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-17 after initialization*
+*Last updated: 2026-06-18 — Phase 1 (core-interfaces-tool-calling) complete*

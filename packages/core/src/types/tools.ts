@@ -60,8 +60,8 @@ export type ExecutableTool = {
  * Lifted verbatim from packages/providers/openai-stt-tts/src/ToolExecutor.ts
  * (confirmed byte-for-byte identical to packages/providers/openai-realtime's
  * copy). Only the type parameter changed: RealtimeTool['execute'] ->
- * ExecutableTool['execute']. Deliberately does NOT import from
- * "@khaveeai/core" — that would be a self-import inside this package
+ * ExecutableTool['execute']. Deliberately does NOT import from this
+ * package's own published name — that would be a self-import
  * (RESEARCH Pitfall 2).
  */
 export class ToolExecutor {

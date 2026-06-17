@@ -6,3 +6,4 @@ export * from './audio';
 export * from './mock';
 export * from './project';
 export * from './tools';
+export * from './pipeline';

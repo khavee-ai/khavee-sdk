@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { LLMProvider } from '@khaveeai/core';
+import { LegacyLLMProvider } from '@khaveeai/core';
 
 export interface LLMOpenAIConfig {
   apiKey: string;
@@ -8,7 +8,7 @@ export interface LLMOpenAIConfig {
   mock?: boolean; // Enable mock mode for development
 }
 
-export class LLMOpenAI implements LLMProvider {
+export class LLMOpenAI implements LegacyLLMProvider {
   private client?: OpenAI;
   private model: string;
   private mock: boolean;

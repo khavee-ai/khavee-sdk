@@ -1,6 +1,6 @@
-import { LLMProvider, TTSProvider } from '@khaveeai/core';
+import { LegacyLLMProvider, LegacyTTSProvider } from '@khaveeai/core';
 
-export class MockLLM implements LLMProvider {
+export class MockLLM implements LegacyLLMProvider {
   private responses: string[];
 
   constructor() {
@@ -51,7 +51,7 @@ export class MockLLM implements LLMProvider {
   }
 }
 
-export class MockTTS implements TTSProvider {
+export class MockTTS implements LegacyTTSProvider {
   async speak({ text, voice = 'mock-voice' }: { text: string; voice?: string }): Promise<void> {
     console.log(`🔊 [Mock TTS] Speaking with ${voice}:`);
     console.log(`"${text}"`);

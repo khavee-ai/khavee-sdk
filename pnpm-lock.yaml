@@ -134,8 +134,8 @@ importers:
   packages/providers/mock:
     dependencies:
       '@khaveeai/core':
-        specifier: ^0.1.5
-        version: 0.1.5
+        specifier: workspace:*
+        version: link:../../core
     devDependencies:
       typescript:
         specifier: ^5

@@ -58,7 +58,7 @@ Plans:
   4. The VAD-to-mic-reopen cooldown is set via a constructor/config value (not a hardcoded constant), and changing it changes observed mic-reopen timing
   5. A provider throwing or rejecting with a non-Error value (e.g. a string or vendor-specific error object) reaches the orchestrator's error callback as a normalized `Error` instance without crashing the active session
 
-**Plans**: 3 plans
+**Plans**: 4 plans
 Plans:
 **Wave 1**
 
@@ -71,6 +71,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 02-03-PLAN.md — GenericPipelineProvider orchestrator (barge-in, tool loop, config cooldown, error normalization) + adapter integration test + barrel exports
+
+**Wave 4** *(gap closure — ORCH-03 BLOCKED → SATISFIED)*
+
+- [ ] 02-04-PLAN.md — Close ORCH-03 gap: fix CR-01 (abort guards in runTurnFromText + runTurn) and CR-02 (sendMessage AbortController ownership) + regression tests for stale-utterance discard and sendMessage-vs-concurrent-VAD coordination
 
 ### Phase 3: Python Backend Services
 
@@ -124,7 +128,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 3/3 | Complete   | 2026-06-18 |
+| 2. Generic Pipeline Orchestrator | 3/4 | Gap closure pending | 2026-06-18 |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

@@ -99,3 +99,12 @@ None - no external service configuration required.
 ---
 *Phase: 02-generic-pipeline-orchestrator*
 *Completed: 2026-06-18*
+
+## Self-Check: PASSED
+
+- FOUND: packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts
+- FOUND: packages/providers/generic-stt-tts/src/__tests__/GenericPipelineProvider.test.ts
+- FOUND: .planning/phases/02-generic-pipeline-orchestrator/02-04-SUMMARY.md
+- FOUND commit: b458a8e (Task 1)
+- FOUND commit: 3ee6025 (Task 2)
+- FOUND commit: 7d01d2e (SUMMARY)

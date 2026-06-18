@@ -470,22 +470,25 @@ This must be applied not just to `fetch`-based providers (which throw real `Erro
 | A3 | Adding exports to `packages/providers/openai-stt-tts/src/index.ts` is an acceptable additive exception to "openai-stt-tts stays as-is, untouched" | Pitfall 4 | If the user/planner intends "untouched" literally (zero file diffs, not just zero behavior diffs), this assumption is wrong and the new package would need an alternative (duplicate the 4 helper classes, or a deep relative import) — both worse outcomes; needs explicit confirmation |
 | A4 | A turn-generation counter or per-instance `activeTurnController` reference (rather than e.g. a queue of pending turns) is sufficient to implement "abort old + immediately start new" (D-03) without losing barge-in events fired in rapid succession (3+ utterances before the first completes) | Pattern 3, Pitfall 3 | If users can legitimately barge in multiple times within milliseconds, a single-slot "latest wins" design (as sketched) silently drops the middle one(s) — this matches D-03's stated intent ("new utterance" singular) but the plan should confirm only the LATEST pending utterance needs to win, not that all are processed |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `ChatClient.complete()` get extended with `tools`/`signal` params, or does `OpenAILLMAdapter` bypass it entirely with its own `fetch()` call?**
    - What we know: `ChatClient.ts` today has zero tool-calling support and no `AbortSignal` param; D-06 says adapters wrap the existing helpers; D-01 says `LLMProvider.complete()` gets `signal` added.
    - What's unclear: Whether "wrap" tolerates extending `ChatClient` itself (a file inside the supposedly-untouched `openai-stt-tts` package) with new optional capability, vs. having the adapter reimplement the HTTP call independently.
    - Recommendation: Treat as a planning-time decision with two viable paths; lean toward bypass (adapter does its own `fetch()` against `chatProxyEndpoint`) since it keeps `openai-stt-tts` literally unmodified and is more defensible against the "untouched" constraint, at the cost of a small amount of duplicated fetch/auth-header boilerplate (already simple, ~15 lines, in `ChatClient.complete()`).
+   - **RESOLVED:** Plan 02-02 Task 2 has `OpenAILLMAdapter` bypass `ChatClient` entirely with its own `fetch()` against `chatProxyEndpoint` — keeps `openai-stt-tts` literally unmodified.
 
 2. **What vendor-neutral convention encodes a tool-call result back into the next round's `messages` history?**
    - What we know: `LLMProvider.complete()`'s `messages` type is `Array<{role: string; content: string}>` with no `role: "tool"` and no correlation-id field, per CORE-06's deliberate vendor-neutrality.
    - What's unclear: The exact string/JSON convention the orchestrator should use when appending a `ToolResult` to history, and how `OpenAILLMAdapter` should map that convention back to OpenAI's actual `{role: "tool", tool_call_id, content}` wire shape when building its next request.
    - Recommendation: Planner should pick one explicit convention (e.g. `role: "user"` with a clearly-prefixed content string, OR widen `ChatMessage`'s `role` union locally within the new package only, without touching the core `LLMProvider.complete()` signature) and document it as a code comment, since this is genuinely new design surface not resolved by either Phase 1 or CONTEXT.md.
+   - **RESOLVED:** Plan 02-03 Task 2 (writer) and Plan 02-02 Task 2 (parser) both use the phase-2-local convention `[tool_result id=<id> name=<name>] <message>` inside a `role: "user"` message; `OpenAILLMAdapter` parses it back into OpenAI's `{role: "tool", tool_call_id, content}` wire shape.
 
 3. **Is editing `packages/providers/openai-stt-tts/src/index.ts` (to export `STTClient`/`ChatClient`/`TTSPlayer`/`AudioRecorder`) within the "untouched" compatibility constraint?**
    - What we know: PROJECT.md's constraint says "Must not break the existing openai-stt-tts provider or its consumers — it stays as-is, untouched, this milestone." D-06 explicitly requires wrapping "its exported pieces."
    - What's unclear: Whether "exported pieces" implicitly assumes new exports will be added (i.e. the constraint is about behavior, not file diffs) or whether literally zero diffs are required (in which case D-06 as written is unsatisfiable without one of the worse alternatives in Pitfall 4).
    - Recommendation: Resolve this explicitly in planning/discuss-phase follow-up if not already implicitly settled by D-06's wording — current research treats "additive-only export lines, zero behavior change" as in-bounds, consistent with how D-01 treats adding an optional `signal` param to Phase 1's interfaces as compatible/non-breaking.
+   - **RESOLVED:** Plan 02-01 Task 2 adds additive-only export lines (zero behavior change) to `packages/providers/openai-stt-tts/src/index.ts` — accepted as in-bounds per the recommendation above.
 
 ## Project Constraints (from CLAUDE.md)
 

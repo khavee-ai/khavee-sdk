@@ -1,0 +1,407 @@
+/**
+ * Generic Pipeline Provider for Khavee AI SDK
+ *
+ * Composes any combination of the Phase 1 vendor-neutral pipeline-stage
+ * interfaces (VADProvider, STTProvider, LLMProvider, TTSProvider) plus
+ * plain-object Tools into a single RealtimeProvider implementation
+ * (D-07 naming). Structurally a port of OpenAISTTTTSProvider with the four
+ * concrete OpenAI-specific helper classes swapped for the four Phase 1
+ * interfaces, the `_isTurnActive` drop-guard replaced by full-interruption
+ * abort-and-restart (D-03), and a bounded multi-round tool-calling loop
+ * inserted (D-04/D-05).
+ */
+
+import {
+  RealtimeProvider,
+  RealtimeConfig,
+  RealtimeTool,
+  UsageReport,
+  Conversation,
+  ChatStatus,
+  MouthState,
+  PhonemeData,
+  RealtimeMessage,
+  ToolExecutor,
+  VADProvider,
+  STTProvider,
+  LLMProvider,
+  TTSProvider,
+  Tool,
+} from "@khaveeai/core";
+
+/** Maximum tool-calling rounds before the loop is treated as an error (D-05). */
+const MAX_TOOL_ROUNDS = 5;
+
+/**
+ * Configuration for the generic composable pipeline provider.
+ *
+ * `tools` here is intentionally typed `Tool[]` (the vendor-neutral
+ * plain-object type from @khaveeai/core's tools.ts), narrowing the
+ * inherited `RealtimeConfig.tools?: RealtimeTool[]` field. TypeScript
+ * allows narrowing an inherited optional property to a structurally
+ * compatible subtype at the type-checker level for object literal
+ * assignment, and this narrowing compiles cleanly here — if a future
+ * change to either Tool or RealtimeTool's shape makes this narrowing
+ * incompatible, rename this field to `pipelineTools?: Tool[]` instead
+ * (documented here per the plan's Claude's Discretion guidance).
+ */
+export interface GenericPipelineConfig extends RealtimeConfig {
+  /** Voice Activity Detection stage implementation. */
+  vad: VADProvider;
+  /** Speech-to-Text stage implementation. */
+  stt: STTProvider;
+  /** LLM completion stage implementation (with tool-calling support). */
+  llm: LLMProvider;
+  /** Text-to-Speech stage implementation. */
+  tts: TTSProvider;
+  /** Plain-object tools the LLM may invoke (CORE-03 — narrows RealtimeConfig.tools). */
+  tools?: Tool[];
+  /** VAD-to-mic-reopen cooldown (ms) after TTS playback ends. Default: 500 (D-08). */
+  micReopenCooldownMs?: number;
+}
+
+/** Shape of a chat message stored in the internal history buffer. */
+type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+/**
+ * GenericPipelineProvider — the single composable orchestrator that takes
+ * {vad, stt, llm, tts, tools?} and implements RealtimeProvider, proving any
+ * combination of Phase 1's interfaces composes into a working voice
+ * pipeline with no @khaveeai/react changes needed (ORCH-01/ORCH-02).
+ */
+export class GenericPipelineProvider implements RealtimeProvider {
+  readonly name = "generic-pipeline";
+
+  // ── Private state ────────────────────────────────────────────────────────
+
+  protected config: GenericPipelineConfig;
+  private toolExecutor: ToolExecutor;
+  private sessionId: string | null = null;
+
+  /** Internal chat history buffer (system + turns). */
+  protected messages: ChatMessage[] = [];
+
+  // Audio output nodes for lip-sync / volume analysis
+  private audioOutputContext: AudioContext | null = null;
+  private audioOutputAnalyser: AnalyserNode | null = null;
+
+  // Composed pipeline-stage implementations (injected via constructor)
+  private vad: VADProvider;
+  private stt: STTProvider;
+  private llm: LLMProvider;
+  private tts: TTSProvider;
+
+  // Microphone state
+  private micEnabled = false;
+
+  // Full-interruption barge-in (D-03): replaces _isTurnActive's drop guard.
+  // A non-null controller means a turn is active; a NEW utterance aborts it
+  // (does NOT drop) and immediately starts its own turn.
+  private activeTurnController: AbortController | null = null;
+
+  // ── Public interface state ───────────────────────────────────────────────
+
+  public isConnected = false;
+  public chatStatus: ChatStatus = "stopped";
+  public conversation: Conversation[] = [];
+  public currentVolume = 0;
+
+  // ── Public event handlers (RealtimeEvents) ───────────────────────────────
+
+  public onConnect?: () => void;
+  public onDisconnect?: () => void;
+  public onError?: (error: Error) => void;
+  public onMessage?: (message: RealtimeMessage) => void;
+  public onConversationUpdate?: (conversation: Conversation[]) => void;
+  public onChatStatusChange?: (status: ChatStatus) => void;
+  public onAudioStart?: () => void;
+  public onAudioEnd?: () => void;
+  public onVolumeChange?: (volume: number) => void;
+  public onMouthStateChange?: (state: MouthState) => void;
+  public onPhonemeDetected?: (phoneme: PhonemeData) => void;
+  public onToolCall?: (toolName: string, args: unknown, result: unknown) => void;
+  public onUsageReport?: (usage: UsageReport) => void;
+  public onAudioData?: (analyser: AnalyserNode, audioContext: AudioContext) => void;
+
+  // ── Constructor ──────────────────────────────────────────────────────────
+
+  constructor(config: GenericPipelineConfig) {
+    this.config = { micReopenCooldownMs: 500, ...config };
+
+    this.vad = config.vad;
+    this.stt = config.stt;
+    this.llm = config.llm;
+    this.tts = config.tts;
+
+    this.toolExecutor = new ToolExecutor();
+    config.tools?.forEach((tool) => this.toolExecutor.register(tool.name, tool.execute));
+
+    // Seed conversation history with the system prompt when provided
+    if (this.config.instructions) {
+      this.messages.push({ role: "system", content: this.config.instructions });
+    }
+  }
+
+  // ── Interface methods — real bodies ──────────────────────────────────────
+
+  /**
+   * Register a function/tool for function-calling post-construction.
+   * RealtimeTool.execute and Tool.execute share the same
+   * `(args) => Promise<{success, message}>` shape, so this is a direct
+   * registration onto the same ToolExecutor used by config.tools.
+   */
+  registerFunction(tool: RealtimeTool): void {
+    this.toolExecutor.register(tool.name, tool.execute);
+  }
+
+  /**
+   * Return the audio analyser + context, or null if no audio context is active.
+   */
+  getAudioAnalyser(): { analyser: AnalyserNode; audioContext: AudioContext } | null {
+    if (this.audioOutputAnalyser && this.audioOutputContext) {
+      return {
+        analyser: this.audioOutputAnalyser,
+        audioContext: this.audioOutputContext,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Toggle the microphone on/off.
+   */
+  toggleMicrophone(): boolean {
+    if (this.micEnabled) {
+      this.disableMicrophone();
+      return false;
+    } else {
+      this.enableMicrophone();
+      return true;
+    }
+  }
+
+  /** Enable the microphone. */
+  enableMicrophone(): void {
+    void this.vad.resume();
+    this.micEnabled = true;
+  }
+
+  /** Disable the microphone. */
+  disableMicrophone(): void {
+    void this.vad.pause();
+    this.micEnabled = false;
+  }
+
+  /** Return whether the microphone is currently enabled. */
+  isMicrophoneEnabled(): boolean {
+    return this.micEnabled;
+  }
+
+  /**
+   * Return the current session ID generated at connect() time.
+   * Concrete-class-only method — NOT on the RealtimeProvider interface,
+   * mirroring OpenAISTTTTSProvider.getSessionId().
+   */
+  public getSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  // ── Lifecycle methods ────────────────────────────────────────────────────
+
+  /**
+   * Start the pipeline session.
+   *
+   * Lifecycle:
+   *   1. Set status "starting"
+   *   2. Generate a fresh session ID (crypto.randomUUID)
+   *   3. Create a FRESH AudioContext (never reused — RESEARCH Pitfall 1/5)
+   *   4. Wire VADProvider callbacks and start VAD
+   *   5. Set status "ready" and fire onConnect
+   *
+   * On any error: fires onError (normalized to Error), sets status
+   * "stopped", then calls disconnect().
+   */
+  async connect(): Promise<void> {
+    try {
+      this.setChatStatus("starting");
+
+      // Generate a new session ID per connect (mirrors T-03-10 audit trail)
+      this.sessionId = crypto.randomUUID();
+
+      // Create a FRESH AudioContext every connect — never reuse across
+      // reconnects (RESEARCH Pitfall 1/5). Closed by disconnect() when
+      // state !== "closed".
+      this.audioOutputContext = new AudioContext();
+
+      // Wire VADProvider callbacks
+      this.vad.onSpeechStart = () => {
+        // Only switch to "listening" when idle and the mic is intentionally on.
+        if (!this.activeTurnController && this.micEnabled) {
+          this.setChatStatus("listening");
+        }
+      };
+
+      this.vad.onUtteranceReady = (wav: Blob) => {
+        // Discard buffered audio captured while the mic was disabled
+        // (e.g. pressed the mute button, TTS playing, cooldown window).
+        if (this.micEnabled) {
+          void this.runTurn(wav);
+        }
+      };
+
+      this.vad.onError = (error: Error) => {
+        this.onError?.(error instanceof Error ? error : new Error(String(error)));
+        this.setChatStatus("ready");
+      };
+
+      await this.vad.connect();
+
+      this.isConnected = true;
+      this.micEnabled = true;
+      this.setChatStatus("ready");
+      this.onConnect?.();
+    } catch (error) {
+      this.onError?.(error instanceof Error ? error : new Error(String(error)));
+      this.setChatStatus("stopped");
+      await this.disconnect();
+    }
+  }
+
+  /**
+   * Stop the session and release all resources.
+   *
+   * Teardown order mirrors OpenAISTTTTSProvider:
+   *   1. Mark disconnected
+   *   2. Abort any active turn (TTSProvider has no cancel() of its own —
+   *      cancellation is solely via the per-turn AbortSignal)
+   *   3. Tear down VADProvider (mic + listening state)
+   *   4. Close AudioContext if not already closed (RESEARCH Pitfall 1/5)
+   *   5. Reset all state fields
+   *   6. Fire onDisconnect
+   */
+  async disconnect(): Promise<void> {
+    this.isConnected = false;
+
+    // Abort any in-flight turn synchronously — TTSProvider/LLMProvider have
+    // no cancel() of their own; cancellation is solely via the signal.
+    this.activeTurnController?.abort();
+    this.activeTurnController = null;
+
+    // Tear down the VAD provider
+    await this.vad.disconnect();
+
+    // Close AudioContext only if it has not already been closed (Pitfall 1/5)
+    if (this.audioOutputContext && this.audioOutputContext.state !== "closed") {
+      await this.audioOutputContext.close();
+    }
+    this.audioOutputContext = null;
+    this.audioOutputAnalyser = null;
+
+    // Reset all session-scoped state
+    this.sessionId = null;
+    this.micEnabled = false;
+    this.currentVolume = 0;
+
+    // Reset conversation and message history back to just the system prompt
+    this.conversation = [];
+    const systemMessage = this.messages.find((m) => m.role === "system");
+    this.messages = systemMessage ? [systemMessage] : [];
+
+    this.setChatStatus("stopped");
+    this.onDisconnect?.();
+  }
+
+  /**
+   * Interrupt the current turn (LLM/TTS work in flight).
+   *
+   * Synchronous — no await before setChatStatus so the status resets within
+   * one frame, mirroring OpenAISTTTTSProvider.interrupt()'s SDK-08 pattern.
+   */
+  interrupt(): void {
+    this.activeTurnController?.abort();
+    this.setChatStatus("ready");
+  }
+
+  /**
+   * Send a text message (skips STT — text is already known) and play the
+   * TTS response. Threads the active turn's signal, if any, the same way
+   * the VAD-driven path does.
+   */
+  async sendMessage(text: string): Promise<void> {
+    await this.runTurnFromText(text, this.activeTurnController?.signal);
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Full turn pipeline driven by a WAV blob from the VAD. Implemented in
+   * Task 2 (full-interruption barge-in, D-03). Stubbed here so the class
+   * compiles with the constructor/lifecycle methods from Task 1.
+   */
+  private async runTurn(wav: Blob): Promise<void> {
+    void wav;
+  }
+
+  /**
+   * Turn pipeline from a known text string: append user message → bounded
+   * tool-calling loop → append assistant message → TTS playback → ready.
+   * Implemented in Task 2 (D-04/D-05 tool-calling loop). Stubbed here so
+   * the class compiles with the constructor/lifecycle methods from Task 1.
+   */
+  private async runTurnFromText(text: string, signal?: AbortSignal): Promise<void> {
+    void text;
+    void signal;
+  }
+
+  /**
+   * Resume the VAD and wait out the configured mic-reopen cooldown
+   * (D-08, ORCH-04) before the caller proceeds. Config-driven — the
+   * cooldown is never hardcoded; `500` appears only as the in-method
+   * fallback default mirroring the constructor's own default.
+   */
+  private async resumeWithCooldown(): Promise<void> {
+    await this.vad.resume();
+    this.micEnabled = true;
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, this.config.micReopenCooldownMs ?? 500)
+    );
+  }
+
+  /**
+   * Update chatStatus and fire onChatStatusChange only when the value changes.
+   * Mirrors setChatStatus in OpenAISTTTTSProvider/OpenAIRealtimeProvider.
+   */
+  protected setChatStatus(status: ChatStatus): void {
+    if (this.chatStatus !== status) {
+      this.chatStatus = status;
+      this.onChatStatusChange?.(status);
+    }
+  }
+
+  /**
+   * Trim the internal messages buffer to prevent unbounded growth.
+   *
+   * Strategy (ported verbatim from OpenAISTTTTSProvider):
+   * - The system message (index 0) is ALWAYS preserved.
+   * - Only the last `maxTurns * 2` non-system messages are kept (each turn =
+   *   one user message + one assistant message).
+   *
+   * With maxTurns = 10 the buffer holds at most 21 entries (1 system + 20 turn messages).
+   */
+  protected trimHistory(maxTurns = 10): void {
+    const systemMessages = this.messages.filter((m) => m.role === "system");
+    const nonSystem = this.messages.filter((m) => m.role !== "system");
+
+    const maxNonSystem = maxTurns * 2;
+    const trimmed = nonSystem.slice(-maxNonSystem);
+
+    this.messages = [...systemMessages, ...trimmed];
+  }
+}
+
+// Referenced so tsc does not flag the module-scope constant as unused before
+// Task 2 wires it into the tool-calling loop's round cap check.
+void MAX_TOOL_ROUNDS;

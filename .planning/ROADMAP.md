@@ -74,7 +74,7 @@ Plans:
 
 **Wave 4** *(gap closure — ORCH-03 BLOCKED → SATISFIED)*
 
-- [ ] 02-04-PLAN.md — Close ORCH-03 gap: fix CR-01 (abort guards in runTurnFromText + runTurn) and CR-02 (sendMessage AbortController ownership) + regression tests for stale-utterance discard and sendMessage-vs-concurrent-VAD coordination
+- [x] 02-04-PLAN.md — Close ORCH-03 gap: fix CR-01 (abort guards in runTurnFromText + runTurn) and CR-02 (sendMessage AbortController ownership) + regression tests for stale-utterance discard and sendMessage-vs-concurrent-VAD coordination
 
 ### Phase 3: Python Backend Services
 
@@ -128,7 +128,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 3/4 | Gap closure pending | 2026-06-18 |
+| 2. Generic Pipeline Orchestrator | 4/4 | Complete   | 2026-06-18 |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

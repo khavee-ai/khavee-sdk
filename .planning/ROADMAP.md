@@ -58,7 +58,7 @@ Plans:
   4. The VAD-to-mic-reopen cooldown is set via a constructor/config value (not a hardcoded constant), and changing it changes observed mic-reopen timing
   5. A provider throwing or rejecting with a non-Error value (e.g. a string or vendor-specific error object) reaches the orchestrator's error callback as a normalized `Error` instance without crashing the active session
 
-**Plans**: 6 plans
+**Plans**: 7 plans
 Plans:
 **Wave 1**
 
@@ -83,6 +83,10 @@ Plans:
 **Wave 6** *(gap closure — CR-03 multi-round tool-calling protocol violation)*
 
 - [x] 02-06-PLAN.md — Close CR-03: tool-calling loop pushes the LLM's assistant/tool_calls turn into history (as an `[assistant_tool_calls] <json>` marker) before tool-result markers, and OpenAILLMAdapter.mapMessage() re-emits it as OpenAI's `{role:"assistant", content:null, tool_calls:[...]}` wire shape — fixing HTTP 400 on round 2+ of any real tool-calling conversation + orchestrator regression test (inspects round-2 args.messages) + adapter wire-shape unit test
+
+**Wave 7** *(gap closure — WR-05/WR-06 marker-protocol robustness, post-02-06 code review)*
+
+- [ ] 02-07-PLAN.md — Close WR-05 + WR-06: make trimHistory() marker-pair-aware so the trim boundary never strands a `[tool_result ...]` message without its `[assistant_tool_calls]` predecessor (WR-05, reintroduces CR-03's HTTP-400 across long sessions); gate OpenAILLMAdapter.mapMessage()'s marker branches on message.role + wrap the assistant-branch JSON.parse in try/catch so ordinary user text starting with a marker prefix no longer crashes the turn (WR-06) + two regression tests
 
 ### Phase 3: Python Backend Services
 
@@ -136,7 +140,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 6/6 | Complete   | 2026-06-18 |
+| 2. Generic Pipeline Orchestrator | 6/7 | Executing | - |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

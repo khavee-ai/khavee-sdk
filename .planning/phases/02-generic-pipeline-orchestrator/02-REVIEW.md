@@ -1,160 +1,115 @@
 ---
 phase: 02-generic-pipeline-orchestrator
-reviewed: 2026-06-18T09:54:23Z
+reviewed: 2026-06-18T00:00:00Z
 depth: standard
-files_reviewed: 19
+files_reviewed: 16
 files_reviewed_list:
   - packages/core/src/types/pipeline.ts
-  - packages/core/src/types/tools.ts
-  - packages/core/src/types/index.ts
-  - packages/core/src/types/mock.ts
-  - packages/core/src/__tests__/ToolExecutor.test.ts
-  - packages/core/package.json
-  - packages/core/tsconfig.json
-  - packages/core/vitest.config.ts
   - packages/providers/generic-stt-tts/package.json
   - packages/providers/generic-stt-tts/postcss.config.mjs
-  - packages/providers/generic-stt-tts/tsconfig.json
-  - packages/providers/generic-stt-tts/vitest.config.ts
-  - packages/providers/generic-stt-tts/src/index.ts
   - packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts
-  - packages/providers/generic-stt-tts/src/adapters/OpenAIVADAdapter.ts
-  - packages/providers/generic-stt-tts/src/adapters/OpenAISTTAdapter.ts
-  - packages/providers/generic-stt-tts/src/adapters/OpenAILLMAdapter.ts
-  - packages/providers/generic-stt-tts/src/adapters/OpenAITTSAdapter.ts
   - packages/providers/generic-stt-tts/src/__tests__/GenericPipelineProvider.test.ts
   - packages/providers/generic-stt-tts/src/__tests__/OpenAILLMAdapter.test.ts
   - packages/providers/generic-stt-tts/src/__tests__/OpenAISTTAdapter.test.ts
   - packages/providers/generic-stt-tts/src/__tests__/OpenAITTSAdapter.test.ts
-  - packages/providers/mock/src/index.ts
-  - packages/providers/mock/package.json
-  - packages/providers/openai/src/index.ts
-  - packages/providers/openai-realtime/src/OpenAIRealtimeProvider.ts
-  - packages/providers/openai-realtime/src/index.ts
-  - packages/providers/openai-realtime/package.json
-  - packages/providers/openai-stt-tts/src/OpenAISTTTTSProvider.ts
+  - packages/providers/generic-stt-tts/src/adapters/OpenAILLMAdapter.ts
+  - packages/providers/generic-stt-tts/src/adapters/OpenAISTTAdapter.ts
+  - packages/providers/generic-stt-tts/src/adapters/OpenAITTSAdapter.ts
+  - packages/providers/generic-stt-tts/src/adapters/OpenAIVADAdapter.ts
+  - packages/providers/generic-stt-tts/src/index.ts
+  - packages/providers/generic-stt-tts/tsconfig.json
+  - packages/providers/generic-stt-tts/vitest.config.ts
   - packages/providers/openai-stt-tts/src/index.ts
-  - packages/providers/openai-stt-tts/package.json
 findings:
-  critical: 2
-  warning: 5
-  info: 3
-  total: 10
+  critical: 1
+  warning: 4
+  info: 2
+  total: 7
 status: issues_found
 ---
 
 # Phase 2: Code Review Report
 
-**Reviewed:** 2026-06-18T09:54:23Z
+**Reviewed:** 2026-06-18T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 19 (plus 11 supporting/cross-cutting files inspected for compatibility)
+**Files Reviewed:** 16
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the Phase 2 "generic pipeline orchestrator" deliverable: the four vendor-neutral pipeline-stage interfaces in `@khaveeai/core` (`VADProvider`/`STTProvider`/`LLMProvider`/`TTSProvider`), the promoted/de-duplicated `ToolExecutor`, the new `@khaveeai/providers-generic-stt-tts` package (`GenericPipelineProvider` orchestrator + four OpenAI adapters), and the cross-package edits required to support them (legacy `LLMProvider`/`TTSProvider` renamed to `LegacyLLMProvider`/`LegacyTTSProvider`, `ToolExecutor` de-duplication in `openai-realtime`/`openai-stt-tts`).
+This is a re-review of the full phase-02 file scope after gap-closure plan 02-04, which targeted the two concurrency BLOCKERs (CR-01, CR-02) found in the prior review pass: (1) `runTurnFromText` mutating shared `conversation`/`messages` state before checking an already-aborted signal, and (2) `sendMessage()` racing a concurrent VAD turn instead of owning its own `AbortController`.
 
-All 26 new/updated tests pass, and `tsc` builds cleanly across `@khaveeai/core`, `@khaveeai/providers-generic-stt-tts`, `@khaveeai/providers-openai-stt-tts`, `@khaveeai/providers-openai-realtime`, `@khaveeai/providers-mock`, and `@khaveeai/providers-openai`. The "must not break `openai-stt-tts`" compatibility constraint is honored — its own test suite (13 tests) still passes unchanged.
+**Both CR-01 and CR-02 are confirmed resolved.** `runTurnFromText` now checks `signal?.aborted` immediately on entry (`GenericPipelineProvider.ts:414`) before any state mutation, `runTurn` re-checks the signal after `stt.transcribe()` resolves and before calling into `runTurnFromText` (`GenericPipelineProvider.ts:384`), and `sendMessage()` now creates and owns its own `AbortController` exactly like `runTurn()` does, aborting any prior turn and registering itself as `activeTurnController` (`GenericPipelineProvider.ts:335-348`). The two new regression tests (`CR-01`, `CR-02` describe blocks in `GenericPipelineProvider.test.ts`) exercise exactly these races and pass. Full test suite: 28/28 passing. `tsc --noEmit` is clean.
 
-However, the orchestrator's barge-in/turn-coordination logic has two genuine correctness gaps not covered by the existing test suite: (1) a superseded (aborted) turn can still write its user utterance into shared conversation/message history before `runTurnFromText`'s first abort check fires, and (2) `sendMessage()` never creates or registers its own `AbortController`, so it can race with a concurrently-running VAD-driven turn instead of superseding it — defeating the single-active-turn invariant the rest of the orchestrator is built around. There is also a latent parsing bug in the tool-result-to-history convention when an LLM-returned tool name contains whitespace.
+During this pass I found one new BLOCKER not covered by the prior review: `registerFunction()` — part of the public `RealtimeProvider` interface — registers a tool with the internal `ToolExecutor` (so it can be *executed* if called) but never adds it to `this.config.pipelineTools`, which is the array actually sent to the LLM on every `complete()` call. A tool registered post-construction via `registerFunction()` is therefore never offered to the LLM and can never be invoked in practice — the public API silently no-ops. I also confirmed two Warnings from the prior review (`WR-01` tool-name whitespace parsing, `WR-03` unconditional cooldown on error) remain unaddressed (expected — out of scope for the CR-01/CR-02 gap-closure plan), and found one new Warning around missing `isConnected` guards allowing pre-`connect()` calls to leak an untracked `AudioContext`.
 
 ## Critical Issues
 
-### CR-01: `runTurnFromText` mutates shared conversation/message state before checking the abort signal, letting a superseded turn corrupt history
+### CR-01: `registerFunction()` registers a tool with the executor but never makes it visible to the LLM, silently breaking the public tool-registration API
 
-**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:391-404`
-**Issue:** `runTurnFromText(text, signal)` is documented as guarding "every await boundary that precedes a side effect... by `signal?.aborted`" (see the doc comment at lines 380-390), but its very first action — pushing the user message onto `this.messages`, pushing a `Conversation` entry onto `this.conversation`, and firing `onConversationUpdate` — happens with **zero preceding abort check**, and the caller (`runTurn`, line 368) also does not check `controller.signal.aborted` before calling `runTurnFromText`.
-
-Concretely: Turn A's `stt.transcribe()` is in flight when Turn B (a new VAD utterance) arrives. `runTurn` for Turn B calls `this.activeTurnController.abort()` (aborting Turn A's controller) and proceeds with its own controller. When Turn A's `stt.transcribe()` resolves afterward, Turn A's `runTurn` still calls `await this.runTurnFromText(sttResult.text, controllerA.signal)` — even though `controllerA.signal.aborted === true` at that point — and `runTurnFromText` unconditionally appends Turn A's (stale, superseded) utterance into the shared `this.messages`/`this.conversation` arrays before any abort check runs. This corrupts the LLM-visible history with an out-of-order/duplicate user turn and emits an `onConversationUpdate` for an utterance that was supposed to be discarded.
-
-**Fix:** Check the signal immediately on entry to `runTurnFromText`, before any side effect:
+**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:156-158`
+**Issue:** `registerFunction(tool: RealtimeTool): void` is part of the `RealtimeProvider` interface contract (`packages/core/src/types/realtime.ts:103`) and is the documented way to register a tool/function after construction (as opposed to passing it in the constructor config). Its implementation is:
 ```typescript
-private async runTurnFromText(text: string, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return; // superseded before this turn even started — discard
-  try {
-    // 1. Append user message to history and conversation
-    this.messages.push({ role: "user", content: text });
-    ...
-```
-Also add the same guard immediately after `await this.stt.transcribe(...)` resolves in `runTurn`, before calling `runTurnFromText` (it already has the abort check for the empty-text branch at line 363, but not for the non-empty path at line 368).
-
-### CR-02: `sendMessage()` does not create/register an `AbortController`, allowing it to race with a concurrent VAD-driven turn instead of superseding it
-
-**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:333-335`
-**Issue:** Every other turn entry point (`runTurn`, driven by VAD) creates a fresh `AbortController`, aborts any prior `activeTurnController`, and registers itself as the new `activeTurnController` — that is the entire mechanism the barge-in design (D-03) relies on to guarantee only one turn mutates shared state at a time. `sendMessage()` instead does:
-```typescript
-async sendMessage(text: string): Promise<void> {
-  await this.runTurnFromText(text, this.activeTurnController?.signal);
+registerFunction(tool: RealtimeTool): void {
+  this.toolExecutor.register(tool.name, tool.execute);
 }
 ```
-This has two failure modes:
-1. **No turn currently active** (`activeTurnController === null`): `sendMessage()` passes `signal = undefined` and never sets `activeTurnController`. If a VAD utterance arrives while this `sendMessage()` call is still in flight, `runTurn` sees `activeTurnController === null`, does NOT abort anything, and starts a second, fully independent turn — both turns now concurrently push to `this.messages`/`this.conversation`, call `setChatStatus`, and race on `this.audioOutputContext`/mic state with no coordination at all.
-2. **A turn IS currently active**: `sendMessage()` borrows that turn's signal and races on the same `AbortController` without owning it — if the in-flight VAD turn later gets superseded by yet another VAD utterance (aborting that shared controller), the `sendMessage()` call is silently cancelled too, even though nothing barged in on it directly.
-
-Neither path is covered by the existing test suite — every `sendMessage()` test in `GenericPipelineProvider.test.ts` calls it in isolation against an idle provider.
-
-**Fix:** Give `sendMessage()` the same turn-ownership semantics as `runTurn()`:
+This only updates `this.toolExecutor`'s internal dispatch map. But the tool list actually sent to the LLM on every turn comes from `this.config.pipelineTools`, read fresh on each `llm.complete()` call:
 ```typescript
-async sendMessage(text: string): Promise<void> {
-  if (this.activeTurnController) {
-    this.activeTurnController.abort();
-  }
-  const controller = new AbortController();
-  this.activeTurnController = controller;
-  try {
-    await this.runTurnFromText(text, controller.signal);
-  } finally {
-    if (this.activeTurnController === controller) {
-      this.activeTurnController = null;
-    }
-  }
-}
+result = await this.llm.complete({
+  messages: this.messages,
+  tools: this.config.pipelineTools,   // GenericPipelineProvider.ts:435
+  signal,
+});
 ```
+`registerFunction()` never appends to `this.config.pipelineTools`. The result: a tool registered via `registerFunction()` post-construction is dispatchable by name if the LLM happens to call it, but the LLM is never told the tool exists (it's not in the `tools` array passed to `complete()`), so no compliant LLM vendor will ever emit a `tool_calls` entry for it. The public API silently does nothing useful. This is not covered by any test — `GenericPipelineProvider.test.ts` never calls `registerFunction()`.
+
+This differs from `OpenAISTTTTSProvider`, where tool definitions are pushed once into the Realtime API's session config at connect-time via the same code path used by the constructor (`this.config.tools.forEach((tool) => this.registerFunction(tool))` plus a single upstream `tools` session field), not re-sent fresh from a config array on every completion call — so the equivalent gap doesn't manifest there in the same way.
+
+**Fix:** Make `registerFunction()` also add the tool to the array actually sent to the LLM:
+```typescript
+private pipelineTools: Tool[] = [];
+
+constructor(config: GenericPipelineConfig) {
+  // ...
+  this.pipelineTools = [...(config.pipelineTools ?? [])];
+  this.pipelineTools.forEach((tool) => this.toolExecutor.register(tool.name, tool.execute));
+}
+
+registerFunction(tool: RealtimeTool): void {
+  this.toolExecutor.register(tool.name, tool.execute);
+  this.pipelineTools.push(tool as unknown as Tool); // or a proper RealtimeTool->Tool mapper
+}
+
+// in runTurnFromText:
+result = await this.llm.complete({
+  messages: this.messages,
+  tools: this.pipelineTools,
+  signal,
+});
+```
+Note `RealtimeTool` and `Tool` have different `parameters` shapes (per the doc comment at `GenericPipelineConfig:38-47`), so a real fix needs an explicit mapping between the two rather than an `as unknown as Tool` cast — flagging the cast above only as a placeholder for the actual fix shape.
 
 ## Warnings
 
-### WR-01: Tool-result history marker fails to parse when an LLM-returned tool name contains whitespace, silently breaking the tool round-trip protocol
+### WR-01 (carried forward, unaddressed): Tool-result history marker fails to parse when an LLM-returned tool name contains whitespace
 
 **File:** `packages/providers/generic-stt-tts/src/adapters/OpenAILLMAdapter.ts:29,146-153`
-**Issue:** `TOOL_RESULT_PATTERN = /^\[tool_result id=(\S+) name=(\S+)\]\s*([\s\S]*)$/` requires both `id` and `name` to be non-whitespace (`\S+`). `call.name` (used to build the marker in `GenericPipelineProvider.runTurnFromText`, line 438: `` `[tool_result id=${call.id} name=${call.name}] ${toolResult.message}` ``) is sourced directly from the vendor's tool-call response (`tc.function.name` in `OpenAILLMAdapter.complete`) without validation against the registered tool list. If an LLM hallucinates or returns a tool name containing a space (or any whitespace), the regex fails to match entirely, `mapMessage()` falls through to the default `{ role: message.role, content: message.content }` branch, and the tool result is sent back to OpenAI as a plain `user` message instead of `{ role: "tool", tool_call_id, content }`. Most Chat Completions-compatible backends will then reject the next request (a `tool_calls` response with no matching `role: "tool"` follow-up is invalid), surfacing as an opaque "Chat proxy error: 400 ..." with no indication of the real cause.
+**Issue:** `TOOL_RESULT_PATTERN = /^\[tool_result id=(\S+) name=(\S+)\]\s*([\s\S]*)$/` requires `name` to be `\S+` (no whitespace). `call.name` is sourced directly from the vendor's `tc.function.name` with no validation. If an LLM returns/hallucinates a tool name containing whitespace, the regex fails to match, `mapMessage()` falls through to the default branch, and the tool result is sent back as a plain `user` message instead of `{ role: "tool", tool_call_id, content }` — most Chat-Completions-compatible backends will then reject the next request with an opaque 400. Confirmed still present, unchanged from the prior review; out of scope for the CR-01/CR-02 gap-closure plan that just ran.
+**Fix:** Encode `id`/`name` (e.g. `encodeURIComponent`) when building the marker in `GenericPipelineProvider.ts:461`, and decode accordingly in `mapMessage()`.
 
-Additionally, the regex's greedy `name=(\S+)\]` can over-match into the result content when the content does not start with whitespace and itself contains a `]` character (verified: `"[tool_result id=call_1 name=foo]bar]baz"` parses `name` as `"foo]bar"`, swallowing part of the content) — currently low-impact since `name` is discarded after capture, but indicates the pattern is not as robust as the surrounding doc comments imply.
+### WR-02 (carried forward, unaddressed): `runTurnFromText`'s catch block unconditionally calls `resumeWithCooldown()` even when the mic/VAD was never paused
 
-**Fix:** Either reject/sanitize tool names containing whitespace before building the marker, or switch to a delimiter that cannot collide with tool-name characters (e.g. base64/URI-encode `id`/`name`, or use a structural prefix that doesn't rely on `\S` boundaries):
-```typescript
-// In GenericPipelineProvider, when building the marker:
-const safeName = encodeURIComponent(call.name);
-this.messages.push({
-  role: "user",
-  content: `[tool_result id=${call.id} name=${safeName}] ${toolResult.message}`,
-});
-// In OpenAILLMAdapter, decode accordingly when parsing.
-```
-
-### WR-02: `connect()` leaks the previous `AudioContext` if called twice without an intervening `disconnect()`
-
-**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:237`
-**Issue:** `connect()` unconditionally does `this.audioOutputContext = new AudioContext();` without checking whether `this.audioOutputContext` already holds an open context from a prior `connect()` call. Calling `connect()` twice in a row (e.g. a consumer double-clicking a "start" button before `isConnected` flips, or a buggy reconnect path) overwrites the reference to the first `AudioContext` without ever calling `.close()` on it, leaking a real browser audio resource. This same pattern exists in `OpenAISTTTTSProvider` (pre-existing, out of this phase's scope to fix), but it was carried forward unchanged into newly-written code here rather than being hardened.
-**Fix:** Guard against re-entrant `connect()` calls, or close any existing context before creating a new one:
-```typescript
-if (this.audioOutputContext && this.audioOutputContext.state !== "closed") {
-  await this.audioOutputContext.close();
-}
-this.audioOutputContext = new AudioContext();
-```
-
-### WR-03: `runTurnFromText`'s catch block unconditionally calls `resumeWithCooldown()` even when the mic/VAD was never paused
-
-**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:487-492`
-**Issue:** The success path pauses VAD (`await this.vad.pause(); this.micEnabled = false;`) only at step 5, right before TTS playback. If an error occurs earlier (e.g. the LLM call at step 2, or a tool execution failure), the VAD was never paused — yet the `catch` block unconditionally calls `await this.resumeWithCooldown()`, which calls `this.vad.resume()` and sets `micEnabled = true` regardless of whether `pause()` was ever called. This is a no-op in most VAD implementations (resuming an already-running VAD), but it is not guaranteed to be safe for all `VADProvider` implementations, and it always pays the full `micReopenCooldownMs` delay (default 500ms) for errors that have nothing to do with mic state — needlessly delaying the `onError` callback and the `chatStatus` reset to `"ready"`. This mirrors a pre-existing pattern in `OpenAISTTTTSProvider` (`packages/providers/openai-stt-tts/src/OpenAISTTTTSProvider.ts:476-482`), so it's not a regression, but it was an opportunity to fix during the port that was missed.
-**Fix:** Track whether the mic was actually paused in this turn and only resume/cooldown if so:
+**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:510-515`
+**Issue:** The success path pauses VAD only at step 5 (`GenericPipelineProvider.ts:486-487`), right before TTS playback. If an error occurs earlier (e.g. the LLM call, or a tool execution failure before that point), VAD was never paused, yet the `catch` block unconditionally calls `await this.resumeWithCooldown()` — resuming an already-running VAD and paying the full `micReopenCooldownMs` delay (default 500ms) before the error reaches `onError`/`chatStatus: "ready"`, for an error that had nothing to do with mic state. Confirmed still present.
+**Fix:** Track whether the mic was actually paused this turn and only resume/cooldown if so:
 ```typescript
 let micWasPaused = false;
-...
+// ...
 await this.vad.pause();
 this.micEnabled = false;
 micWasPaused = true;
-...
+// ...
 } catch (error) {
   if (signal?.aborted) return;
   if (micWasPaused) await this.resumeWithCooldown();
@@ -163,43 +118,50 @@ micWasPaused = true;
 }
 ```
 
-### WR-04: `package.json` declares an unused `react` peerDependency for a package with zero React usage
+### WR-03 (new): No `isConnected` guard lets `sendMessage()`/turns run before `connect()`, leaking an untracked `AudioContext`
 
-**File:** `packages/providers/generic-stt-tts/package.json:39-41`
-**Issue:** `peerDependencies: { "react": "^18.0.0 || ^19.0.0" }` was copied verbatim from `openai-stt-tts`'s `package.json` (per the Plan 01 summary's documented "scaffold by copying" pattern), but `@khaveeai/providers-generic-stt-tts` has no React import anywhere in `src/` (confirmed via grep — the only "react" hit in the package is a doc-comment reference to `@khaveeai/react`, not an import). This forces every consumer to satisfy an npm peer-dependency warning/install requirement for a framework this package never uses, and misleads downstream tooling (e.g. `npm ls`, dependency audit tools) about the package's actual runtime requirements.
-**Fix:** Remove the unused peer dependency:
-```json
-// Delete the "peerDependencies" block entirely, or only keep it if/when
-// a React-specific entry point is actually added to this package.
+**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:107,490`
+**Issue:** `sendMessage()`, `runTurn()`, and `runTurnFromText()` never check `this.isConnected`. If a consumer calls `sendMessage()` (or a VAD utterance somehow fires) before `connect()` has run, `this.audioOutputContext` is still `null`, and step 5's TTS call falls back to a throwaway context:
+```typescript
+await this.tts.speak(replyText, {
+  audioContext: this.audioOutputContext ?? new AudioContext(), // GenericPipelineProvider.ts:490
+  ...
+});
+```
+This freshly-created `AudioContext` is never assigned to `this.audioOutputContext`, so: (1) it is never closed by `disconnect()` (a real leaked browser audio resource), and (2) `getAudioAnalyser()`'s pairing check (`this.audioOutputAnalyser && this.audioOutputContext`) will return `null` even though `this.audioOutputAnalyser` does get set from the orphaned context's `onAudioData` callback — `audioOutputContext` stays `null` — so a consumer asking for the analyser while audio is actually playing gets nothing.
+**Fix:** Guard turn entry points with an early return/throw when not connected, mirroring the rest of the codebase's "no side effect before connect" conventions:
+```typescript
+async sendMessage(text: string): Promise<void> {
+  if (!this.isConnected) {
+    this.onError?.(new Error("sendMessage() called before connect()"));
+    return;
+  }
+  // ...
+}
 ```
 
-### WR-05: `OpenAISTTAdapter.supportsRejection = false` is structurally true but the adapter has no mechanism to ever flag `rejected`, silently dropping the capability signal STTProvider promises to consumers
+### WR-04 (carried forward, unaddressed): `package.json` declares an unused `react` peerDependency
 
-**File:** `packages/providers/generic-stt-tts/src/adapters/OpenAISTTAdapter.ts:30,42-53`
-**Issue:** This is correctly implemented per the interface contract (`supportsRejection: false` and `transcribe()` never sets `rejected`), so it is not a bug per se — but it means `GenericPipelineProvider.runTurn()`'s empty-or-rejected-utterance guard (`if (!sttResult.text || !sttResult.text.trim() || sttResult.rejected)`) can never short-circuit on `rejected` for this adapter, only on empty/whitespace text. Given `STTClient.transcribe()` (the wrapped class) already throws on a missing `transcript` field rather than ever signaling "this was probably silence," any hallucinated-but-non-empty Whisper transcript (a known Whisper failure mode on silence/noise) will always proceed through the full LLM+TTS pipeline. This is a capability gap inherited from `STTClient`, not introduced by the adapter, but it is worth flagging because `STTResult.rejected`'s entire purpose (per its doc comment in `pipeline.ts:96-104`) is to let vendors flag exactly this case, and the first real adapter implementing the interface opts out of it entirely with no fallback heuristic.
-**Fix:** Out of scope for this phase (the underlying `STTClient` has no rejection heuristic to surface), but worth tracking as a known gap for a future Whisper-hallucination-detection enhancement to `STTClient`/`OpenAISTTAdapter`.
+**File:** `packages/providers/generic-stt-tts/package.json:39-41`
+**Issue:** `peerDependencies: { "react": "^18.0.0 || ^19.0.0" }` was copied from `openai-stt-tts`'s `package.json`, but this package has no React import anywhere in `src/`. This forces every consumer to satisfy an npm peer-dependency requirement for a framework the package never uses.
+**Fix:** Remove the `peerDependencies` block, or only add it back if/when a React-specific entry point is added.
 
 ## Info
 
-### IN-01: `Tool.parameters`/`RealtimeTool.parameters` structural incompatibility forced a config field rename (`pipelineTools` vs `tools`) — confirm this surfaces clearly to integrators
+### IN-01: `Tool.parameters`/`RealtimeTool.parameters` incompatibility forced a config field rename (`pipelineTools` vs `tools`) — silent-ignore risk for migrating consumers
 
-**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:38-47`
-**Issue:** Not a bug — the doc comment thoroughly explains the `tsc` rejection and the chosen fallback. Flagging only because `GenericPipelineConfig extends RealtimeConfig`, and `RealtimeConfig.tools?: RealtimeTool[]` is inherited but silently unused on this config type. A consumer migrating from `OpenAISTTTTSConfig`/`OpenAIRealtimeConfig` (which both use `tools`) to `GenericPipelineConfig` and setting `config.tools = [...]` (the natural, type-checked-looking thing to do, since `tools` is still a valid property per `RealtimeConfig`) will have their tools silently ignored — TypeScript will not catch this because `tools?: RealtimeTool[]` is a legitimate optional field on the inherited interface, it's just never read by `GenericPipelineProvider`.
-**Fix:** Consider having `GenericPipelineConfig` explicitly redeclare/forbid `tools` (e.g. `tools?: never`) to turn the silent-ignore into a compile-time error for anyone using the wrong field name, or add a runtime constructor warning when `config.tools` is set but `config.pipelineTools` is not.
+**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:38-58`
+**Issue:** Not a bug — well-documented in the doc comment. `GenericPipelineConfig extends RealtimeConfig`, which still has `tools?: RealtimeTool[]` as a valid, type-checked optional field. A consumer migrating from `OpenAISTTTTSConfig`/`OpenAIRealtimeConfig` (which use `tools`) and setting `config.tools = [...]` on a `GenericPipelineConfig` will have it silently ignored — TypeScript won't catch it since `tools` is legitimately inherited, just never read.
+**Fix:** Consider `tools?: never` on `GenericPipelineConfig` to turn this into a compile-time error, or a constructor-time runtime warning when `config.tools` is set but `config.pipelineTools` is not.
 
-### IN-02: `ProxyResponseFlat.data?: undefined` is a dead/no-op field
+### IN-02: `ProxyResponseFlat.data?: undefined` is a discriminant-only field that reads like a real optional field
 
 **File:** `packages/providers/generic-stt-tts/src/adapters/OpenAILLMAdapter.ts:53-61`
-**Issue:** `ProxyResponseFlat` declares `data?: undefined;` purely so the discriminated-union check `json.data !== undefined ? json.data : json` type-narrows correctly against `ProxyResponseWrapped`. This works but is a slightly unusual idiom that could confuse a future maintainer reading the type in isolation (it looks like a real optional field that happens to always be `undefined`, rather than a discriminant). A short inline comment would help.
-**Fix:** Add a one-line comment: `/** Always undefined on the flat shape — exists only to discriminate from ProxyResponseWrapped. */`
-
-### IN-03: `STTResult.rejected` and the `runTurn` empty-text guard duplicate logic already present, unmodified, in `OpenAISTTTTSProvider`
-
-**File:** `packages/providers/generic-stt-tts/src/GenericPipelineProvider.ts:362-366`
-**Issue:** Not a defect — this is an intentional structural port per the plan's stated design ("structural port of OpenAISTTTTSProvider"). Noting only for completeness: the empty/whitespace/rejected-utterance guard is duplicated logic between `OpenAISTTTTSProvider` and `GenericPipelineProvider` with no shared helper, consistent with the broader "monolithic provider classes instead of composed pipeline stages" anti-pattern already documented in `CLAUDE.md`. No action needed for this phase; flagging as a future consolidation candidate.
+**Issue:** `ProxyResponseFlat` declares `data?: undefined;` solely to make `json.data !== undefined ? json.data : json` type-narrow correctly against `ProxyResponseWrapped`. Functionally correct but reads ambiguously to a future maintainer.
+**Fix:** Add an inline comment: `/** Always undefined on the flat shape — exists only to discriminate from ProxyResponseWrapped. */`
 
 ---
 
-_Reviewed: 2026-06-18T09:54:23Z_
+_Reviewed: 2026-06-18T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_

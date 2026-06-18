@@ -500,3 +500,113 @@ describe("ORCH-02 integration: GenericPipelineProvider composed from the four re
     expect(assistantEntry?.text).toBe("hello back from the assistant");
   });
 });
+
+// ── GAP-02-05: registerFunction() offers post-construction tools to LLM ──
+
+describe("GAP-02-05: registerFunction() offers post-construction tools to the LLM", () => {
+  it("appears in the tools array passed to llm.complete() with the converted required[] shape", async () => {
+    let capturedTools: any;
+    const llm = makeFakeLLM();
+    (llm.complete as any) = vi.fn(async (args: { tools?: unknown }) => {
+      capturedTools = args.tools;
+      return { text: "ok", toolCalls: [] };
+    });
+
+    const config = makeBaseConfig({ llm });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    provider.registerFunction({
+      name: "get_weather",
+      description: "Get weather",
+      parameters: {
+        city: { type: "string", required: true, description: "City name" },
+        unit: { type: "string", required: false },
+      },
+      execute: vi.fn(async () => ({ success: true, message: "sunny" })),
+    });
+
+    await provider.sendMessage("what's the weather");
+
+    expect(capturedTools).toBeDefined();
+    const matches = capturedTools.filter((t: any) => t.name === "get_weather");
+    expect(matches).toHaveLength(1);
+
+    const captured = matches[0];
+    expect(captured.parameters.type).toBe("object");
+    expect(captured.parameters.required).toContain("city");
+    expect(captured.parameters.required).not.toContain("unit");
+    expect(captured.parameters.properties).toHaveProperty("city");
+    expect(captured.parameters.properties).toHaveProperty("unit");
+    expect(captured.parameters.properties.city).not.toHaveProperty("required");
+    expect(captured.parameters.properties.unit).not.toHaveProperty("required");
+  });
+
+  it("registering the same tool.name twice yields exactly one entry (idempotent-by-name)", async () => {
+    let capturedTools: any;
+    const llm = makeFakeLLM();
+    (llm.complete as any) = vi.fn(async (args: { tools?: unknown }) => {
+      capturedTools = args.tools;
+      return { text: "ok", toolCalls: [] };
+    });
+
+    const config = makeBaseConfig({ llm });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    provider.registerFunction({
+      name: "get_weather",
+      description: "Get weather (first)",
+      parameters: { city: { type: "string", required: true } },
+      execute: vi.fn(async () => ({ success: true, message: "sunny" })),
+    });
+    provider.registerFunction({
+      name: "get_weather",
+      description: "Get weather (second)",
+      parameters: { city: { type: "string", required: true } },
+      execute: vi.fn(async () => ({ success: true, message: "rainy" })),
+    });
+
+    await provider.sendMessage("what's the weather");
+
+    expect(capturedTools).toBeDefined();
+    expect(capturedTools.filter((t: any) => t.name === "get_weather")).toHaveLength(1);
+  });
+
+  it("combines constructor-time pipelineTools with a post-construction registerFunction tool", async () => {
+    let capturedTools: any;
+    const llm = makeFakeLLM();
+    (llm.complete as any) = vi.fn(async (args: { tools?: unknown }) => {
+      capturedTools = args.tools;
+      return { text: "ok", toolCalls: [] };
+    });
+
+    const config = makeBaseConfig({
+      llm,
+      pipelineTools: [
+        {
+          name: "constructor_tool",
+          description: "seeded at construction",
+          parameters: { type: "object", properties: {} },
+          execute: vi.fn(async () => ({ success: true, message: "done" })),
+        },
+      ],
+    });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    provider.registerFunction({
+      name: "get_weather",
+      description: "Get weather",
+      parameters: { city: { type: "string", required: true } },
+      execute: vi.fn(async () => ({ success: true, message: "sunny" })),
+    });
+
+    await provider.sendMessage("what's the weather");
+
+    expect(capturedTools).toBeDefined();
+    const names = capturedTools.map((t: any) => t.name);
+    expect(names).toContain("constructor_tool");
+    expect(names).toContain("get_weather");
+  });
+});

@@ -206,6 +206,114 @@ describe("ORCH-03: mid-turn utterance aborts the active turn and starts a new on
   });
 });
 
+// ── CR-01: superseded turn must not corrupt conversation/messages ───────
+
+describe("CR-01: a superseded turn's stale STT result does not corrupt conversation", () => {
+  it("discards Turn A's stale utterance when Turn A's STT resolves after Turn B has already barged in", async () => {
+    let sttCallCount = 0;
+    const stt: STTProvider = {
+      name: "fake-stt",
+      supportsStreaming: false,
+      supportsRejection: false,
+      transcribe: vi.fn().mockImplementation(async () => {
+        sttCallCount++;
+        if (sttCallCount === 1) {
+          // Turn A: slow STT — resolves only after Turn B's barge-in has
+          // already aborted Turn A's controller.
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return { text: "turn A stale utterance" };
+        }
+        // Turn B: fast STT.
+        return { text: "turn B" };
+      }),
+    };
+
+    const llm = makeFakeLLM({ text: "reply", toolCalls: [] });
+    const vad = makeFakeVAD();
+    const config = makeBaseConfig({ vad, stt, llm });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    // Fire Turn A's utterance (slow STT in flight).
+    vad.onUtteranceReady?.(new Blob());
+    // Give Turn A's transcribe() call a moment to start before barging in.
+    await new Promise((resolve) => setTimeout(resolve, 1));
+
+    // Fire Turn B's utterance — barges in, aborting Turn A's controller.
+    vad.onUtteranceReady?.(new Blob());
+
+    // Wait long enough for Turn A's slow STT to resolve (so the OLD/buggy
+    // code would have pushed its stale utterance into conversation) and for
+    // Turn B to fully settle.
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const texts = provider.conversation.map((entry) => entry.text);
+    expect(texts).not.toContain("turn A stale utterance");
+    expect(texts).toContain("turn B");
+  });
+});
+
+// ── CR-02: sendMessage() participates in the single-active-turn invariant ─
+
+describe("CR-02: sendMessage() does not race a concurrent VAD turn", () => {
+  it("aborts the sendMessage turn's signal when a VAD utterance arrives mid-flight, with no duplicate assistant entries", async () => {
+    const capturedSignals: Array<AbortSignal | undefined> = [];
+    let completeCallCount = 0;
+
+    const llm: LLMProvider = {
+      name: "fake-llm",
+      supportsToolCalling: true,
+      supportsStreaming: false,
+      complete: vi.fn().mockImplementation(async (args: { signal?: AbortSignal }) => {
+        completeCallCount++;
+        capturedSignals.push(args.signal);
+        if (completeCallCount === 1) {
+          // First call (sendMessage's turn) is slow, so a VAD utterance can
+          // arrive while it is still in flight.
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        return { text: `reply-${completeCallCount}`, toolCalls: [] };
+      }),
+    };
+
+    const vad = makeFakeVAD();
+    const config = makeBaseConfig({ vad, llm });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    // Start sendMessage() but do not await yet.
+    const sendMessagePromise = provider.sendMessage("typed message");
+
+    // Poll until the sendMessage turn has registered its controller/signal
+    // with llm.complete().
+    for (let i = 0; i < 50 && capturedSignals.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    expect(capturedSignals.length).toBe(1);
+    expect(capturedSignals[0]?.aborted).toBe(false);
+
+    // Fire a VAD utterance while sendMessage()'s turn is still in flight.
+    vad.onUtteranceReady?.(new Blob());
+
+    // The sendMessage turn's captured signal must now be aborted — proving
+    // sendMessage() registered its own controller (CR-02) and was
+    // superseded by the VAD turn, instead of racing it uncoordinated.
+    expect(capturedSignals[0]?.aborted).toBe(true);
+
+    // Let everything settle.
+    await sendMessagePromise;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    // Single-active-turn invariant: no duplicate assistant entries for what
+    // should be one coherent surviving turn.
+    const assistantTexts = provider.conversation
+      .filter((entry) => entry.role === "assistant")
+      .map((entry) => entry.text);
+    const uniqueAssistantTexts = new Set(assistantTexts);
+    expect(assistantTexts.length).toBe(uniqueAssistantTexts.size);
+  });
+});
+
 // ── ORCH-05: Non-Error rejection normalization ──────────────────────────
 
 describe("ORCH-05: non-Error rejections are normalized to Error without crashing the session", () => {

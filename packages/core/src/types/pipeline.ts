@@ -167,11 +167,14 @@ export interface LLMProvider extends Provider {
    *
    * @param args.messages - Conversation history in role/content pairs.
    * @param args.tools - Optional plain-object tool definitions (CORE-03) the LLM may call.
+   * @param args.signal - Optional best-effort cancellation signal (D-01/D-02): providers may ignore it; the orchestrator discards superseded results.
    * @returns Normalized completion result with zero-or-more tool calls (D-04).
    */
   complete(args: {
     messages: Array<{ role: string; content: string }>;
     tools?: Tool[];
+    /** Optional best-effort cancellation signal (D-01/D-02): providers may ignore it; the orchestrator discards superseded results. */
+    signal?: AbortSignal;
   }): Promise<LLMCompletionResult>;
 }
 
@@ -193,6 +196,7 @@ export interface TTSProvider extends Provider {
    * @param opts.onAudioData - Optional callback fired with the analyser node once playback begins, for lip-sync.
    * @param opts.voice - Optional vendor-specific voice identifier.
    * @param opts.speed - Optional playback speed multiplier.
+   * @param opts.signal - Optional best-effort cancellation signal (D-01/D-02): providers may ignore it; the orchestrator discards superseded results.
    */
   speak(
     text: string,
@@ -201,6 +205,8 @@ export interface TTSProvider extends Provider {
       onAudioData?: (analyser: AnalyserNode, audioContext: AudioContext) => void;
       voice?: string;
       speed?: number;
+      /** Optional best-effort cancellation signal (D-01/D-02): providers may ignore it; the orchestrator discards superseded results. */
+      signal?: AbortSignal;
     }
   ): Promise<void>;
 }

@@ -14,7 +14,7 @@ This milestone takes khavee-sdk from a single hardcoded OpenAI voice pipeline to
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Core Interfaces & Tool-Calling** - Define vendor-neutral VAD/STT/LLM/TTS interfaces and a redesigned, shared ToolExecutor in `@khaveeai/core` (completed 2026-06-17)
-- [ ] **Phase 2: Generic Pipeline Orchestrator** - Build the `{vad, stt, llm, tts, tools}`-composing orchestrator that implements `RealtimeProvider`
+- [x] **Phase 2: Generic Pipeline Orchestrator** - Build the `{vad, stt, llm, tts, tools}`-composing orchestrator that implements `RealtimeProvider` (completed 2026-06-18)
 - [ ] **Phase 3: Python Backend Services** - Scaffold and harden `thonburian-stt` and `jai-tts` as standalone FastAPI services
 - [ ] **Phase 4: Vendor Adapters & Audio Contract** - Build thin HTTP adapter classes and pin the audio wire format with a round-trip test
 - [ ] **Phase 5: End-to-End Mixed-Vendor Demo & Documentation** - Wire everything into a working mixed-vendor demo with tool-calling, plus beginner docs
@@ -70,7 +70,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — GenericPipelineProvider orchestrator (barge-in, tool loop, config cooldown, error normalization) + adapter integration test + barrel exports
+- [x] 02-03-PLAN.md — GenericPipelineProvider orchestrator (barge-in, tool loop, config cooldown, error normalization) + adapter integration test + barrel exports
 
 ### Phase 3: Python Backend Services
 
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 2/3 | In Progress|  |
+| 2. Generic Pipeline Orchestrator | 3/3 | Complete   | 2026-06-18 |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

@@ -58,7 +58,19 @@ Plans:
   4. The VAD-to-mic-reopen cooldown is set via a constructor/config value (not a hardcoded constant), and changing it changes observed mic-reopen timing
   5. A provider throwing or rejecting with a non-Error value (e.g. a string or vendor-specific error object) reaches the orchestrator's error callback as a normalized `Error` instance without crashing the active session
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — D-01 signal? on pipeline interfaces + additive helper-class exports from openai-stt-tts + scaffold the generic-stt-tts package
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — Four OpenAI adapter classes (VAD/STT/LLM/TTS) wrapping the existing helpers, with tools+signal+tool_calls in the LLM adapter
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-03-PLAN.md — GenericPipelineProvider orchestrator (barge-in, tool loop, config cooldown, error normalization) + adapter integration test + barrel exports
 
 ### Phase 3: Python Backend Services
 
@@ -112,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 0/TBD | Not started | - |
+| 2. Generic Pipeline Orchestrator | 0/3 | Planned | - |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

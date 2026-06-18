@@ -14,7 +14,7 @@ This milestone takes khavee-sdk from a single hardcoded OpenAI voice pipeline to
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Core Interfaces & Tool-Calling** - Define vendor-neutral VAD/STT/LLM/TTS interfaces and a redesigned, shared ToolExecutor in `@khaveeai/core` (completed 2026-06-17)
-- [x] **Phase 2: Generic Pipeline Orchestrator** - Build the `{vad, stt, llm, tts, tools}`-composing orchestrator that implements `RealtimeProvider` (completed 2026-06-18)
+- [ ] **Phase 2: Generic Pipeline Orchestrator** - Build the `{vad, stt, llm, tts, tools}`-composing orchestrator that implements `RealtimeProvider`
 - [ ] **Phase 3: Python Backend Services** - Scaffold and harden `thonburian-stt` and `jai-tts` as standalone FastAPI services
 - [ ] **Phase 4: Vendor Adapters & Audio Contract** - Build thin HTTP adapter classes and pin the audio wire format with a round-trip test
 - [ ] **Phase 5: End-to-End Mixed-Vendor Demo & Documentation** - Wire everything into a working mixed-vendor demo with tool-calling, plus beginner docs

@@ -337,23 +337,159 @@ export class GenericPipelineProvider implements RealtimeProvider {
   // ── Private helpers ──────────────────────────────────────────────────────
 
   /**
-   * Full turn pipeline driven by a WAV blob from the VAD. Implemented in
-   * Task 2 (full-interruption barge-in, D-03). Stubbed here so the class
-   * compiles with the constructor/lifecycle methods from Task 1.
+   * Full turn pipeline driven by a WAV blob from the VAD.
+   *
+   * Full-interruption barge-in (D-03): unlike OpenAISTTTTSProvider's
+   * `_isTurnActive` guard (which DROPS new utterances arriving mid-turn —
+   * `if (this._isTurnActive) return;`), this aborts the active turn's
+   * controller AND immediately starts a new turn with the utterance that
+   * triggered the barge-in. Do NOT early-return on the active-turn branch.
    */
   private async runTurn(wav: Blob): Promise<void> {
-    void wav;
+    if (this.activeTurnController) {
+      this.activeTurnController.abort();
+      // Do NOT return here — D-03 requires immediately starting the NEW
+      // turn, contrasting with OpenAISTTTTSProvider's drop-and-return guard.
+    }
+    const controller = new AbortController();
+    this.activeTurnController = controller;
+    try {
+      this.setChatStatus("thinking");
+
+      const sttResult = await this.stt.transcribe(wav, { language: this.config.language });
+
+      // Ignore empty/whitespace-only or vendor-rejected utterances.
+      if (!sttResult.text || !sttResult.text.trim() || sttResult.rejected) {
+        if (controller.signal.aborted) return; // superseded — discard quietly
+        this.setChatStatus("ready");
+        return;
+      }
+
+      await this.runTurnFromText(sttResult.text, controller.signal);
+    } catch (error) {
+      if (controller.signal.aborted) return; // superseded by barge-in — not a real error (D-02/D-03)
+      this.onError?.(error instanceof Error ? error : new Error(String(error)));
+      this.setChatStatus("ready");
+    } finally {
+      if (this.activeTurnController === controller) {
+        this.activeTurnController = null;
+      }
+    }
   }
 
   /**
    * Turn pipeline from a known text string: append user message → bounded
-   * tool-calling loop → append assistant message → TTS playback → ready.
-   * Implemented in Task 2 (D-04/D-05 tool-calling loop). Stubbed here so
-   * the class compiles with the constructor/lifecycle methods from Task 1.
+   * multi-round tool-calling loop (D-04/D-05) → append assistant message →
+   * TTS playback → mic reopen with cooldown → ready.
+   *
+   * Shared by runTurn() (VAD path) and sendMessage() (text path). The
+   * `signal` parameter threads the active turn's AbortController.signal
+   * into both llm.complete() and tts.speak() (D-01) so barge-in can cancel
+   * in-flight work. Every await boundary that precedes a side effect is
+   * guarded by `signal?.aborted` to discard superseded results (Pitfall 3).
    */
   private async runTurnFromText(text: string, signal?: AbortSignal): Promise<void> {
-    void text;
-    void signal;
+    try {
+      // 1. Append user message to history and conversation
+      this.messages.push({ role: "user", content: text });
+      const userEntry: Conversation = {
+        id: crypto.randomUUID(),
+        role: "user",
+        text,
+        timestamp: new Date().toISOString(),
+        isFinal: true,
+        status: "final",
+      };
+      this.conversation.push(userEntry);
+      this.onConversationUpdate?.(this.conversation);
+
+      // 2. Bounded multi-round tool-calling loop (D-04/D-05).
+      let round = 0;
+      let result: { text?: string; toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> };
+      while (true) {
+        result = await this.llm.complete({
+          messages: this.messages,
+          tools: this.config.tools,
+          signal,
+        });
+
+        if (signal?.aborted) return; // superseded — discard before any side effect
+
+        if (result.toolCalls.length === 0) break; // final text reply (D-04 terminal condition)
+
+        round++;
+        if (round > MAX_TOOL_ROUNDS) {
+          throw new Error(`Tool-calling loop exceeded ${MAX_TOOL_ROUNDS} rounds`); // D-05 error path
+        }
+
+        for (const call of result.toolCalls) {
+          const toolResult = await this.toolExecutor.execute(call.name, call.args);
+          if (signal?.aborted) return; // superseded — discard before any side effect
+          this.onToolCall?.(call.name, call.args, toolResult);
+          // Phase-2-local tool-result-to-history round-trip convention
+          // (resolves RESEARCH Open Question 2): the vendor-neutral
+          // LLMProvider.complete() messages type has no role:"tool" member
+          // by design (CORE-06). Encode the result as a role:"user" message
+          // marked with `[tool_result id=<id> name=<name>]`; OpenAILLMAdapter
+          // parses this exact marker back into OpenAI's
+          // {role:"tool", tool_call_id, content} wire shape.
+          this.messages.push({
+            role: "user",
+            content: `[tool_result id=${call.id} name=${call.name}] ${toolResult.message}`,
+          });
+        }
+      }
+
+      if (signal?.aborted) return; // superseded — discard before any side effect
+
+      // 3. Append assistant message to history and conversation
+      const replyText = result.text ?? "";
+      this.messages.push({ role: "assistant", content: replyText });
+      const assistantEntry: Conversation = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text: replyText,
+        timestamp: new Date().toISOString(),
+        isFinal: true,
+        status: "final",
+      };
+      this.conversation.push(assistantEntry);
+      this.onConversationUpdate?.(this.conversation);
+
+      // 4. Trim history to prevent unbounded growth
+      this.trimHistory();
+
+      // 5. TTS playback — await mic pause so VAD is fully stopped before audio plays
+      await this.vad.pause();
+      this.micEnabled = false;
+      let speakingStatusSet = false;
+      await this.tts.speak(replyText, {
+        audioContext: this.audioOutputContext ?? new AudioContext(),
+        voice: this.config.voice,
+        speed: this.config.speed,
+        signal,
+        onAudioData: (analyser: AnalyserNode, ctx: AudioContext) => {
+          // Set "speaking" only when audio actually starts, not when text is ready
+          if (!speakingStatusSet) {
+            speakingStatusSet = true;
+            this.setChatStatus("speaking");
+          }
+          this.audioOutputAnalyser = analyser;
+          this.onAudioData?.(analyser, ctx);
+        },
+      });
+
+      if (signal?.aborted) return; // superseded — discard before any side effect
+
+      // 6. Resume VAD after the config-driven cooldown (D-08, ORCH-04) then ready.
+      await this.resumeWithCooldown();
+      this.setChatStatus("ready");
+    } catch (error) {
+      if (signal?.aborted) return; // superseded by barge-in — not a real error (D-02/D-03)
+      await this.resumeWithCooldown();
+      this.onError?.(error instanceof Error ? error : new Error(String(error)));
+      this.setChatStatus("ready");
+    }
   }
 
   /**
@@ -401,7 +537,3 @@ export class GenericPipelineProvider implements RealtimeProvider {
     this.messages = [...systemMessages, ...trimmed];
   }
 }
-
-// Referenced so tsc does not flag the module-scope constant as unused before
-// Task 2 wires it into the tool-calling loop's round cap check.
-void MAX_TOOL_ROUNDS;

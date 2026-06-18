@@ -78,7 +78,7 @@ Plans:
 
 **Wave 5** *(gap closure — GAP-02-05 registerFunction silent no-op)*
 
-- [ ] 02-05-PLAN.md — Close GAP-02-05: registerFunction() now appends a RealtimeTool→Tool-converted entry to a runtime tool list so post-construction tools are offered to the LLM (not just registered for dispatch) + regression test asserting the tool appears in the tools sent to llm.complete()
+- [x] 02-05-PLAN.md — Close GAP-02-05: registerFunction() now appends a RealtimeTool→Tool-converted entry to a runtime tool list so post-construction tools are offered to the LLM (not just registered for dispatch) + regression test asserting the tool appears in the tools sent to llm.complete()
 
 ### Phase 3: Python Backend Services
 
@@ -132,7 +132,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 4/4 | Complete   | 2026-06-18 |
+| 2. Generic Pipeline Orchestrator | 5/5 | Complete   | 2026-06-18 |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

@@ -161,28 +161,48 @@ function mapTool(tool: Tool): {
  * Phase-2 tool-result convention (re-emitting it as { role: "tool", ... })
  * and the (CR-03) assistant/tool_calls convention (re-emitting it as
  * { role: "assistant", content: null, tool_calls: [...] }).
+ *
+ * (WR-06) Both marker branches are gated on the message's role before the
+ * regex/JSON.parse runs: the tool-result branch only fires for role:"user"
+ * messages, and the assistant/tool_calls branch only fires for
+ * role:"assistant" messages. Without this gate, ordinary user text (or an
+ * STT transcript) that happens to start with "[assistant_tool_calls]" would
+ * be misrouted into JSON.parse and throw a SyntaxError, aborting an
+ * otherwise-legitimate turn. The assistant branch additionally wraps its
+ * JSON.parse in try/catch — a malformed marker payload on a genuine
+ * assistant-role message falls through to plain passthrough rather than
+ * crashing the turn.
  */
 function mapMessage(message: InputMessage): OutgoingMessage {
-  const toolResultMatch = TOOL_RESULT_PATTERN.exec(message.content);
-  if (toolResultMatch) {
-    const [, id, , content] = toolResultMatch;
-    return { role: "tool", tool_call_id: id, content };
+  if (message.role === "user") {
+    const toolResultMatch = TOOL_RESULT_PATTERN.exec(message.content);
+    if (toolResultMatch) {
+      const [, id, , content] = toolResultMatch;
+      return { role: "tool", tool_call_id: id, content };
+    }
   }
 
-  const assistantToolCallsMatch = ASSISTANT_TOOL_CALLS_PATTERN.exec(message.content);
-  if (assistantToolCallsMatch) {
-    const parsed: Array<{ id: string; name: string; args: Record<string, any> }> = JSON.parse(
-      assistantToolCallsMatch[1],
-    );
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: parsed.map((tc) => ({
-        id: tc.id,
-        type: "function",
-        function: { name: tc.name, arguments: JSON.stringify(tc.args) },
-      })),
-    };
+  if (message.role === "assistant") {
+    const assistantToolCallsMatch = ASSISTANT_TOOL_CALLS_PATTERN.exec(message.content);
+    if (assistantToolCallsMatch) {
+      try {
+        const parsed: Array<{ id: string; name: string; args: Record<string, any> }> = JSON.parse(
+          assistantToolCallsMatch[1],
+        );
+        return {
+          role: "assistant",
+          content: null,
+          tool_calls: parsed.map((tc) => ({
+            id: tc.id,
+            type: "function",
+            function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          })),
+        };
+      } catch {
+        // Malformed marker payload — fall through to passthrough rather
+        // than crashing the turn. (WR-06)
+      }
+    }
   }
 
   return { role: message.role, content: message.content };

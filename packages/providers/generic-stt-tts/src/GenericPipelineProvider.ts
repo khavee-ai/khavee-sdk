@@ -511,6 +511,21 @@ export class GenericPipelineProvider implements RealtimeProvider {
           throw new Error(`Tool-calling loop exceeded ${MAX_TOOL_ROUNDS} rounds`); // D-05 error path
         }
 
+        // (CR-03) Record the LLM's own assistant/tool_calls turn into history
+        // BEFORE the tool results below. Every OpenAI-compatible backend
+        // requires a role:"tool" message to be immediately preceded by the
+        // assistant message bearing the matching tool_calls entry — without
+        // this, round 2's request is rejected with HTTP 400. Encoded as a
+        // marker on a vendor-neutral { role; content } ChatMessage per the
+        // CORE-06 convention (same pattern as the [tool_result ...] marker
+        // below); OpenAILLMAdapter parses this exact marker back into
+        // OpenAI's { role: "assistant", content: null, tool_calls: [...] }
+        // wire shape.
+        this.messages.push({
+          role: "assistant",
+          content: `[assistant_tool_calls] ${JSON.stringify(result.toolCalls)}`,
+        });
+
         for (const call of result.toolCalls) {
           const toolResult = await this.toolExecutor.execute(call.name, call.args);
           if (signal?.aborted) return; // superseded — discard before any side effect

@@ -327,11 +327,24 @@ export class GenericPipelineProvider implements RealtimeProvider {
 
   /**
    * Send a text message (skips STT — text is already known) and play the
-   * TTS response. Threads the active turn's signal, if any, the same way
-   * the VAD-driven path does.
+   * TTS response. CR-02: owns the active turn controller exactly like
+   * runTurn() — aborts any in-flight turn, registers a fresh controller for
+   * this turn, and supersedes/is-superseded-by a concurrently-arriving
+   * VAD-driven turn instead of racing it uncoordinated.
    */
   async sendMessage(text: string): Promise<void> {
-    await this.runTurnFromText(text, this.activeTurnController?.signal);
+    if (this.activeTurnController) {
+      this.activeTurnController.abort();
+    }
+    const controller = new AbortController();
+    this.activeTurnController = controller;
+    try {
+      await this.runTurnFromText(text, controller.signal);
+    } finally {
+      if (this.activeTurnController === controller) {
+        this.activeTurnController = null;
+      }
+    }
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────
@@ -365,6 +378,11 @@ export class GenericPipelineProvider implements RealtimeProvider {
         return;
       }
 
+      // CR-01: re-check the signal after stt.transcribe() resolves — a turn
+      // aborted while its STT call was in flight must not proceed into
+      // runTurnFromText (mirrors the empty-text guard above).
+      if (controller.signal.aborted) return;
+
       await this.runTurnFromText(sttResult.text, controller.signal);
     } catch (error) {
       if (controller.signal.aborted) return; // superseded by barge-in — not a real error (D-02/D-03)
@@ -389,6 +407,11 @@ export class GenericPipelineProvider implements RealtimeProvider {
    * guarded by `signal?.aborted` to discard superseded results (Pitfall 3).
    */
   private async runTurnFromText(text: string, signal?: AbortSignal): Promise<void> {
+    // CR-01: a turn superseded before its first side effect must be
+    // discarded immediately — keeps the single-active-turn invariant by
+    // guaranteeing zero mutation of this.messages/this.conversation for an
+    // already-aborted signal.
+    if (signal?.aborted) return;
     try {
       // 1. Append user message to history and conversation
       this.messages.push({ role: "user", content: text });

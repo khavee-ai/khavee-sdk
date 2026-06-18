@@ -81,6 +81,13 @@ export class GenericPipelineProvider implements RealtimeProvider {
   private toolExecutor: ToolExecutor;
   private sessionId: string | null = null;
 
+  // Combined constructor-time + post-construction tool list actually
+  // offered to the LLM (GAP-02-05). config.pipelineTools alone was
+  // construction-time-only — registerFunction() previously updated only
+  // toolExecutor (dispatch), never this list (visibility), making a
+  // post-construction tool a silent no-op to the LLM.
+  private pipelineToolList: Tool[] = [];
+
   /** Internal chat history buffer (system + turns). */
   protected messages: ChatMessage[] = [];
 
@@ -138,6 +145,10 @@ export class GenericPipelineProvider implements RealtimeProvider {
 
     this.toolExecutor = new ToolExecutor();
     config.pipelineTools?.forEach((tool) => this.toolExecutor.register(tool.name, tool.execute));
+    // Seed the LLM-visibility list from config.pipelineTools (already Tool[],
+    // no conversion needed here — only registerFunction's RealtimeTool input
+    // needs conversion) (GAP-02-05).
+    this.pipelineToolList = [...(config.pipelineTools ?? [])];
 
     // Seed conversation history with the system prompt when provided
     if (this.config.instructions) {
@@ -149,12 +160,65 @@ export class GenericPipelineProvider implements RealtimeProvider {
 
   /**
    * Register a function/tool for function-calling post-construction.
-   * RealtimeTool.execute and Tool.execute share the same
-   * `(args) => Promise<{success, message}>` shape, so this is a direct
-   * registration onto the same ToolExecutor used by config.pipelineTools.
+   *
+   * Both halves of the tool-calling contract are updated (GAP-02-05):
+   *   1. Dispatch half (unchanged) — registers tool.execute on the same
+   *      ToolExecutor used by config.pipelineTools, so the LLM CAN invoke it.
+   *   2. Visibility half (the fix) — converts the RealtimeTool into a
+   *      vendor-neutral Tool and appends it to pipelineToolList, the
+   *      runtime list runTurnFromText offers the LLM, so the LLM actually
+   *      LEARNS the tool exists. Before this fix only the dispatch half was
+   *      updated, making post-construction registration a silent no-op.
+   *
+   * Idempotent-by-name (GAP-02-05): any existing pipelineToolList entry with
+   * the same tool.name is filtered out before the converted entry is
+   * pushed, so a repeated registration REPLACES rather than duplicates —
+   * mirroring ToolExecutor.register's Map-based overwrite-by-name dispatch
+   * semantics, since most vendor chat-completions APIs reject or misbehave
+   * on duplicate function names.
    */
   registerFunction(tool: RealtimeTool): void {
     this.toolExecutor.register(tool.name, tool.execute);
+
+    // (GAP-02-05) keeps registerFunction idempotent-by-name for the
+    // LLM-visibility list, matching the dispatch half above.
+    this.pipelineToolList = this.pipelineToolList.filter((t) => t.name !== tool.name);
+    this.pipelineToolList.push(this.realtimeToolToTool(tool));
+  }
+
+  /**
+   * Convert a legacy RealtimeTool into the vendor-neutral Tool shape
+   * (GAP-02-05). The two shapes are structurally incompatible — RealtimeTool
+   * carries a per-property `required?: boolean` map (see the
+   * GenericPipelineConfig doc comment above), while Tool requires a
+   * top-level `required?: string[]` array — so this is a conversion, not a
+   * type widen/narrow.
+   */
+  private realtimeToolToTool(tool: RealtimeTool): Tool {
+    const properties: Tool["parameters"]["properties"] = {};
+    const required: string[] = [];
+
+    for (const [key, descriptor] of Object.entries(tool.parameters)) {
+      properties[key] = {
+        type: descriptor.type,
+        description: descriptor.description,
+        enum: descriptor.enum,
+      };
+      if (descriptor.required === true) {
+        required.push(key);
+      }
+    }
+
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: "object",
+        properties,
+        ...(required.length > 0 ? { required } : {}),
+      },
+      execute: tool.execute,
+    };
   }
 
   /**
@@ -432,7 +496,9 @@ export class GenericPipelineProvider implements RealtimeProvider {
       while (true) {
         result = await this.llm.complete({
           messages: this.messages,
-          tools: this.config.pipelineTools,
+          // Combined constructor-time + post-construction tool list
+          // (GAP-02-05) — NOT the construction-time-only config field.
+          tools: this.pipelineToolList,
           signal,
         });
 

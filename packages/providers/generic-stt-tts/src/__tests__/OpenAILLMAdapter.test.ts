@@ -226,4 +226,53 @@ describe("ORCH-02/ORCH-05: OpenAILLMAdapter sends tools+signal, parses tool_call
     // the acceptance-criteria grep check in the plan; this test documents intent.
     expect(typeof (OpenAILLMAdapter.prototype as any).complete).toBe("function");
   });
+
+  it("WR-06: a role:user message starting with [assistant_tool_calls] passes through as plain content and does NOT throw", async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: "done" }), { status: 200 }),
+    );
+
+    const adapter = new OpenAILLMAdapter({ endpoint, authToken });
+
+    await expect(
+      adapter.complete({
+        messages: [
+          {
+            role: "user",
+            content: "[assistant_tool_calls] please call the weather tool for me",
+          },
+        ],
+      }),
+    ).resolves.toBeDefined();
+
+    const [, calledInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(calledInit.body as string);
+    expect(body.messages[0]).toEqual({
+      role: "user",
+      content: "[assistant_tool_calls] please call the weather tool for me",
+    });
+  });
+
+  it("WR-06: a role:assistant message with a malformed [assistant_tool_calls] payload passes through as plain content instead of throwing", async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: "done" }), { status: 200 }),
+    );
+
+    const adapter = new OpenAILLMAdapter({ endpoint, authToken });
+
+    await expect(
+      adapter.complete({
+        messages: [{ role: "assistant", content: "[assistant_tool_calls] not-json" }],
+      }),
+    ).resolves.toBeDefined();
+
+    const [, calledInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(calledInit.body as string);
+    expect(body.messages[0]).toEqual({
+      role: "assistant",
+      content: "[assistant_tool_calls] not-json",
+    });
+  });
 });

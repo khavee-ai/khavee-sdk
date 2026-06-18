@@ -1,0 +1,42 @@
+{
+  "name": "@khaveeai/providers-generic-stt-tts",
+  "version": "0.1.0",
+  "description": "Generic composable STT/LLM/TTS pipeline provider for Khavee AI SDK",
+  "author": "KhaveeAI <support@khaveeai.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/**/*",
+    "!dist/__tests__/**",
+    "package.json",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@khaveeai/core": "workspace:*",
+    "@khaveeai/providers-openai-stt-tts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  }
+}

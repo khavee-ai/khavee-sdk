@@ -35,15 +35,15 @@ const MAX_TOOL_ROUNDS = 5;
 /**
  * Configuration for the generic composable pipeline provider.
  *
- * `tools` here is intentionally typed `Tool[]` (the vendor-neutral
- * plain-object type from @khaveeai/core's tools.ts), narrowing the
- * inherited `RealtimeConfig.tools?: RealtimeTool[]` field. TypeScript
- * allows narrowing an inherited optional property to a structurally
- * compatible subtype at the type-checker level for object literal
- * assignment, and this narrowing compiles cleanly here — if a future
- * change to either Tool or RealtimeTool's shape makes this narrowing
- * incompatible, rename this field to `pipelineTools?: Tool[]` instead
- * (documented here per the plan's Claude's Discretion guidance).
+ * Tool-calling tools are declared as `pipelineTools?: Tool[]` — NOT as a
+ * narrowing of the inherited `RealtimeConfig.tools?: RealtimeTool[]` field.
+ * `Tool` (top-level `parameters.required?: string[]`) and `RealtimeTool`
+ * (per-property `parameters[key].required?: boolean`) are NOT structurally
+ * identical (confirmed by tsc rejecting the narrowing: "Property 'type' is
+ * incompatible with index signature" when `tools?: Tool[]` was attempted
+ * here) — per the plan's documented fallback, this field is renamed to
+ * `pipelineTools` and the inherited `tools?: RealtimeTool[]` field is left
+ * unused on this config type.
  */
 export interface GenericPipelineConfig extends RealtimeConfig {
   /** Voice Activity Detection stage implementation. */
@@ -54,8 +54,8 @@ export interface GenericPipelineConfig extends RealtimeConfig {
   llm: LLMProvider;
   /** Text-to-Speech stage implementation. */
   tts: TTSProvider;
-  /** Plain-object tools the LLM may invoke (CORE-03 — narrows RealtimeConfig.tools). */
-  tools?: Tool[];
+  /** Plain-object tools the LLM may invoke (CORE-03). Renamed from `tools` — see interface doc comment for why this does not narrow RealtimeConfig.tools. */
+  pipelineTools?: Tool[];
   /** VAD-to-mic-reopen cooldown (ms) after TTS playback ends. Default: 500 (D-08). */
   micReopenCooldownMs?: number;
 }
@@ -137,7 +137,7 @@ export class GenericPipelineProvider implements RealtimeProvider {
     this.tts = config.tts;
 
     this.toolExecutor = new ToolExecutor();
-    config.tools?.forEach((tool) => this.toolExecutor.register(tool.name, tool.execute));
+    config.pipelineTools?.forEach((tool) => this.toolExecutor.register(tool.name, tool.execute));
 
     // Seed conversation history with the system prompt when provided
     if (this.config.instructions) {
@@ -151,7 +151,7 @@ export class GenericPipelineProvider implements RealtimeProvider {
    * Register a function/tool for function-calling post-construction.
    * RealtimeTool.execute and Tool.execute share the same
    * `(args) => Promise<{success, message}>` shape, so this is a direct
-   * registration onto the same ToolExecutor used by config.tools.
+   * registration onto the same ToolExecutor used by config.pipelineTools.
    */
   registerFunction(tool: RealtimeTool): void {
     this.toolExecutor.register(tool.name, tool.execute);
@@ -409,7 +409,7 @@ export class GenericPipelineProvider implements RealtimeProvider {
       while (true) {
         result = await this.llm.complete({
           messages: this.messages,
-          tools: this.config.tools,
+          tools: this.config.pipelineTools,
           signal,
         });
 

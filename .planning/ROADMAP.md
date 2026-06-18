@@ -58,7 +58,7 @@ Plans:
   4. The VAD-to-mic-reopen cooldown is set via a constructor/config value (not a hardcoded constant), and changing it changes observed mic-reopen timing
   5. A provider throwing or rejecting with a non-Error value (e.g. a string or vendor-specific error object) reaches the orchestrator's error callback as a normalized `Error` instance without crashing the active session
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 Plans:
 **Wave 1**
 
@@ -75,6 +75,10 @@ Plans:
 **Wave 4** *(gap closure — ORCH-03 BLOCKED → SATISFIED)*
 
 - [x] 02-04-PLAN.md — Close ORCH-03 gap: fix CR-01 (abort guards in runTurnFromText + runTurn) and CR-02 (sendMessage AbortController ownership) + regression tests for stale-utterance discard and sendMessage-vs-concurrent-VAD coordination
+
+**Wave 5** *(gap closure — GAP-02-05 registerFunction silent no-op)*
+
+- [ ] 02-05-PLAN.md — Close GAP-02-05: registerFunction() now appends a RealtimeTool→Tool-converted entry to a runtime tool list so post-construction tools are offered to the LLM (not just registered for dispatch) + regression test asserting the tool appears in the tools sent to llm.complete()
 
 ### Phase 3: Python Backend Services
 

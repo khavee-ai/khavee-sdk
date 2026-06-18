@@ -58,7 +58,7 @@ Plans:
   4. The VAD-to-mic-reopen cooldown is set via a constructor/config value (not a hardcoded constant), and changing it changes observed mic-reopen timing
   5. A provider throwing or rejecting with a non-Error value (e.g. a string or vendor-specific error object) reaches the orchestrator's error callback as a normalized `Error` instance without crashing the active session
 
-**Plans**: 5 plans
+**Plans**: 6 plans
 Plans:
 **Wave 1**
 
@@ -79,6 +79,10 @@ Plans:
 **Wave 5** *(gap closure — GAP-02-05 registerFunction silent no-op)*
 
 - [x] 02-05-PLAN.md — Close GAP-02-05: registerFunction() now appends a RealtimeTool→Tool-converted entry to a runtime tool list so post-construction tools are offered to the LLM (not just registered for dispatch) + regression test asserting the tool appears in the tools sent to llm.complete()
+
+**Wave 6** *(gap closure — CR-03 multi-round tool-calling protocol violation)*
+
+- [ ] 02-06-PLAN.md — Close CR-03: tool-calling loop pushes the LLM's assistant/tool_calls turn into history (as an `[assistant_tool_calls] <json>` marker) before tool-result markers, and OpenAILLMAdapter.mapMessage() re-emits it as OpenAI's `{role:"assistant", content:null, tool_calls:[...]}` wire shape — fixing HTTP 400 on round 2+ of any real tool-calling conversation + orchestrator regression test (inspects round-2 args.messages) + adapter wire-shape unit test
 
 ### Phase 3: Python Backend Services
 
@@ -132,7 +136,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 5/5 | Complete   | 2026-06-18 |
+| 2. Generic Pipeline Orchestrator | 5/6 | Gap closure (CR-03) | - |
 | 3. Python Backend Services | 0/TBD | Not started | - |
 | 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

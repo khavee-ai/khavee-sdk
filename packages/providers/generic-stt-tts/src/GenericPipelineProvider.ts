@@ -624,19 +624,48 @@ export class GenericPipelineProvider implements RealtimeProvider {
   /**
    * Trim the internal messages buffer to prevent unbounded growth.
    *
-   * Strategy (ported verbatim from OpenAISTTTTSProvider):
+   * Strategy (ported from OpenAISTTTTSProvider, marker-pair-aware per WR-05):
    * - The system message (index 0) is ALWAYS preserved.
    * - Only the last `maxTurns * 2` non-system messages are kept (each turn =
-   *   one user message + one assistant message).
+   *   one user message + one assistant message) — EXCEPT that the kept
+   *   window's start boundary is shifted backward when a flat cut would
+   *   strand a `[tool_result ...]`-marked message without its preceding
+   *   `[assistant_tool_calls]` marker (CR-03's marker-pair convention).
+   *   Every OpenAI-compatible backend requires a role:"tool" message to be
+   *   immediately preceded by the assistant message bearing the matching
+   *   tool_calls entry — a flat slice that cuts between the two reintroduces
+   *   CR-03's exact HTTP-400 protocol violation once a long tool-calling
+   *   session pushes accumulated history past the trim threshold. (WR-05)
    *
-   * With maxTurns = 10 the buffer holds at most 21 entries (1 system + 20 turn messages).
+   * The kept window may therefore slightly exceed `maxNonSystem` when a
+   * marker group straddles the boundary — that is intentional and bounded
+   * by the size of the one group being pulled back in.
+   *
+   * With maxTurns = 10 the buffer holds at most 21 entries (1 system + 20 turn
+   * messages) in the no-markers case; marker groups straddling the boundary
+   * add at most one group's worth more.
    */
   protected trimHistory(maxTurns = 10): void {
     const systemMessages = this.messages.filter((m) => m.role === "system");
     const nonSystem = this.messages.filter((m) => m.role !== "system");
 
     const maxNonSystem = maxTurns * 2;
-    const trimmed = nonSystem.slice(-maxNonSystem);
+    let start = Math.max(0, nonSystem.length - maxNonSystem);
+
+    // (WR-05) Shift the cut boundary backward so an [assistant_tool_calls]
+    // marker and its following [tool_result ...] entries are never split.
+    // While the message at `start` is a [tool_result ...] (meaning the kept
+    // window begins mid-group, with its assistant predecessor cut off),
+    // shift `start` backward by one — pulling the predecessor (and any
+    // earlier contiguous tool-results of the same group) back into the kept
+    // window. Stop once the message at `start` is the group's
+    // [assistant_tool_calls] head (no longer a stranded tool-result) or the
+    // start of the array is reached.
+    while (start > 0 && nonSystem[start].content.startsWith("[tool_result ")) {
+      start--;
+    }
+
+    const trimmed = nonSystem.slice(start);
 
     this.messages = [...systemMessages, ...trimmed];
   }

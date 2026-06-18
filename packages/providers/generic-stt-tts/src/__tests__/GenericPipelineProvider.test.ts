@@ -481,6 +481,127 @@ describe("CR-03: multi-round tool-calling preserves the assistant/tool_calls pre
   });
 });
 
+// ── WR-05: trimHistory keeps [assistant_tool_calls] paired with its
+// [tool_result ...] markers across the trim boundary ──────────────────────
+
+describe("WR-05: trimHistory keeps [assistant_tool_calls] paired with its [tool_result ...] markers across the trim boundary", () => {
+  it("never strands a [tool_result ...] message without its preceding [assistant_tool_calls] marker, even under a nonuniform tool-calling cadence that pushes the unfixed flat-slice cut mid-group", async () => {
+    // WR-05 non-vacuity trace (against the UNFIXED flat slice, maxNonSystem = 20):
+    //   Turn 1 fires 3 tool calls in one round -> appends 6 non-system messages, at nonSystem indices:
+    //     0: user("msg 1")
+    //     1: [assistant_tool_calls]   (head of group 1, carries c1a + c1b + c1c)
+    //     2: [tool_result id=c1a ...]
+    //     3: [tool_result id=c1b ...]
+    //     4: [tool_result id=c1c ...]
+    //     5: assistant("done")        (final reply, turn 1)
+    //   Each later turn t (t>=2) fires 1 tool call -> appends 4 messages.
+    //   After turn N completes, nonSystem.length = 6 + 4*(N-1) = 4N + 2.
+    //   The flat slice computes start = max(0, len - 20) = max(0, 4N - 18).
+    //     Turn 5: len = 4*5 + 2 = 22, start = 22 - 20 = 2.
+    //   start = 2 -> the kept window BEGINS at nonSystem index 2 = [tool_result id=c1a ...],
+    //               whose [assistant_tool_calls] head (index 1) was CUT off the front of the slice
+    //               -> a STRANDED tool-result with NO preceding marker -> reproduces WR-05 exactly.
+    //   Why 3 (not 2) tool calls: with a 2-call first turn, len = 4N + 1 and start = 4N - 19, which is
+    //     never 2 or 3 (it is 1, 5, 9, ... -> the group head or a plain-user message, never stranded).
+    //     The +2 offset from a 3-call first turn is what lands the cut at index 2, INSIDE group 1.
+    //   The fixed marker-pair-aware trimHistory() detects nonSystem[2] startsWith("[tool_result ")
+    //     and shifts start back to index 1 (the [assistant_tool_calls] head), so the first kept
+    //     message is the marker head and no tool-result is stranded.
+
+    const captured: any[] = [];
+    let turnIndex = 0;
+    let callInTurn = 0;
+    const complete = vi.fn(async (a: any) => {
+      captured.push(a.messages.map((m: any) => ({ ...m })));
+      callInTurn++;
+      if (callInTurn === 1) {
+        // First complete() call of this turn fires the tool call(s).
+        if (turnIndex === 1) {
+          // Turn 1: THREE tool calls in one round.
+          return {
+            text: "",
+            toolCalls: [
+              { id: "c1a", name: "testTool", args: { n: 1 } },
+              { id: "c1b", name: "testTool", args: { n: 2 } },
+              { id: "c1c", name: "testTool", args: { n: 3 } },
+            ],
+          };
+        }
+        // Turns 2+: ONE tool call.
+        return {
+          text: "",
+          toolCalls: [{ id: `c${turnIndex}`, name: "testTool", args: { n: turnIndex } }],
+        };
+      }
+      // Second complete() call of this turn: final text reply, no more tool calls.
+      return { text: "done", toolCalls: [] };
+    });
+    const llm: LLMProvider = {
+      name: "fake-llm",
+      supportsToolCalling: true,
+      supportsStreaming: false,
+      complete,
+    };
+
+    const config = makeBaseConfig({
+      llm,
+      pipelineTools: [
+        {
+          name: "testTool",
+          description: "a test tool",
+          parameters: { type: "object", properties: {} },
+          execute: vi.fn(async () => ({ success: true, message: "tool ran" })),
+        },
+      ],
+    });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    // 8 turns guarantees the turn-5 trim (where start = 2) happens and that
+    // several later complete() calls capture the trimmed history that
+    // resulted from it.
+    for (let t = 1; t <= 8; t++) {
+      turnIndex = t;
+      callInTurn = 0;
+      await provider.sendMessage(`msg ${t}`);
+    }
+
+    // Scan EVERY captured messages array (not only the last) — the turn-5
+    // trim's stranding is reflected on subsequent captured complete() calls
+    // too. The assertion is GROUP-AWARE: a single [assistant_tool_calls]
+    // head is followed by one or more CONTIGUOUS [tool_result ...] siblings
+    // in the same group (turn 1 fires 3 calls, producing
+    // head -> c1a -> c1b -> c1c). A sibling tool-result is legitimately
+    // immediately preceded by ANOTHER tool-result (not the marker) — that
+    // is the expected structure and is NOT asserted against. For each
+    // [tool_result ...] message, walk backward over any contiguous
+    // [tool_result ...] siblings to the run's first member, then assert
+    // that member's index > 0 and its immediate predecessor is the
+    // [assistant_tool_calls] head.
+    for (const msgs of captured) {
+      for (let i = 0; i < msgs.length; i++) {
+        if (typeof msgs[i].content === "string" && msgs[i].content.startsWith("[tool_result ")) {
+          let groupStart = i;
+          while (
+            groupStart > 0 &&
+            typeof msgs[groupStart - 1].content === "string" &&
+            msgs[groupStart - 1].content.startsWith("[tool_result ")
+          ) {
+            groupStart--;
+          }
+          expect(groupStart).toBeGreaterThan(0);
+          expect(msgs[groupStart - 1].content.startsWith("[assistant_tool_calls]")).toBe(true);
+        }
+      }
+    }
+
+    // At least one trim fired and history did not grow unbounded.
+    const last = captured[captured.length - 1];
+    expect(last.length).toBeGreaterThan(0);
+    expect(last.length).toBeLessThan(30);
+  });
+});
+
 // ── ORCH-02 integration: real adapters compose into RealtimeProvider ────
 
 describe("ORCH-02 integration: GenericPipelineProvider composed from the four real OpenAI adapters", () => {

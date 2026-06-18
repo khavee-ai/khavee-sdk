@@ -130,3 +130,7 @@ None - no external service configuration required.
 ---
 *Phase: 02-generic-pipeline-orchestrator*
 *Completed: 2026-06-18*
+
+## Self-Check: PASSED
+
+All 8 created files verified present on disk (4 adapters, 3 test files, 1 postcss config); all 7 commit hashes (bf92698, 7ce8673, c335eda, aca4d85, de4033b, 9ce6c67, 22d0bbc) verified present in git log.

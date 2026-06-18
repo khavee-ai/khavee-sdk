@@ -21,12 +21,24 @@
  * marker when building the outgoing request body and re-emits the message
  * as OpenAI's actual `{ role: "tool", tool_call_id, content }` wire shape;
  * every other message passes through with its role/content unchanged.
+ *
+ * Assistant/tool_calls round-trip convention (CR-03): the orchestrator
+ * encodes the LLM's own tool_calls turn as a `role: "assistant"` message
+ * whose content starts with the marker `[assistant_tool_calls]` followed by
+ * the JSON-stringified ToolCall[] array (sibling convention to the
+ * tool-result marker above, same CORE-06 vendor-neutral-message rule). This
+ * adapter re-emits it as OpenAI's `{ role: "assistant", content: null,
+ * tool_calls: [...] }` wire shape so the required assistant→tool message
+ * ordering holds on round 2+ of a multi-round tool-calling conversation.
  */
 
 import { LLMProvider, LLMCompletionResult, ToolCall, Tool } from "@khaveeai/core";
 
 /** Regex recognizing the Phase-2 tool-result history-message convention. */
 const TOOL_RESULT_PATTERN = /^\[tool_result id=(\S+) name=(\S+)\]\s*([\s\S]*)$/;
+
+/** Regex recognizing the (CR-03) assistant/tool_calls history-message convention. */
+const ASSISTANT_TOOL_CALLS_PATTERN = /^\[assistant_tool_calls\]\s*([\s\S]*)$/;
 
 /** Constructor config for OpenAILLMAdapter. */
 export interface OpenAILLMAdapterConfig {
@@ -43,10 +55,15 @@ export interface OpenAILLMAdapterConfig {
 /** A single message in the conversation history, per LLMProvider.complete()'s args. */
 type InputMessage = { role: string; content: string };
 
-/** OpenAI wire-format message — either the standard role/content shape or a tool result. */
+/** OpenAI wire-format message — either the standard role/content shape, a tool result, or an assistant/tool_calls turn (CR-03). */
 type OutgoingMessage =
   | { role: string; content: string }
-  | { role: "tool"; tool_call_id: string; content: string };
+  | { role: "tool"; tool_call_id: string; content: string }
+  | {
+      role: "assistant";
+      content: null;
+      tool_calls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+    };
 
 /** Shape of the (possibly { data }-wrapped) Chat Completions proxy response. */
 type ToolCallWire = { id: string; function: { name: string; arguments: string } };
@@ -141,13 +158,32 @@ function mapTool(tool: Tool): {
 
 /**
  * Maps a single history message into OpenAI's wire shape, recognizing the
- * Phase-2 tool-result convention and re-emitting it as { role: "tool", ... }.
+ * Phase-2 tool-result convention (re-emitting it as { role: "tool", ... })
+ * and the (CR-03) assistant/tool_calls convention (re-emitting it as
+ * { role: "assistant", content: null, tool_calls: [...] }).
  */
 function mapMessage(message: InputMessage): OutgoingMessage {
-  const match = TOOL_RESULT_PATTERN.exec(message.content);
-  if (match) {
-    const [, id, , content] = match;
+  const toolResultMatch = TOOL_RESULT_PATTERN.exec(message.content);
+  if (toolResultMatch) {
+    const [, id, , content] = toolResultMatch;
     return { role: "tool", tool_call_id: id, content };
   }
+
+  const assistantToolCallsMatch = ASSISTANT_TOOL_CALLS_PATTERN.exec(message.content);
+  if (assistantToolCallsMatch) {
+    const parsed: Array<{ id: string; name: string; args: Record<string, any> }> = JSON.parse(
+      assistantToolCallsMatch[1],
+    );
+    return {
+      role: "assistant",
+      content: null,
+      tool_calls: parsed.map((tc) => ({
+        id: tc.id,
+        type: "function",
+        function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+      })),
+    };
+  }
+
   return { role: message.role, content: message.content };
 }

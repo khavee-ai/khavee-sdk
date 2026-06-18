@@ -429,6 +429,58 @@ describe("D-04/D-05: bounded multi-round tool-calling loop via ToolExecutor", ()
   });
 });
 
+// ── CR-03: multi-round tool-calling preserves the assistant/tool_calls
+// predecessor in history ──────────────────────────────────────────────────
+
+describe("CR-03: multi-round tool-calling preserves the assistant/tool_calls predecessor in history", () => {
+  it("round 2's complete() call carries the round-1 assistant/tool_calls marker immediately before the matching tool-result", async () => {
+    // Capture a SHALLOW COPY of args.messages per call — the orchestrator
+    // mutates this.messages in place between rounds, so capturing the live
+    // reference would show the final state for every call instead of what
+    // was actually sent on each round.
+    const captured: any[] = [];
+    const complete = vi.fn(async (a: any) => {
+      captured.push(a.messages.map((m: any) => ({ ...m })));
+      if (captured.length === 1) {
+        return { toolCalls: [{ id: "c1", name: "testTool", args: { x: 1 } }] };
+      }
+      return { text: "done", toolCalls: [] };
+    });
+    const llm: LLMProvider = {
+      name: "fake-llm",
+      supportsToolCalling: true,
+      supportsStreaming: false,
+      complete,
+    };
+
+    const config = makeBaseConfig({
+      llm,
+      pipelineTools: [
+        {
+          name: "testTool",
+          description: "a test tool",
+          parameters: { type: "object", properties: {} },
+          execute: vi.fn(async () => ({ success: true, message: "tool ran" })),
+        },
+      ],
+    });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    await provider.sendMessage("call the tool");
+
+    expect(complete).toHaveBeenCalledTimes(2);
+
+    const secondCallMessages = captured[1];
+    const aIdx = secondCallMessages.findIndex(
+      (m: any) => m.role === "assistant" && m.content.includes("[assistant_tool_calls]"),
+    );
+    expect(aIdx).toBeGreaterThanOrEqual(0);
+    expect(secondCallMessages[aIdx].content).toContain("c1");
+    expect(secondCallMessages[aIdx + 1].content).toContain("[tool_result id=c1");
+  });
+});
+
 // ── ORCH-02 integration: real adapters compose into RealtimeProvider ────
 
 describe("ORCH-02 integration: GenericPipelineProvider composed from the four real OpenAI adapters", () => {

@@ -182,6 +182,45 @@ describe("ORCH-02/ORCH-05: OpenAILLMAdapter sends tools+signal, parses tool_call
     ]);
   });
 
+  it("maps an [assistant_tool_calls] history message to { role: 'assistant', content: null, tool_calls: [...] }", async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: "done" }), { status: 200 }),
+    );
+
+    const adapter = new OpenAILLMAdapter({ endpoint, authToken });
+    await adapter.complete({
+      messages: [
+        { role: "user", content: "what's the weather" },
+        {
+          role: "assistant",
+          content:
+            "[assistant_tool_calls] " +
+            JSON.stringify([{ id: "c1", name: "get_weather", args: { city: "Bangkok" } }]),
+        },
+        { role: "user", content: "[tool_result id=c1 name=get_weather] sunny" },
+      ],
+    });
+
+    const [, calledInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(calledInit.body as string);
+    expect(body.messages).toEqual([
+      { role: "user", content: "what's the weather" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "c1",
+            type: "function",
+            function: { name: "get_weather", arguments: JSON.stringify({ city: "Bangkok" }) },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "c1", content: "sunny" },
+    ]);
+  });
+
   it("does NOT call ChatClient.complete for completion", () => {
     // No ChatClient import/usage in OpenAILLMAdapter — verified statically via
     // the acceptance-criteria grep check in the plan; this test documents intent.

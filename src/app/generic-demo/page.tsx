@@ -45,7 +45,7 @@ const genericProvider = new GenericPipelineProvider({
 });
 
 function GenericDemoPage() {
-  const { connect, disconnect, sendMessage, conversation, isConnected } = useRealtime();
+  const { connect, disconnect, sendMessage, conversation, isConnected, chatStatus } = useRealtime();
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -56,17 +56,21 @@ function GenericDemoPage() {
           <button
             onClick={connect}
             disabled={isConnected}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 hover:bg-blue-700 transition-colors"
           >
             {isConnected ? 'Connected' : 'Connect'}
           </button>
           <button
             onClick={disconnect}
             disabled={!isConnected}
-            className="px-6 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50"
+            className="px-6 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50 hover:bg-red-700 transition-colors"
           >
             Disconnect
           </button>
+          <div className="px-4 py-2 bg-gray-100 rounded-lg">
+            <span className="text-sm text-gray-600">Status: </span>
+            <span className="font-semibold text-gray-800">{chatStatus}</span>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 space-y-4 max-h-96 overflow-y-auto">
@@ -115,16 +119,47 @@ function GenericDemoPage() {
         </form>
 
         <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
-          <h2 className="font-semibold text-green-900 mb-2">Current Status</h2>
+          <h2 className="font-semibold text-green-900 mb-2">Pipeline Status</h2>
           <ul className="text-sm text-green-800 space-y-1">
-            <li>✓ STT: ThonburianSTTAdapter (real Thai Whisper at localhost:8001)</li>
+            <li>✓ STT: ThonburianSTTAdapter (Thai Whisper at localhost:8001)</li>
             <li>✓ LLM: OpenAILLMAdapter (GPT-4o)</li>
-            <li>✓ TTS: JaiTTSAdapter (real Thai TTS at localhost:8002)</li>
-            <li>• VAD: Mock (needs real MicVAD for audio input)</li>
+            <li>✓ TTS: JaiTTSAdapter (Thai TTS at localhost:8002)</li>
+            <li>• VAD: Mock (no real mic input - uses simulated audio)</li>
           </ul>
           <p className="mt-2 text-xs text-green-700">
-            Make sure thonburian-stt (port 8001) and jai-tts (port 8002) services are running.
-            Set NEXT_PUBLIC_OPENAI_API_KEY for LLM responses.
+            <strong>Before connecting:</strong>
+            <br />1. Start thonburian-stt: <code>cd ~/thonburian-stt && uvicorn main:app --reload --port 8001</code>
+            <br />2. Start jai-tts: <code>cd ~/jai-tts && uvicorn main:app --reload --port 8002</code>
+            <br />3. Set env var: <code>NEXT_PUBLIC_OPENAI_API_KEY=your_key_here</code>
+          </p>
+          <p className="mt-2 text-xs text-yellow-700">
+            <strong>Current limitation:</strong> VAD is mocked - no real microphone input. Text messages work, but voice input requires MicVAD integration.
+          </p>
+        </div>
+
+        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <h2 className="font-semibold text-blue-900 mb-2">Error Handling</h2>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• If thonburian-stt is down: STT calls fail with connection error</li>
+            <li>• If jai-tts is down: TTS calls fail with connection error</li>
+            <li>• If API key is missing: LLM calls fail with auth error</li>
+          </ul>
+          <p className="mt-2 text-xs text-blue-700">
+            Check browser console and network tab for detailed error messages.
+          </p>
+        </div>
+
+        <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+          <h2 className="font-semibold text-purple-900 mb-2">Audio Wire Format</h2>
+          <p className="text-sm text-purple-800">
+            See <code className="bg-purple-100 px-1">AUDIO_FORMAT.md</code> for exact audio specifications:
+          </p>
+          <ul className="text-sm text-purple-700 mt-1 space-y-1">
+            <li>• STT: 16kHz/mono/float32 WAV (VAD → Thonburian)</li>
+            <li>• TTS: 24kHz/mono/int16 WAV (JaiTTS → Browser)</li>
+          </ul>
+          <p className="mt-2 text-xs text-purple-700">
+            Run round-trip test: <code>vitest run src/app/generic-demo/__tests__/roundtrip-audio-contract.test.ts</code>
           </p>
         </div>
       </div>

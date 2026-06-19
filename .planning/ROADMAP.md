@@ -120,7 +120,16 @@ Plans:
   2. `JaiTTSProvider` implements `TTSProvider`, posts text to the `jai-tts` service over HTTP, and returns audio the rest of the pipeline can play without additional conversion
   3. The audio wire format (sample rate, encoding, channels) for both directions is written down in one place (code doc comment or README section) and a round-trip test (encode → POST → decode → assert format) passes for both services
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1** *(two independent adapters, zero file overlap — fully parallel)*
+
+- [ ] 04-01-PLAN.md — ThonburianSTTProvider: STTProvider adapter posting multipart "file" to thonburian-stt /transcribe, 60s timeout, D-04 language ignore + mocked-fetch unit tests (ADPT-01)
+- [ ] 04-02-PLAN.md — JaiTTSProvider: TTSProvider adapter POSTing {text} JSON to jai-tts /synthesize, WAV decode/playback via caller AudioContext, AbortSignal.any timeout+signal, D-04 voice/speed ignore + mocked-fetch/fake-AudioContext unit tests (ADPT-02)
+
+**Wave 2** *(blocked on Wave 1 — both adapters must exist)*
+
+- [ ] 04-03-PLAN.md — Barrel exports + consolidated audio wire-format README doc (both directions) + opt-in real-service round-trip script outside src/ (ADPT-03)
 
 ### Phase 5: End-to-End Mixed-Vendor Demo & Documentation
 
@@ -148,5 +157,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
 | 2. Generic Pipeline Orchestrator | 7/7 | Complete   | 2026-06-18 |
 | 3. Python Backend Services | 2/2 | Complete   | 2026-06-19 |
-| 4. Vendor Adapters & Audio Contract | 0/TBD | Not started | - |
+| 4. Vendor Adapters & Audio Contract | 0/3 | Not started | - |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

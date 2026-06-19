@@ -100,8 +100,14 @@ Plans:
   3. POSTing Thai text to `jai-tts` (at `/Users/whitemalt/Documents/jai-tts`) returns synthesized, audibly-correct WAV audio using the JaiTTS-F5TTS voice-cloning model
   4. Calling `jai-tts` with text alone (no reference audio supplied) succeeds and produces speech in the bundled default Thai reference voice
   5. Both services load their model exactly once at startup (not per-request) and reject or queue concurrent requests beyond a configured limit (e.g. semaphore) instead of crashing under concurrent load
+     *(Note: the semaphore/concurrency-gating half of this criterion is descoped for Phase 3 per CONTEXT.md D-01 — only model-load-once is implemented; BACK-02 hallucination rejection is likewise deferred.)*
 
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+**Wave 1** *(both services are independent sibling repos with zero file overlap — fully parallel)*
+
+- [ ] 03-01-PLAN.md — thonburian-stt FastAPI service: lifespan model-load-once (CUDA→MPS→CPU) + POST /transcribe (multipart→{"text"}) using biodatlab/whisper-th-large-v3-combined; BACK-01, BACK-02 (deferral documented), BACK-05 (load-once half)
+- [ ] 03-02-PLAN.md — jai-tts FastAPI service: flowtts git-install trust-boundary checkpoint + license-verified default Thai reference voice + FlowTTSPipeline signature verification + POST /synthesize (JSON text→raw WAV bytes); BACK-03, BACK-04, BACK-05 (load-once half)
 
 ### Phase 4: Vendor Adapters & Audio Contract
 

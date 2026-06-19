@@ -16,19 +16,19 @@
 
 ### Generic Pipeline Orchestrator
 
-- [ ] **ORCH-01**: Developer can construct a working voice pipeline by passing `{vad, stt, llm, tts, tools}` to a single generic orchestrator class
-- [ ] **ORCH-02**: The generic orchestrator implements the existing `RealtimeProvider` interface, so no changes are required in `@khaveeai/react` to use it
-- [ ] **ORCH-03**: User's in-progress speech cancels in-flight LLM/TTS work (barge-in/interruption) via an `AbortSignal`-style hook on the active providers
-- [ ] **ORCH-04**: The VAD-to-mic-reopen cooldown timing is a configurable value, not a hardcoded constant, so it can be tuned per TTS vendor's audio characteristics
-- [ ] **ORCH-05**: The orchestrator normalizes all provider errors to `Error` instances and forwards them via callback without crashing the active session
+- [x] **ORCH-01**: Developer can construct a working voice pipeline by passing `{vad, stt, llm, tts, tools}` to a single generic orchestrator class
+- [x] **ORCH-02**: The generic orchestrator implements the existing `RealtimeProvider` interface, so no changes are required in `@khaveeai/react` to use it
+- [x] **ORCH-03**: User's in-progress speech cancels in-flight LLM/TTS work (barge-in/interruption) via an `AbortSignal`-style hook on the active providers
+- [x] **ORCH-04**: The VAD-to-mic-reopen cooldown timing is a configurable value, not a hardcoded constant, so it can be tuned per TTS vendor's audio characteristics
+- [x] **ORCH-05**: The orchestrator normalizes all provider errors to `Error` instances and forwards them via callback without crashing the active session
 
 ### Python Backend Services
 
 - [ ] **BACK-01**: `thonburian-stt` service accepts a posted audio utterance and returns Thai transcription text using `biodatlab/whisper-th-large-v3-combined` (or base variant)
-- [ ] **BACK-02**: `thonburian-stt` detects and rejects/flags hallucinated transcriptions on short or silent audio segments (silence-trimming + repetition-ratio check), rather than always returning the model's raw output as valid speech
+- [ ] **BACK-02**: ~~`thonburian-stt` detects and rejects/flags hallucinated transcriptions on short or silent audio segments (silence-trimming + repetition-ratio check), rather than always returning the model's raw output as valid speech~~ — **Deferred for Phase 3** (demo-simplicity tradeoff, see `03-CONTEXT.md` D-01). Revisit if this moves past demo use.
 - [ ] **BACK-03**: `jai-tts` service accepts posted Thai text and returns synthesized WAV audio using the JaiTTS-F5TTS voice-cloning model
 - [ ] **BACK-04**: `jai-tts` ships with a validated default Thai reference voice sample so a caller can synthesize speech by passing text alone, without supplying their own reference audio
-- [ ] **BACK-05**: Both backend services load their model once at startup and gate concurrent inference requests (e.g. a semaphore) to avoid out-of-memory crashes under concurrent load
+- [ ] **BACK-05**: ~~Both backend services load their model once at startup and gate concurrent inference requests (e.g. a semaphore) to avoid out-of-memory crashes under concurrent load~~ — **Deferred for Phase 3** (demo-simplicity tradeoff, see `03-CONTEXT.md` D-01). Model-load-once-at-startup still applies; the semaphore/gating half is what's deferred. Revisit if this moves past demo use.
 
 ### Vendor Adapters & Demo
 
@@ -79,16 +79,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-04 | Phase 1 | Complete |
 | CORE-05 | Phase 1 | Complete |
 | CORE-06 | Phase 1 | Complete |
-| ORCH-01 | Phase 2 | Pending |
-| ORCH-02 | Phase 2 | Pending |
-| ORCH-03 | Phase 2 | Pending |
-| ORCH-04 | Phase 2 | Pending |
-| ORCH-05 | Phase 2 | Pending |
+| ORCH-01 | Phase 2 | Complete |
+| ORCH-02 | Phase 2 | Complete |
+| ORCH-03 | Phase 2 | Complete |
+| ORCH-04 | Phase 2 | Complete |
+| ORCH-05 | Phase 2 | Complete |
 | BACK-01 | Phase 3 | Pending |
-| BACK-02 | Phase 3 | Pending |
+| BACK-02 | Phase 3 | Deferred |
 | BACK-03 | Phase 3 | Pending |
 | BACK-04 | Phase 3 | Pending |
-| BACK-05 | Phase 3 | Pending |
+| BACK-05 | Phase 3 | Deferred |
 | ADPT-01 | Phase 4 | Pending |
 | ADPT-02 | Phase 4 | Pending |
 | ADPT-03 | Phase 4 | Pending |
@@ -102,4 +102,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-17*
-*Last updated: 2026-06-17 after roadmap creation*
+*Last updated: 2026-06-19 — ORCH-01..05 marked Complete (Phase 2 verified); BACK-02/BACK-05 marked Deferred per 03-CONTEXT.md D-01*

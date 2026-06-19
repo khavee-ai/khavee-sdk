@@ -109,27 +109,27 @@ Plans:
 - [x] 03-01-PLAN.md — thonburian-stt FastAPI service: lifespan model-load-once (CUDA→MPS→CPU) + POST /transcribe (multipart→{"text"}) using biodatlab/whisper-th-large-v3-combined; BACK-01, BACK-02 (deferral documented), BACK-05 (load-once half)
 - [x] 03-02-PLAN.md — jai-tts FastAPI service: flowtts git-install trust-boundary checkpoint + license-verified default Thai reference voice + FlowTTSPipeline signature verification + POST /synthesize (JSON text→raw WAV bytes); BACK-03, BACK-04, BACK-05 (load-once half)
 
-### Phase 4: Vendor Adapters & Audio Contract
+### Phase 4: Generic Demo Page
 
-**Goal**: khavee-sdk can talk to both Python services through the Phase 1 interfaces over a pinned, tested audio wire format
-**Depends on**: Phase 1, Phase 3
+**Goal**: A Next.js demo page uses GenericPipelineProvider with JaiTTS/Thonburian as STT/TTS backends, proving the generic pipeline works end-to-end with non-OpenAI vendors. Adapter glue code lives in the demo app (not exported from SDK).
+**Depends on**: Phase 1, Phase 2, Phase 3
 **Requirements**: ADPT-01, ADPT-02, ADPT-03
 **Success Criteria** (what must be TRUE):
 
-  1. `ThonburianSTTProvider` implements `STTProvider`, posts a whole VAD-segmented utterance to the `thonburian-stt` service over HTTP, and returns the transcribed text through the standard interface method
-  2. `JaiTTSProvider` implements `TTSProvider`, posts text to the `jai-tts` service over HTTP, and returns audio the rest of the pipeline can play without additional conversion
-  3. The audio wire format (sample rate, encoding, channels) for both directions is written down in one place (code doc comment or README section) and a round-trip test (encode → POST → decode → assert format) passes for both services
+  1. A Next.js demo page exists (e.g., `/generic-demo`) that wires `GenericPipelineProvider` with demo-local adapter implementations for STT (POST to `thonburian-stt` /transcribe) and TTS (POST to `jai-tts` /synthesize)
+  2. Running the demo executes a full voice turn — speech in via VAD, transcription via Thonburian STT, completion via an LLM, speech out via JaiTTS — and the audio played back is recognizably correct Thai speech
+  3. The audio wire format (sample rate, encoding, channels) for both directions is documented in a code comment or README section, and a round-trip test (encode → POST → decode → assert format) passes for both services
 
 **Plans**: 3 plans
 Plans:
-**Wave 1** *(two independent adapters, zero file overlap — fully parallel)*
+**Wave 1** *(demo-local STT/TTS adapters — no file overlap)*
 
-- [ ] 04-01-PLAN.md — ThonburianSTTProvider: STTProvider adapter posting multipart "file" to thonburian-stt /transcribe, 60s timeout, D-04 language ignore + mocked-fetch unit tests (ADPT-01)
-- [ ] 04-02-PLAN.md — JaiTTSProvider: TTSProvider adapter POSTing {text} JSON to jai-tts /synthesize, WAV decode/playback via caller AudioContext, AbortSignal.any timeout+signal, D-04 voice/speed ignore + mocked-fetch/fake-AudioContext unit tests (ADPT-02)
+- [ ] 04-01-PLAN.md — Thonburian STT adapter in demo app (src/app/generic-demo/adapters/ThonburianSTTAdapter.ts) posting multipart "file" to thonburian-stt /transcribe, 60s timeout + demo page scaffold with GenericPipelineProvider wiring (ADPT-01)
+- [ ] 04-02-PLAN.md — JaiTTS adapter in demo app (src/app/generic-demo/adapters/JaiTTSAdapter.ts) POSTing {text} JSON to jai-tts /synthesize, WAV decode/playback via Web Audio API, AbortSignal timeout + integrate with demo page (ADPT-02)
 
-**Wave 2** *(blocked on Wave 1 — both adapters must exist)*
+**Wave 2** *(blocked on Wave 1 — both adapters must work)*
 
-- [ ] 04-03-PLAN.md — Barrel exports + consolidated audio wire-format README doc (both directions) + opt-in real-service round-trip script outside src/ (ADPT-03)
+- [ ] 04-03-PLAN.md — Audio wire format documentation + round-trip test script + demo page polish (UI, VAD cooldown tuning, LLM provider wiring) (ADPT-03)
 
 ### Phase 5: End-to-End Mixed-Vendor Demo & Documentation
 

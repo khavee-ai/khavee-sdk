@@ -11,6 +11,9 @@ importers:
       '@khaveeai/core':
         specifier: workspace:*
         version: link:packages/core
+      '@khaveeai/providers-generic-stt-tts':
+        specifier: workspace:*
+        version: link:packages/providers/generic-stt-tts
       '@khaveeai/providers-mock':
         specifier: workspace:*
         version: link:packages/providers/mock

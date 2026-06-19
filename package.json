@@ -47,6 +47,7 @@
     "@khaveeai/core": "workspace:*",
     "@khaveeai/providers-mock": "workspace:*",
     "@khaveeai/providers-openai-realtime": "workspace:*",
+    "@khaveeai/providers-generic-stt-tts": "workspace:*",
     "@khaveeai/providers-pgvector": "workspace:*",
     "@khaveeai/react": "workspace:*",
     "@pixiv/three-vrm": "^3.4.2",

@@ -3,22 +3,6 @@
  * jai-tts FastAPI service (port 8002), receives raw WAV audio bytes, decodes
  * them via the caller-supplied AudioContext, and plays them through dual-path
  * nodes (analyser + destination) for lip-sync compatibility.
- *
- * This adapter implements the TTSProvider interface from @khaveeai/core but lives
- * in the demo app (not exported from the SDK package) as proof that the generic
- * pipeline works with non-OpenAI vendors.
- *
- * Wire format (verified in 04-CONTEXT.md):
- * - Request: POST /synthesize with JSON {"text": "<Thai text>"}
- * - Response: raw audio/wav bytes (24kHz/mono/16-bit)
- * - No auth (local demo service)
- * - Voice and speed are hardcoded server-side (opts ignored per CONTEXT.md D-04)
- * - 60s timeout via AbortSignal.timeout() + opts?.signal composition
- *
- * Playback pattern replicates TTSPlayer.speak():
- * - decodeAudioData() → AudioBuffer
- * - AudioBufferSourceNode → dual AnalyserNode + destination
- * - source.start() to begin playback
  */
 
 import { TTSProvider } from "@khaveeai/core";
@@ -44,25 +28,25 @@ export class JaiTTSAdapter implements TTSProvider {
 
   async speak(
     text: string,
-    audioContext: AudioContext,
-    opts?: { voice?: string; speed?: number; signal?: AbortSignal }
+    opts: {
+      audioContext: AudioContext;
+      onAudioData?: (analyser: AnalyserNode, audioContext: AudioContext) => void;
+      voice?: string;
+      speed?: number;
+      signal?: AbortSignal;
+    }
   ): Promise<void> {
-    // Note: opts?.voice and opts?.speed are silently ignored per CONTEXT.md D-04
-    // (jai-tts hardcodes voice and speed server-side)
-
     try {
-      // Compose 60s timeout with caller-supplied signal (AbortSignal.any)
-      const timeout = AbortSignal.timeout(60000); // 60 seconds
-      const signal = opts?.signal
+      // Compose 60s timeout with caller-supplied signal
+      const timeout = AbortSignal.timeout(60000);
+      const signal = opts.signal
         ? AbortSignal.any([timeout, opts.signal].filter(Boolean))
         : timeout;
 
       // POST text to jai-tts
       const response = await fetch(`${this.baseUrl}/synthesize`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
         signal,
       });
@@ -72,36 +56,35 @@ export class JaiTTSAdapter implements TTSProvider {
         throw new Error(`JaiTTS error: ${response.status} ${body}`);
       }
 
-      // Get raw audio bytes
+      // Get raw audio bytes and decode
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
+      const audioBuffer = await opts.audioContext.decodeAudioData(arrayBuffer);
 
-      // Decode via caller-supplied AudioContext (auto-resamples jai-tts's 24kHz)
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-      // Create playback node with dual-path routing (analyser + destination)
-      const source = audioContext.createBufferSource();
+      // Create playback node
+      const source = opts.audioContext.createBufferSource();
       source.buffer = audioBuffer;
 
-      // Create analyser for lip-sync (same pattern as TTSPlayer)
-      const analyser = audioContext.createAnalyser();
+      // Create analyser for lip-sync
+      const analyser = opts.audioContext.createAnalyser();
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0.6;
 
-      // Connect: source → analyser → destination (dual path)
-      source.connect(analyser);
-      analyser.connect(audioContext.destination);
+      // Call onAudioData callback if provided
+      if (opts.onAudioData) {
+        opts.onAudioData(analyser, opts.audioContext);
+      }
 
-      // Start playback
+      // Connect and play
+      source.connect(analyser);
+      analyser.connect(opts.audioContext.destination);
       source.start();
 
-      // Return promise that resolves when playback ends
-      return new Promise((resolve, reject) => {
+      // Wait for playback to complete
+      return new Promise((resolve) => {
         source.onended = () => resolve();
-        source.onerror = (e) => reject(new Error(`JaiTTS playback error: ${e}`));
       });
     } catch (error) {
-      // Normalize non-Error values to Error instances
       throw error instanceof Error ? error : new Error(String(error));
     }
   }

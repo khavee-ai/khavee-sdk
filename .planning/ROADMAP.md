@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Core Interfaces & Tool-Calling** - Define vendor-neutral VAD/STT/LLM/TTS interfaces and a redesigned, shared ToolExecutor in `@khaveeai/core` (completed 2026-06-17)
 - [x] **Phase 2: Generic Pipeline Orchestrator** - Build the `{vad, stt, llm, tts, tools}`-composing orchestrator that implements `RealtimeProvider` (completed 2026-06-18)
 - [x] **Phase 3: Python Backend Services** - Scaffold and harden `thonburian-stt` and `jai-tts` as standalone FastAPI services (completed 2026-06-19)
-- [ ] **Phase 4: Vendor Adapters & Audio Contract** - Build thin HTTP adapter classes and pin the audio wire format with a round-trip test
+- [x] **Phase 4: Vendor Adapters & Audio Contract** - Build thin HTTP adapter classes and pin the audio wire format with a round-trip test (completed 2026-06-19)
 - [ ] **Phase 5: End-to-End Mixed-Vendor Demo & Documentation** - Wire everything into a working mixed-vendor demo with tool-calling, plus beginner docs
 
 ## Phase Details
@@ -124,12 +124,12 @@ Plans:
 Plans:
 **Wave 1** *(demo-local STT/TTS adapters — no file overlap)*
 
-- [ ] 04-01-PLAN.md — Thonburian STT adapter in demo app (src/app/generic-demo/adapters/ThonburianSTTAdapter.ts) posting multipart "file" to thonburian-stt /transcribe, 60s timeout + demo page scaffold with GenericPipelineProvider wiring (ADPT-01)
-- [ ] 04-02-PLAN.md — JaiTTS adapter in demo app (src/app/generic-demo/adapters/JaiTTSAdapter.ts) POSTing {text} JSON to jai-tts /synthesize, WAV decode/playback via Web Audio API, AbortSignal timeout + integrate with demo page (ADPT-02)
+- [x] 04-01-PLAN.md — Thonburian STT adapter in demo app (src/app/generic-demo/adapters/ThonburianSTTAdapter.ts) posting multipart "file" to thonburian-stt /transcribe, 60s timeout + demo page scaffold with GenericPipelineProvider wiring (ADPT-01)
+- [x] 04-02-PLAN.md — JaiTTS adapter in demo app (src/app/generic-demo/adapters/JaiTTSAdapter.ts) POSTing {text} JSON to jai-tts /synthesize, WAV decode/playback via Web Audio API, AbortSignal timeout + integrate with demo page (ADPT-02)
 
 **Wave 2** *(blocked on Wave 1 — both adapters must work)*
 
-- [ ] 04-03-PLAN.md — Audio wire format documentation + round-trip test script + demo page polish (UI, VAD cooldown tuning, LLM provider wiring) (ADPT-03)
+- [x] 04-03-PLAN.md — Audio wire format documentation + round-trip test script + demo page polish (UI, VAD cooldown tuning, LLM provider wiring) (ADPT-03)
 
 ### Phase 5: End-to-End Mixed-Vendor Demo & Documentation
 
@@ -157,5 +157,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
 | 2. Generic Pipeline Orchestrator | 7/7 | Complete   | 2026-06-18 |
 | 3. Python Backend Services | 2/2 | Complete   | 2026-06-19 |
-| 4. Vendor Adapters & Audio Contract | 0/3 | Not started | - |
+| 4. Vendor Adapters & Audio Contract | 3/3 | Complete   | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |

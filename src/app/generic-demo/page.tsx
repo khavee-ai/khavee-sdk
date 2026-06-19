@@ -1,11 +1,12 @@
 'use client';
 
-import { GenericPipelineProvider } from '@khaveeai/providers/generic-stt-tts';
+import { GenericPipelineProvider, OpenAILLMAdapter } from '@khaveeai/providers/generic-stt-tts';
 import { KhaveeProvider, useRealtime } from '@khaveeai/react';
 import { VADProvider, LLMProvider, TTSProvider } from '@khaveeai/core';
 import { ThonburianSTTAdapter } from './adapters/ThonburianSTTAdapter';
+import { JaiTTSAdapter } from './adapters/JaiTTSAdapter';
 
-// ── Mock adapters for initial scaffold ─────────────────────────────────────
+// ── VAD remains mock (will use real MicVAD in polish phase) ─────────────────
 
 class MockVADProvider implements VADProvider {
   readonly name = 'mock-vad';
@@ -24,51 +25,16 @@ class MockVADProvider implements VADProvider {
   onError?: (callback: (error: Error) => void) => void;
 }
 
-// STT is now the real Thonburian adapter (04-01 Task 3)
-// LLM and TTS remain mocks until 04-02
-const stt = new ThonburianSTTAdapter();
-
-class MockLLMProvider implements LLMProvider {
-  readonly name = 'mock-llm';
-  readonly supportsToolCalling = false;
-  readonly supportsStreaming = false;
-
-  async complete(args: { messages: { role: string; content: string }[] }): Promise<{
-    text: string;
-    toolCalls?: { id: string; name: string; args: Record<string, any> }[];
-  }> {
-    const lastUserMessage = args.messages.filter(m => m.role === 'user').pop();
-    console.log('[MockLLM] completing with messages:', args.messages.length);
-    return {
-      text: `[Mock LLM response to: "${lastUserMessage?.content || 'empty'}" - will be replaced with real LLM]`,
-    };
-  }
-}
-
-class MockTTSProvider implements TTSProvider {
-  readonly name = 'mock-tts';
-  readonly supportsStreaming = false;
-
-  async speak(text: string, audioContext: AudioContext, opts?: { voice?: string; speed?: number; signal?: AbortSignal }): Promise<void> {
-    console.log('[MockTTS] speaking:', text);
-    // Create a simple beep for mock audio
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.frequency.value = 440;
-    gainNode.gain.value = 0.1;
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.1);
-  }
-}
-
-// ── Demo page component ─────────────────────────────────────────────────────
+// ── Pipeline instantiation ─────────────────────────────────────────────────────
+// All four stages: VAD (mock), STT (real), LLM (real), TTS (real)
 
 const vad = new MockVADProvider();
-const stt = new MockSTTProvider();
-const llm = new MockLLMProvider();
-const tts = new MockTTSProvider();
+const stt = new ThonburianSTTAdapter();
+const llm = new OpenAILLMAdapter({
+  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY || '',
+  model: 'gpt-4o',
+});
+const tts = new JaiTTSAdapter();
 
 const genericProvider = new GenericPipelineProvider({
   vad,
@@ -152,11 +118,13 @@ function GenericDemoPage() {
           <h2 className="font-semibold text-green-900 mb-2">Current Status</h2>
           <ul className="text-sm text-green-800 space-y-1">
             <li>✓ STT: ThonburianSTTAdapter (real Thai Whisper at localhost:8001)</li>
-            <li>• LLM: Mock (will be OpenAILLMAdapter in 04-02)</li>
-            <li>• TTS: Mock (will be JaiTTSAdapter in 04-02)</li>
+            <li>✓ LLM: OpenAILLMAdapter (GPT-4o)</li>
+            <li>✓ TTS: JaiTTSAdapter (real Thai TTS at localhost:8002)</li>
+            <li>• VAD: Mock (needs real MicVAD for audio input)</li>
           </ul>
           <p className="mt-2 text-xs text-green-700">
-            Make sure thonburian-stt service is running at localhost:8001 for STT to work.
+            Make sure thonburian-stt (port 8001) and jai-tts (port 8002) services are running.
+            Set NEXT_PUBLIC_OPENAI_API_KEY for LLM responses.
           </p>
         </div>
       </div>

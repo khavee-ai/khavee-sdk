@@ -481,10 +481,11 @@ import { JaiTTSProvider } from "../src/adapters/JaiTTSProvider";
 describe("ADPT-03: real-service audio wire-format round trip", () => {
   it("thonburian-stt: posts a real WAV utterance and gets back Thai text", async () => {
     const provider = new ThonburianSTTProvider(); // defaults to localhost:8001
-    // NOTE: requires a real fixture WAV file matching the 16kHz/mono/float32
-    // format produced by @ricky0123/vad-web's encodeWAV() — see audio
-    // wire-format doc for exact bytes-on-the-wire spec.
-    const fixtureBlob = /* load fixture WAV as Blob */ undefined as unknown as Blob;
+    // NOTE: build the fixture inline with a hand-written WAV-format-code-3
+    // encoder (16kHz/mono/float32) — do NOT import @ricky0123/vad-web here,
+    // it is not a dependency of generic-stt-tts and would break tsc. See the
+    // audio wire-format doc for the exact bytes-on-the-wire spec.
+    const fixtureBlob = /* encodeFloat32Wav(sineWave, 16000) as Blob */ undefined as unknown as Blob;
     const result = await provider.transcribe(fixtureBlob);
     expect(typeof result.text).toBe("string");
     expect(result.text.length).toBeGreaterThan(0);
@@ -518,17 +519,19 @@ describe("ADPT-03: real-service audio wire-format round trip", () => {
 | A2 | `AbortSignal.timeout()`'s abort reason name is `"TimeoutError"` (distinct from manual `.abort()`'s default `"AbortError"`) | Common Pitfalls (Pitfall 5) | Low-Medium — this is standard-spec behavior (WHATWG Fetch/Streams spec), not vendor-specific, but was not independently re-verified against the exact DOMException name string in this session's Node version; if the exact string differs, only the pitfall's "how to detect" guidance (not the adapter's actual correctness) is affected, since the recommended approach (a) is to NOT special-case it at all |
 | A3 | The opt-in round-trip script requires a real fixture WAV file matching 16kHz/mono/float32 format, which does not yet exist anywhere in the repo | Code Examples | Medium — if no such fixture is created as part of this phase's plan, ADPT-03's round-trip test cannot actually run end-to-end; the planner must include a task to either record one or synthesize one (e.g. via `@ricky0123/vad-web`'s own `encodeWAV` fed a generated sine wave / silence buffer) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `STTProvider.transcribe()`'s interface need an `opts.signal` param added, or does `ThonburianSTTProvider` only ever use its own internal timeout signal?**
+   - RESOLVED: No interface change. `STTProvider.transcribe()` keeps its current signature (no `opts.signal` added to Phase 1's `pipeline.ts`). `ThonburianSTTProvider` uses `AbortSignal.timeout(this.timeoutMs)` alone on the STT side — no `AbortSignal.any()` composition, no external-signal threading — staying within the phase's "No orchestrator wiring" boundary.
    - What we know: `pipeline.ts`'s current `STTProvider.transcribe(audio: Blob, opts?: { language?: string }): Promise<STTResult>` signature has NO `signal` field — only `TTSProvider.speak()` and `LLMProvider.complete()` have `opts.signal`. This appears to be intentional (whole-utterance STT calls are typically not mid-flight-cancelled the way TTS playback or LLM streaming is), not an oversight.
    - What's unclear: Whether this phase should add `opts?.signal` to `STTProvider` as an interface change (touching Phase 1's contract) or whether `ThonburianSTTProvider` should simply use `AbortSignal.timeout(this.timeoutMs)` alone with no external-signal composition for the STT side.
    - Recommendation: Treat this as in-scope for the planner to decide, but lean toward NOT modifying `pipeline.ts` in this phase — CONTEXT.md's phase boundary says "No orchestrator wiring" and modifying a Phase 1 interface is arguably orchestrator-adjacent contract work, not adapter work. `ThonburianSTTProvider` likely only needs `AbortSignal.timeout(this.timeoutMs)` alone (no `AbortSignal.any()` composition needed on the STT side at all, only on the TTS side where `opts.signal` already exists). Flag for `/gsd:discuss-phase` confirmation if the planner disagrees.
 
 2. **What fixture audio does the round-trip test (D-05/D-06) actually POST to `thonburian-stt`?**
+   - RESOLVED: Generate the fixture with a hand-written inline WAV encoder in the round-trip script itself — NOT a `@ricky0123/vad-web` import. That package is a dependency of `openai-stt-tts` only, not of `generic-stt-tts`, so importing it would fail to resolve under pnpm's strict isolation and break `tsc --noEmit`. The script builds a WAV-format-code-3 (IEEE float PCM, 1 channel, 16000 Hz, 32-bit) `Blob` from a deterministic `Float32Array`, matching the documented STT wire format. This is dev-tooling-only code, so an inline encoder is lower-risk than adding a cross-package dependency for a script.
    - What we know: It must be a real WAV blob in the 16kHz/mono/float32 format `@ricky0123/vad-web`'s `encodeWAV()` produces (per the now-documented wire format), since D-05 requires hitting the real service, not mocks.
    - What's unclear: Whether to commit a small recorded/synthesized fixture WAV file to the repo (binary asset in git) or generate one programmatically at test-run time (e.g., a short sine-wave or silence buffer encoded via the same `encodeWAV` utility, accepting that Whisper will produce a low-confidence or empty transcript for synthetic audio — which is still a valid format/round-trip proof even if the *content* assertion is loose).
-   - Recommendation: Generate the fixture programmatically via `@ricky0123/vad-web`'s `utils.encodeWAV()` fed a deterministic `Float32Array` (e.g., a short sine wave) at test-run time — avoids committing a binary fixture and avoids dependency on a specific recorded phrase. The test's assertions should focus on format/structure (response is non-empty string, request succeeds) rather than exact transcript content, since synthetic audio won't produce meaningful Thai speech.
+   - Recommendation: Generate the fixture programmatically at test-run time via a hand-written inline WAV-format-code-3 encoder fed a deterministic `Float32Array` (e.g., a short sine wave) — avoids committing a binary fixture, avoids dependency on a specific recorded phrase, AND avoids importing `@ricky0123/vad-web` (not available to `generic-stt-tts`). The test's assertions should focus on format/structure (response is a string, request succeeds) rather than exact transcript content, since synthetic audio won't produce meaningful Thai speech.
 
 ## Environment Availability
 

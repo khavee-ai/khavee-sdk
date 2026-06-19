@@ -33,16 +33,18 @@ uvicorn main:app --reload --port 8002
 
 ### 2. Configure OpenAI API Key
 
-Set your OpenAI API key as an environment variable:
+The LLM stage calls OpenAI through a server-side proxy route
+(`src/app/api/generic-chat-proxy/route.ts`), so the key is never exposed to
+the browser. Set it as a server-side environment variable:
 
 ```bash
-export NEXT_PUBLIC_OPENAI_API_KEY=your_openai_api_key_here
+export OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-Or create a `.env.local` file in the khavee-sdk root:
+Or create a `.env` / `.env.local` file in the khavee-sdk root:
 
 ```
-NEXT_PUBLIC_OPENAI_API_KEY=sk-your-key-here
+OPENAI_API_KEY=sk-your-key-here
 ```
 
 ### 3. Start the Next.js Dev Server
@@ -122,7 +124,7 @@ To make this a complete voice demo:
 - Verify the service started successfully
 
 ### "Auth error" or "Missing API key"
-- Set NEXT_PUBLIC_OPENAI_API_KEY environment variable
+- Set OPENAI_API_KEY (server-side) environment variable
 - Restart the Next.js dev server after setting the key
 
 ### No audio playback

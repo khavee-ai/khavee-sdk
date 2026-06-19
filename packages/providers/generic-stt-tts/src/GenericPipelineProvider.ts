@@ -26,6 +26,7 @@ import {
   STTProvider,
   LLMProvider,
   TTSProvider,
+  LLMCompletionResult,
   Tool,
 } from "@khaveeai/core";
 
@@ -492,7 +493,7 @@ export class GenericPipelineProvider implements RealtimeProvider {
 
       // 2. Bounded multi-round tool-calling loop (D-04/D-05).
       let round = 0;
-      let result: { text?: string; toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> };
+      let result: LLMCompletionResult;
       while (true) {
         result = await this.llm.complete({
           messages: this.messages,
@@ -563,25 +564,30 @@ export class GenericPipelineProvider implements RealtimeProvider {
       // 4. Trim history to prevent unbounded growth
       this.trimHistory();
 
-      // 5. TTS playback — await mic pause so VAD is fully stopped before audio plays
-      await this.vad.pause();
-      this.micEnabled = false;
-      let speakingStatusSet = false;
-      await this.tts.speak(replyText, {
-        audioContext: this.audioOutputContext ?? new AudioContext(),
-        voice: this.config.voice,
-        speed: this.config.speed,
-        signal,
-        onAudioData: (analyser: AnalyserNode, ctx: AudioContext) => {
-          // Set "speaking" only when audio actually starts, not when text is ready
-          if (!speakingStatusSet) {
-            speakingStatusSet = true;
-            this.setChatStatus("speaking");
-          }
-          this.audioOutputAnalyser = analyser;
-          this.onAudioData?.(analyser, ctx);
-        },
-      });
+      // 5. TTS playback — await mic pause so VAD is fully stopped before audio plays.
+      // Skip entirely when there's no text to speak (e.g. a tool-only final
+      // round where the LLM returns an empty string) — vendors are not
+      // guaranteed to handle empty input gracefully.
+      if (replyText.trim()) {
+        await this.vad.pause();
+        this.micEnabled = false;
+        let speakingStatusSet = false;
+        await this.tts.speak(replyText, {
+          audioContext: this.audioOutputContext ?? new AudioContext(),
+          voice: this.config.voice,
+          speed: this.config.speed,
+          signal,
+          onAudioData: (analyser: AnalyserNode, ctx: AudioContext) => {
+            // Set "speaking" only when audio actually starts, not when text is ready
+            if (!speakingStatusSet) {
+              speakingStatusSet = true;
+              this.setChatStatus("speaking");
+            }
+            this.audioOutputAnalyser = analyser;
+            this.onAudioData?.(analyser, ctx);
+          },
+        });
+      }
 
       if (signal?.aborted) return; // superseded — discard before any side effect
 

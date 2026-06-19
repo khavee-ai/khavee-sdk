@@ -1,46 +1,17 @@
 'use client';
 
-import { GenericPipelineProvider, OpenAILLMAdapter } from '@khaveeai/providers-generic-stt-tts';
+import { GenericPipelineProvider, OpenAILLMAdapter, OpenAIVADAdapter } from '@khaveeai/providers-generic-stt-tts';
 import { KhaveeProvider, useRealtime } from '@khaveeai/react';
-import { VADProvider } from '@khaveeai/core';
 import { ThonburianSTTAdapter } from './adapters/ThonburianSTTAdapter';
 import { JaiTTSAdapter } from './adapters/JaiTTSAdapter';
 
-// Simple mock VAD for testing
-class SimpleMockVAD implements VADProvider {
-  readonly name = 'mock-vad';
-  private listening = false;
-
-  async connect() {
-    this.listening = true;
-    console.log('[MockVAD] connected');
-  }
-
-  async disconnect() {
-    this.listening = false;
-    console.log('[MockVAD] disconnected');
-  }
-
-  async pause() {
-    console.log('[MockVAD] paused');
-  }
-
-  async resume() {
-    console.log('[MockVAD] resumed');
-  }
-
-  isListening() {
-    return this.listening;
-  }
-}
-
 // Create pipeline providers
-const vad = new SimpleMockVAD();
+const vad = new OpenAIVADAdapter();
 const stt = new ThonburianSTTAdapter();
 const llm = new OpenAILLMAdapter({
-  endpoint: 'https://api.openai.com/v1/chat/completions',
-  authToken: process.env.NEXT_PUBLIC_OPENAI_API_KEY || '',
-  model: 'gpt-4o',
+  endpoint: '/api/generic-chat-proxy',
+  authToken: 'local-dev', // proxy reads the real key from server-side OPENAI_API_KEY
+  model: 'gpt-4o-mini',
 });
 const tts = new JaiTTSAdapter();
 
@@ -95,18 +66,7 @@ function GenericDemoPage() {
           </button>
         </form>
 
-        <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
-          <h2 className="font-semibold text-green-900 mb-2">Status</h2>
-          <ul className="text-sm text-green-800 space-y-1">
-            <li>✓ STT: ThonburianSTTAdapter (localhost:8001)</li>
-            <li>✓ LLM: OpenAILLMAdapter (GPT-4o)</li>
-            <li>✓ TTS: JaiTTSAdapter (localhost:8002)</li>
-            <li>• VAD: SimpleMockVAD (no real mic)</li>
-          </ul>
-          <p className="mt-2 text-xs text-green-700">
-            Set NEXT_PUBLIC_OPENAI_API_KEY and start both services before connecting.
-          </p>
-        </div>
+    
       </div>
     </div>
   );

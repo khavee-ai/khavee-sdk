@@ -2,7 +2,8 @@
 
 import { GenericPipelineProvider } from '@khaveeai/providers/generic-stt-tts';
 import { KhaveeProvider, useRealtime } from '@khaveeai/react';
-import { VADProvider, STTProvider, LLMProvider, TTSProvider } from '@khaveeai/core';
+import { VADProvider, LLMProvider, TTSProvider } from '@khaveeai/core';
+import { ThonburianSTTAdapter } from './adapters/ThonburianSTTAdapter';
 
 // ── Mock adapters for initial scaffold ─────────────────────────────────────
 
@@ -23,16 +24,9 @@ class MockVADProvider implements VADProvider {
   onError?: (callback: (error: Error) => void) => void;
 }
 
-class MockSTTProvider implements STTProvider {
-  readonly name = 'mock-stt';
-  readonly supportsStreaming = false;
-  readonly supportsRejection = false;
-
-  async transcribe(audio: Blob, opts?: { language?: string }): Promise<{ text: string; rejected?: boolean }> {
-    console.log('[MockSTT] transcribing audio of size:', audio.size);
-    return { text: '[Mock STT transcription - will be replaced with Thonburian]' };
-  }
-}
+// STT is now the real Thonburian adapter (04-01 Task 3)
+// LLM and TTS remain mocks until 04-02
+const stt = new ThonburianSTTAdapter();
 
 class MockLLMProvider implements LLMProvider {
   readonly name = 'mock-llm';
@@ -154,15 +148,15 @@ function GenericDemoPage() {
           </button>
         </form>
 
-        <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-          <h2 className="font-semibold text-yellow-900 mb-2">Current Status</h2>
-          <ul className="text-sm text-yellow-800 space-y-1">
-            <li>• STT: Mock (will be ThonburianSTTAdapter)</li>
-            <li>• LLM: Mock (will be OpenAILLMAdapter)</li>
-            <li>• TTS: Mock (will be JaiTTSAdapter)</li>
+        <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
+          <h2 className="font-semibold text-green-900 mb-2">Current Status</h2>
+          <ul className="text-sm text-green-800 space-y-1">
+            <li>✓ STT: ThonburianSTTAdapter (real Thai Whisper at localhost:8001)</li>
+            <li>• LLM: Mock (will be OpenAILLMAdapter in 04-02)</li>
+            <li>• TTS: Mock (will be JaiTTSAdapter in 04-02)</li>
           </ul>
-          <p className="mt-2 text-xs text-yellow-700">
-            Make sure thonburian-stt (port 8001) and jai-tts (port 8002) services are running before replacing mocks.
+          <p className="mt-2 text-xs text-green-700">
+            Make sure thonburian-stt service is running at localhost:8001 for STT to work.
           </p>
         </div>
       </div>

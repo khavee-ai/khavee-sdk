@@ -19,13 +19,13 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 - ✓ Define core provider interfaces: STTProvider, TTSProvider, VADProvider, and an LLMProvider with tool-calling support — Validated in Phase 1 (`packages/core/src/types/pipeline.ts`)
 - ✓ Beginner-friendly tool-calling API: plain object `{ name, description, parameters, handler }` — Validated in Phase 1 (`packages/core/src/types/tools.ts`)
 - ✓ Promote/dedupe the existing `ToolExecutor` into `packages/core`, adapted to the new generic LLMProvider interface — Validated in Phase 1 (CORE-05; both provider packages now re-export from `@khaveeai/core` for backward compatibility)
+- ✓ Build a generic pipeline orchestrator that composes any combination of these interfaces (pipecat-style) — Validated in Phase 2 (`GenericPipelineProvider`)
+- ✓ New `packages/providers/generic-stt-tts` package implementing the orchestrator + interfaces — Validated in Phase 2
+- ✓ New `thonburian-stt` backend service: Python server wrapping `biodatlab/whisper-th-large-v3-combined` (Thonburian Whisper v3), simple HTTP endpoint, audio in → Thai text out — Validated in Phase 3 (BACK-01, BACK-05 load-once half; BACK-02 explicitly deferred per D-01)
+- ✓ New `jai-tts` backend service: Python server wrapping `JTS-AI/JaiTTS-F5TTS` via F5-TTS's FlowTTSPipeline, bundled default Thai reference voice, simple HTTP endpoint, text in → WAV audio out — Validated in Phase 3 (BACK-03, BACK-04, BACK-05 load-once half; BACK-05 semaphore half explicitly deferred per D-01)
 
 ### Active
 
-- [ ] Build a generic pipeline orchestrator that composes any combination of these interfaces (pipecat-style)
-- [ ] New `packages/providers/generic-stt-tts` package implementing the orchestrator + interfaces
-- [ ] New `thonburian-stt` backend service: Python server wrapping `biodatlab/whisper-th-large-v3-combined` (Thonburian Whisper v3), simple HTTP endpoint, audio in → Thai text out
-- [ ] New `jai-tts` backend service: Python server wrapping `JTS-AI/JaiTTS-F5TTS` via F5-TTS's FlowTTSPipeline, bundled default Thai reference voice, simple HTTP endpoint, text in → WAV audio out
 - [ ] khavee-sdk adapter classes (e.g. ThonburianSTTProvider, JaiTTSProvider) implementing the new interfaces, talking to these two services over streaming-chunked HTTP
 - [ ] End-to-end demo: generic-stt-tts pipeline using Thonburian STT + an LLM + JaiTTS, proving STT/TTS can come from different, non-OpenAI, mixed vendors with tool-calling working
 - [ ] Documentation/examples showing how a beginner wires up a custom STT/TTS vendor and registers a tool
@@ -45,9 +45,9 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 - The single seam the rest of the SDK depends on today is `RealtimeProvider` in `packages/core/src/types/realtime.ts`.
 - `ToolExecutor.ts` is duplicated byte-for-byte between `openai-stt-tts` and `openai-realtime` (flagged in `.planning/codebase/CONCERNS.md`) — dedup target during this work.
 - An orphaned legacy `LLMProvider`/`TTSProvider` abstraction already exists in `packages/core/src/types/mock.ts`, unrelated to `RealtimeProvider` and not wired into any current hook — should not be confused with the new interfaces being designed here; may need cleanup or reconciliation.
-- `thonburian-stt` and `jai-tts` are currently empty sibling directories (`/Users/whitemalt/Documents/thonburian-stt`, `/Users/whitemalt/Documents/jai-tts`) — greenfield Python services to scaffold from scratch.
+- `thonburian-stt` and `jai-tts` (`/Users/whitemalt/Documents/thonburian-stt`, `/Users/whitemalt/Documents/jai-tts`) are now scaffolded FastAPI services (Phase 3) — sibling repos to khavee-sdk, no `.git` of their own yet, each with `main.py`/`requirements.txt`/`README.md`. `thonburian-stt` runs on port 8001, `jai-tts` on port 8002.
 - Thonburian Whisper: `biodatlab/whisper-th-large-v3-combined` on Hugging Face, run via `transformers.pipeline("automatic-speech-recognition", ...)`, supports `chunk_length_s` for longer audio, Apache 2.0.
-- JaiTTS: the GitHub repo (`JTS-AI-Team/JaiTTS`) is benchmark/eval code only — no deployable server. The actual model is `JTS-AI/JaiTTS-F5TTS` on Hugging Face, an F5-TTS-based Thai voice-cloning model with a custom XLM-R duration predictor, run via a `FlowTTSPipeline` from a "ThonburianTTS" inference repo (needs `torch`, `cached-path`, `librosa`, `transformers`, `f5-tts`, ffmpeg). Requires reference audio + reference text + generation text (zero-shot cloning) — needs a bundled default Thai voice sample for simple text-in/audio-out usage. Apache 2.0.
+- JaiTTS: the GitHub repo (`JTS-AI-Team/JaiTTS`) is benchmark/eval code only — no deployable server. The actual model is `JTS-AI/JaiTTS-F5TTS` on Hugging Face, an F5-TTS-based Thai voice-cloning model with a custom XLM-R duration predictor, run via a `FlowTTSPipeline` from the `biodatlab/thonburian-tts` inference repo (the `flowtts` package). **Phase 3 finding:** that repo's PyPI/git packaging is broken (no `__init__.py` files, so `pip install git+...` silently installs no actual source) — the working install requires cloning the repo, adding empty `__init__.py` markers, then installing the patched local clone (documented in `jai-tts/README.md`). The verified `FlowTTSPipeline` API is a callable `__call__(text, ref_voice, output_file, ref_text, speed, check_duration) -> filepath`, not the `.generate()` shown on the HF model card. Default reference voice is a Google FLEURS (CC BY 4.0) clip, bundled at `jai-tts/assets/`.
 - Communication protocol decided: streaming-chunked HTTP — SDK buffers VAD-segmented utterances and POSTs each one to the backend service, rather than persistent WebSocket streaming (neither model supports true incremental/partial streaming).
 
 ## Constraints
@@ -65,7 +65,8 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 | Tool-calling: plain object + handler (no Zod/decorators) | Matches JSON-schema shape every LLM vendor's tool-calling API already expects; zero added dependency; simplest for beginners | — Pending |
 | Tool-calling is a core LLMProvider capability, not per-provider opt-in | Bedrock/Gemini providers built later just implement it instead of needing a retrofit | — Pending |
 | Promote/dedupe existing `ToolExecutor.ts` into `packages/core` | Already duplicated byte-for-byte across two packages (flagged in CONCERNS.md); reuse over rewrite | — Pending |
-| STT/TTS backend protocol: streaming-chunked HTTP, not WebSocket | Neither Whisper nor F5-TTS-based JaiTTS support true incremental/partial transcription or synthesis — utterance-at-a-time HTTP matches reality | — Pending |
+| STT/TTS backend protocol: streaming-chunked HTTP, not WebSocket | Neither Whisper nor F5-TTS-based JaiTTS support true incremental/partial transcription or synthesis — utterance-at-a-time HTTP matches reality | Validated in Phase 3 (`POST /transcribe`, `POST /synthesize`) |
+| BACK-02 (hallucination rejection) and BACK-05's semaphore half deferred for Phase 3 | Demo-scoped proof of the SDK abstraction, not production-hardening; threshold tuning/semaphore sizing not worth it yet | Deferred — tracked in REQUIREMENTS.md, revisit if this moves past demo use |
 | Bedrock and Gemini adapters out of scope this milestone | They were illustrative of "any vendor" — Thonburian + JaiTTS are the real proof vendors; interface design alone must keep the door open | — Pending |
 
 ## Evolution
@@ -86,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-18 — Phase 1 (core-interfaces-tool-calling) complete*
+*Last updated: 2026-06-19 — Phase 3 (python-backend-services) complete*

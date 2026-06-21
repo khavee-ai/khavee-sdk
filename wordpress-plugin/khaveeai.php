@@ -27,6 +27,7 @@ if ( file_exists( $khaveeai_autoloader ) ) {
 	require $khaveeai_autoloader;
 }
 
-// TODO(plan 06-03): Instantiate the Khavee\Plugin\Plugin composition root and
-// call its boot() method here once Plugin.php exists (wires ConfigSource,
-// TokenProvider, and the REST SessionController together via rest_api_init).
+// Boot the composition root on plugins_loaded — after the autoload
+// require above, so the SessionController instance it constructs is
+// ready before WordPress fires rest_api_init.
+add_action( 'plugins_loaded', array( '\\Khavee\\Plugin\\Plugin', 'boot' ) );

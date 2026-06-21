@@ -174,8 +174,8 @@ Plans:
 Plans:
 **Wave 1** *(two independent strategy seams — no file overlap)*
 
-- [ ] 06-01-PLAN.md — ConfigSourceInterface + WpOptionsConfigSource (ARCH-01) + plugin bootstrap + Composer PSR-4 autoload
-- [ ] 06-02-PLAN.md — TokenProviderInterface + OpenAiDirectTokenProvider (ARCH-02): wp_remote_post to client_secrets, value->ephemeralToken remap, detail-free failure normalization + standalone harness
+- [x] 06-01-PLAN.md — ConfigSourceInterface + WpOptionsConfigSource (ARCH-01) + plugin bootstrap + Composer PSR-4 autoload
+- [x] 06-02-PLAN.md — TokenProviderInterface + OpenAiDirectTokenProvider (ARCH-02): wp_remote_post to client_secrets, value->ephemeralToken remap, detail-free failure normalization + standalone harness
 
 **Wave 2** *(blocked on Wave 1 — needs both interfaces)*
 
@@ -233,7 +233,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Python Backend Services | 2/2 | Complete | 2026-06-19 |
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
-| 6. PHP Backend Core — Config/Token Strategies + REST Contract | 0/TBD | Not started | - |
+| 6. PHP Backend Core — Config/Token Strategies + REST Contract | 2/4 | In Progress|  |
 | 7. Admin Settings Page | 0/TBD | Not started | - |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
 </content>

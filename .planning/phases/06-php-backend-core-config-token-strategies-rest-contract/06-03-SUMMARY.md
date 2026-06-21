@@ -111,3 +111,19 @@ None - no external service configuration required. This phase has no live-WordPr
 ---
 *Phase: 06-php-backend-core-config-token-strategies-rest-contract*
 *Completed: 2026-06-21*
+
+## Self-Check: PASSED
+
+All claimed files verified present:
+- wordpress-plugin/includes/RateLimit/RateLimiter.php — FOUND
+- wordpress-plugin/includes/Rest/SessionController.php — FOUND
+- wordpress-plugin/includes/Plugin.php — FOUND
+- wordpress-plugin/khaveeai.php — FOUND
+- wordpress-plugin/tests/rest-logic-harness.php — FOUND
+- .planning/phases/06-php-backend-core-config-token-strategies-rest-contract/06-03-SUMMARY.md — FOUND
+
+All claimed commits verified present in git log:
+- af1a3a2 (Task 1) — FOUND
+- caca58c (Task 2) — FOUND
+- cb9507f (Task 3) — FOUND
+- 806acdf (docs: summary) — FOUND

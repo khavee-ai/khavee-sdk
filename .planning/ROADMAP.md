@@ -179,7 +179,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 — needs both interfaces)*
 
-- [ ] 06-03-PLAN.md — RateLimiter (per-IP 5/10min + sitewide 200/day) + SessionController (wire contract, D-07 trust model, 429/502/503, Cache-Control: no-store) + Plugin.php composition root (REST-01..04)
+- [x] 06-03-PLAN.md — RateLimiter (per-IP 5/10min + sitewide 200/day) + SessionController (wire contract, D-07 trust model, 429/502/503, Cache-Control: no-store) + Plugin.php composition root (REST-01..04)
 
 **Wave 3** *(blocked on Wave 2 — live verification checkpoint)*
 
@@ -233,7 +233,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Python Backend Services | 2/2 | Complete | 2026-06-19 |
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
-| 6. PHP Backend Core — Config/Token Strategies + REST Contract | 2/4 | In Progress|  |
+| 6. PHP Backend Core — Config/Token Strategies + REST Contract | 3/4 | In Progress|  |
 | 7. Admin Settings Page | 0/TBD | Not started | - |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
 </content>

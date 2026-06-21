@@ -1,0 +1,14 @@
+{
+  "name": "khaveeai/wordpress-plugin",
+  "description": "Khavee AI Avatar WordPress plugin — self-configured voice-chat VRM avatar with PHP-side config/token strategy seams.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Khavee\\Plugin\\": "includes/"
+    }
+  }
+}

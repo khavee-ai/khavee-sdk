@@ -170,7 +170,21 @@ Plans:
   4. The token route's HTTP response includes `Cache-Control: no-store`, confirmed by inspecting response headers
   5. Config retrieval (API key, instructions, voice, avatar URL) and token minting are each implemented behind a swappable interface (`ConfigSourceInterface`, `TokenProviderInterface`) with exactly one concrete implementation each, demonstrated by the REST controller depending only on the interfaces, not concrete classes
 
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1** *(two independent strategy seams — no file overlap)*
+
+- [ ] 06-01-PLAN.md — ConfigSourceInterface + WpOptionsConfigSource (ARCH-01) + plugin bootstrap + Composer PSR-4 autoload
+- [ ] 06-02-PLAN.md — TokenProviderInterface + OpenAiDirectTokenProvider (ARCH-02): wp_remote_post to client_secrets, value->ephemeralToken remap, detail-free failure normalization + standalone harness
+
+**Wave 2** *(blocked on Wave 1 — needs both interfaces)*
+
+- [ ] 06-03-PLAN.md — RateLimiter (per-IP 5/10min + sitewide 200/day) + SessionController (wire contract, D-07 trust model, 429/502/503, Cache-Control: no-store) + Plugin.php composition root (REST-01..04)
+
+**Wave 3** *(blocked on Wave 2 — live verification checkpoint)*
+
+- [ ] 06-04-PLAN.md — curl-verify.sh exercising the four observable REST criteria + human checkpoint against a live WP install with a real OpenAI key
+
 **UI hint**: yes
 
 ### Phase 7: Admin Settings Page

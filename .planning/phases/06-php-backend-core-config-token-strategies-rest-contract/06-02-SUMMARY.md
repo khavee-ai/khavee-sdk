@@ -106,3 +106,13 @@ No blockers identified for plan 03.
 ---
 *Phase: 06-php-backend-core-config-token-strategies-rest-contract*
 *Completed: 2026-06-21*
+
+## Self-Check: PASSED
+
+All claimed files verified present:
+- wordpress-plugin/includes/TokenProvider/TokenProviderInterface.php
+- wordpress-plugin/includes/TokenProvider/OpenAiDirectTokenProvider.php
+- wordpress-plugin/tests/token-provider-harness.php
+- .planning/phases/06-php-backend-core-config-token-strategies-rest-contract/06-02-SUMMARY.md
+
+All claimed commits verified present in git log: 748874b, 4a09aa0, 3882d66

@@ -8,6 +8,16 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 
 A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage.
 
+## Current Milestone: v2.0 WordPress Plugin (Custom Mode)
+
+**Goal:** Ship a khaveeai WordPress plugin that embeds a voice-chat VRM avatar on any WordPress site, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
+
+**Target features:**
+- `[khaveeai_avatar]` shortcode and a Gutenberg block, both sharing one JS bundle and config shape
+- Admin settings: OpenAI API key, personality/instruction textarea, voice picker, VRM/GLB avatar upload via Media Library
+- WP REST route that mints an ephemeral OpenAI Realtime token server-side per session (the OpenAI key never reaches the browser)
+- Config-source and token-provider logic structured as swappable strategies so a future platform-API-key mode can slot in without touching the JS bundle or rendering code (that mode itself is out of scope this milestone — it's blocked on a `khavee-app` backend addition)
+
 ## Requirements
 
 ### Validated
@@ -29,14 +39,19 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 - [ ] khavee-sdk adapter classes (e.g. ThonburianSTTProvider, JaiTTSProvider) implementing the new interfaces, talking to these two services over streaming-chunked HTTP
 - [ ] End-to-end demo: generic-stt-tts pipeline using Thonburian STT + an LLM + JaiTTS, proving STT/TTS can come from different, non-OpenAI, mixed vendors with tool-calling working
 - [ ] Documentation/examples showing how a beginner wires up a custom STT/TTS vendor and registers a tool
+- [ ] WordPress plugin (`wordpress-plugin/`): shortcode + Gutenberg block embedding `OpenAIRealtimeProvider` + VRM avatar, fully self-configured (own OpenAI key, instructions, voice, avatar upload)
+- [ ] WP REST ephemeral-token route (PHP equivalent of `src/app/api/negotiate/route.ts`) so the OpenAI key never reaches the browser
+- [ ] Config-source / token-provider seam in the plugin's PHP code, structured so a future platform-API-key mode can be added without touching the JS bundle
 
 ### Out of Scope
 
 - Refactoring `openai-stt-tts` onto the new interfaces — left untouched this milestone, may migrate later
 - Real AWS Bedrock STT and Google Gemini TTS adapters — only used as illustrative examples; interfaces must support them later but no adapters are built now
-- `openai-realtime`'s full-duplex WebRTC provider — separate concern, not modified
+- `openai-realtime`'s full-duplex WebRTC provider — separate concern, not modified by the generic-stt-tts work (it IS the provider the WordPress plugin embeds)
 - True streaming (partial/incremental) transcription or synthesis — neither Thonburian Whisper nor JaiTTS support it natively; utterances are VAD-segmented and sent whole over HTTP
 - Resolving the empty `packages/providers/azure` placeholder — unrelated pre-existing debt
+- WordPress plugin "Platform mode" (API-key-driven config pulled from the hosted `khavee-app` dashboard) — blocked on a new API-key-gated ephemeral-token endpoint in `khavee-app` that doesn't exist yet; explicit fast-follow, not this milestone
+- `khavee-app` platform changes of any kind — separate repo/codebase, out of scope for khavee-sdk milestones
 
 ## Context
 
@@ -49,6 +64,8 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 - Thonburian Whisper: `biodatlab/whisper-th-large-v3-combined` on Hugging Face, run via `transformers.pipeline("automatic-speech-recognition", ...)`, supports `chunk_length_s` for longer audio, Apache 2.0.
 - JaiTTS: the GitHub repo (`JTS-AI-Team/JaiTTS`) is benchmark/eval code only — no deployable server. The actual model is `JTS-AI/JaiTTS-F5TTS` on Hugging Face, an F5-TTS-based Thai voice-cloning model with a custom XLM-R duration predictor, run via a `FlowTTSPipeline` from the `biodatlab/thonburian-tts` inference repo (the `flowtts` package). **Phase 3 finding:** that repo's PyPI/git packaging is broken (no `__init__.py` files, so `pip install git+...` silently installs no actual source) — the working install requires cloning the repo, adding empty `__init__.py` markers, then installing the patched local clone (documented in `jai-tts/README.md`). The verified `FlowTTSPipeline` API is a callable `__call__(text, ref_voice, output_file, ref_text, speed, check_duration) -> filepath`, not the `.generate()` shown on the HF model card. Default reference voice is a Google FLEURS (CC BY 4.0) clip, bundled at `jai-tts/assets/`.
 - Communication protocol decided: streaming-chunked HTTP — SDK buffers VAD-segmented utterances and POSTs each one to the backend service, rather than persistent WebSocket streaming (neither model supports true incremental/partial streaming).
+- `wordpress-plugin/includes` and `wordpress-plugin/src` are pre-existing but completely empty scaffold directories — no plugin header file, no PHP, no build tooling yet. Greenfield build.
+- There is a separate hosted platform monorepo, `khavee-app` (NestJS `apps/api` + dashboard `apps/web` + `packages/db`), with its own "project" concept (model, personality, voice profile) and an `X-API-Key`-authenticated `KhaveeClient` in `@khaveeai/core` (currently zero consumers in khavee-sdk). The platform API key is single-tier/secret (full project-owner access, no publishable variant) and must never reach a browser. Its existing ephemeral-token minting (`ChatTokenService`) is JWT-session-gated only — there is no API-key-authenticated path for anonymous embedded widgets yet. That gap is what blocks the future "Platform mode" for this plugin.
 
 ## Constraints
 
@@ -68,6 +85,9 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 | STT/TTS backend protocol: streaming-chunked HTTP, not WebSocket | Neither Whisper nor F5-TTS-based JaiTTS support true incremental/partial transcription or synthesis — utterance-at-a-time HTTP matches reality | Validated in Phase 3 (`POST /transcribe`, `POST /synthesize`) |
 | BACK-02 (hallucination rejection) and BACK-05's semaphore half deferred for Phase 3 | Demo-scoped proof of the SDK abstraction, not production-hardening; threshold tuning/semaphore sizing not worth it yet | Deferred — tracked in REQUIREMENTS.md, revisit if this moves past demo use |
 | Bedrock and Gemini adapters out of scope this milestone | They were illustrative of "any vendor" — Thonburian + JaiTTS are the real proof vendors; interface design alone must keep the door open | — Pending |
+| WordPress plugin targets `OpenAIRealtimeProvider`, not `generic-stt-tts` | WP embedding is a full-duplex voice chat widget use case (WebRTC), matching the existing realtime provider's shape, not the segmented STT/LLM/TTS pipeline | — Pending |
+| WordPress plugin v2.0 ships "Custom mode" only (self-configured: own OpenAI key, instructions, voice, avatar upload); "Platform mode" (API-key-driven config from `khavee-app`) is an explicit fast-follow | Custom mode has zero cross-repo dependency and can ship now; Platform mode is blocked on a new API-key-gated ephemeral-token endpoint that doesn't exist yet in `khavee-app` | — Pending |
+| Plugin's config-source and token-provider logic built as swappable PHP strategies from the start | Lets Platform mode slot in later without touching the JS bundle or rendering code | — Pending |
 
 ## Evolution
 
@@ -87,4 +107,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-19 — Phase 3 (python-backend-services) complete*
+*Last updated: 2026-06-21 — milestone v2.0 (WordPress Plugin, Custom Mode) started*

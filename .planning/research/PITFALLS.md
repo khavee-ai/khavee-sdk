@@ -1,273 +1,327 @@
-# Pitfalls Research
+# Pitfalls Research — WordPress Plugin (v2.0 Milestone)
 
-**Domain:** Composable/pluggable voice AI pipeline (STT/LLM/TTS, pipecat-style) with cross-vendor tool-calling and self-hosted Whisper-class ASR + F5-TTS-class voice-cloning TTS services
-**Researched:** 2026-06-17
-**Confidence:** MEDIUM-HIGH (architecture/abstraction pitfalls verified against pipecat docs, GitHub issues, and multi-source community reports; self-hosting pitfalls verified against multiple independent sources; codebase-specific risks verified directly against this repo's existing code via CONCERNS.md)
+**Domain:** WordPress plugin embedding a bundled React 19 + Three.js (VRM avatar) SPA, an anonymous-callable REST route that mints OpenAI Realtime ephemeral tokens using a server-held API key, and admin-uploaded VRM/GLB 3D model files via the Media Library
+**Researched:** 2026-06-21
+**Confidence:** MEDIUM — WordPress core API behavior (nonces, `upload_mimes`, `register_rest_route`, plugin-review guidelines) is HIGH confidence (official developer.wordpress.org docs). OpenAI Realtime-API-specific abuse/quota figures are LOW confidence (no official per-IP/proxy-specific guidance found — see Gaps). This plugin's exact design combination (anonymous ephemeral-token minting + WebRTC + VRM upload) has no directly comparable shipped precedent — pitfalls below are synthesized from the closest documented analogs (general WP REST API abuse patterns, GLB-supporting WP plugins, OpenAI client-secret guidance, this repo's own `src/app/api/negotiate/route.ts`) and applied to this specific architecture.
+
+> **Note:** This file covers ONLY the WordPress-plugin-specific pitfalls for the v2.0 "WordPress Plugin (Custom Mode)" milestone. It does not duplicate or replace `PITFALLS.md`, which documents the prior milestone's `generic-stt-tts` pipeline + Python ML services pitfalls (2026-06-17) — that research remains valid and unrelated to this scope. See `STACK-wordpress-plugin.md` for the corresponding stack recommendations.
 
 ## Critical Pitfalls
 
-### Pitfall 1: Designing the streaming abstraction around the easy vendor, not the hard one
+### Pitfall 1: Anonymous ephemeral-token route becomes an unmetered OpenAI API-key proxy
 
 **What goes wrong:**
-The interfaces (`STTProvider`, `TTSProvider`, `LLMProvider`, `VADProvider`) get designed by first wiring up OpenAI (which supports low-latency streaming responses and partial transcripts) and only then trying to fit Thonburian STT and JaiTTS — which do whole-utterance, non-streaming, multi-second-latency inference — into the same shape. The result is an interface that assumes streaming/partial callbacks (`onPartialTranscript`, `onAudioChunk`) as the primary contract, forcing the non-streaming adapters to fake streaming by emitting a single "chunk" at the end, or worse, forcing consumers (React hooks, lipsync, UI status) to special-case "providers that don't really stream."
+The REST route's entire job is to let a visitor who is NOT logged into WordPress (and therefore cannot be gated by WP user capabilities, and cannot reliably receive a `wp_rest` cookie nonce) call a PHP endpoint that holds the site owner's real OpenAI API key and mints a Realtime ephemeral token. Because `permission_callback` must effectively be `__return_true` (or equivalent) for this to work for anonymous visitors, anyone who discovers the route (e.g. `/wp-json/khaveeai/v1/token`) can call it directly with no browser/avatar in the loop at all — repeatedly, in a scripted loop — and each call consumes the site owner's real OpenAI quota/billing, even if the resulting token is never used to open a WebRTC session.
 
 **Why it happens:**
-OpenAI's STT/TTS is the only working reference implementation in the codebase today (`OpenAISTTTTSProvider.ts`), so it becomes the implicit template. Pipecat's own frame-based architecture is built for streaming-first vendors (Deepgram, ElevenLabs); copying that shape wholesale without checking whether *all* target vendors actually support partial results bakes in a leaky abstraction from day one. This project's own constraint ("neither model supports true incremental/partial streaming") makes this a near-certain trap unless explicitly designed against.
+Developers conflate "must work for anonymous visitors" with "must have no auth." Those are not the same requirement. The ephemeral-token pattern already proven in this same repo (`src/app/api/negotiate/route.ts`) was built for a single trusted Next.js demo page; the WP version must additionally defend a publicly discoverable route on any site running this plugin, reachable by anyone, not just the plugin's own bundle.
 
 **How to avoid:**
-Design the core interface contract around "whole utterance in, whole result out" as the lowest common denominator, with streaming as an *optional capability* a provider can advertise (e.g. `supportsPartialResults: boolean` or a separate `StreamingSTTProvider` extension interface) rather than the default shape every provider must implement. Build the Thonburian/JaiTTS adapters and the orchestrator's non-streaming path *first*, then verify OpenAI's streaming path can still be expressed as a specialization, not the other way around.
+- Never ship bare `__return_true` with no other checks. Use a permission callback that still runs cheap mitigations: check `wp_get_referer()`/`Origin` roughly matches the site's own domain (spoofable, but stops casual scripted abuse — defense-in-depth, not real auth).
+- Implement server-side rate limiting inside the route handler using WP transients keyed by `$_SERVER['REMOTE_ADDR']` (max N mints per IP per minute via `set_transient`/`get_transient`) — this must live in PHP shipped with the plugin itself, not depend on a separate security plugin, since the plugin must be self-contained.
+- Add an admin-configurable daily mint ceiling (tracked via an option/transient counter) that hard-stops with HTTP 429 once exceeded, independent of OpenAI's own token expiry, so a single abused install cannot run up unbounded billing.
+- Mint OpenAI ephemeral sessions with the shortest expiry/scope the API allows, minimizing blast radius even if a token is somehow exfiltrated.
+- Log mint events (IP, timestamp, count) to a rotating option so the admin has visibility — this plugin has no centralized dashboard like the hosted platform does.
 
 **Warning signs:**
-- The base `STTProvider`/`TTSProvider` interface has required methods like `onPartialResult` or `onChunk` with no way to opt out.
-- Adapter code for Thonburian/JaiTTS contains comments like "fake the streaming callback" or "call onChunk once with the whole buffer."
-- The orchestrator branches on `if (provider.name === 'openai')` anywhere.
+- OpenAI usage dashboard shows token-mint rate disproportionate to actual realtime session/audio-minute usage (many tokens minted, few real WebRTC connections).
+- Support reports of "my OpenAI bill spiked" with no corresponding traffic increase to pages containing the shortcode/block.
 
 **Phase to address:**
-Interface design phase (before any adapter is implemented) — this is the single highest-leverage decision in the whole milestone since it's expensive to retrofit after `generic-stt-tts` and both adapters exist.
+REST/token-route design phase — rate limiting and scope-minimization must be architected into the route handler from its first implementation. Retrofitting auth onto an already-discoverable, already-documented route is a breaking change for existing embeds.
 
 ---
 
-### Pitfall 2: Tool-calling abstraction breaks because vendors disagree on schema, multi-call semantics, and execution-loop shape
+### Pitfall 2: Nonce-based auth is assumed to "just work" for anonymous visitors, then silently fails or is wrongly bypassed
 
 **What goes wrong:**
-The plain-object `{ name, description, parameters, handler }` tool API works fine for OpenAI but silently mismatches other vendors' real constraints when Bedrock/Gemini adapters are eventually built: Gemini requires explicit `type` fields on JSON-schema array `items` (rejects `items: {}`), Anthropic and OpenAI differ on whether multiple tool calls can be requested in one turn and how results are threaded back into the conversation (as a new "tool" role message vs. inline content blocks), and none of the major providers accept a top-level `$ref` in the parameters schema. If the `LLMProvider` interface's tool-result-injection step is modeled only after OpenAI's `tool_calls` → `role: "tool"` round-trip, a future Bedrock/Gemini adapter cannot be implemented without changing the core interface — defeating the stated goal of "tool-calling as a core capability, not a per-provider retrofit."
+WordPress's standard REST security pattern — `X-WP-Nonce` cookie-based nonces — only authenticates a request as a specific *logged-in* WP user. It provides no protection model for anonymous, never-logged-in front-end visitors at all (`wp_create_nonce('wp_rest')` for an anonymous visitor ties to user ID 0 and offers no real replay/forgery protection for a public widget). Developers either (a) try to force nonce auth and break the widget for non-logged-in visitors, or (b) give up on nonces entirely and drop ALL request validation, leaving the route wide open.
 
 **Why it happens:**
-Only one real LLM vendor (OpenAI, via the existing `ChatClient`) is in scope this milestone, so there is no second implementation to stress-test the abstraction against. It's easy to mistake "I built an interface" for "I built a vendor-agnostic interface" when only one vendor instantiates it. The existing `ToolExecutor.ts` (duplicated byte-for-byte across `openai-stt-tts` and `openai-realtime` per CONCERNS.md) was itself written against OpenAI's tool-call shape, so promoting it as-is into `packages/core` risks promoting an OpenAI-shaped abstraction and merely renaming it "generic."
+Most WP REST API tutorials describe nonce auth in the context of admin-side or logged-in-user JS (e.g. the block editor itself), where `wp_localize_script` injects a valid per-user nonce. This plugin's front-end SPA is embedded on a public page for an anonymous visitor — that tutorial pattern does not transfer.
 
 **How to avoid:**
-Before promoting `ToolExecutor`, explicitly write out (even as a comment/doc, not code) how Anthropic's and Gemini's tool-calling round-trip would map onto the same interface — multi-tool-call-per-turn support, how tool results re-enter the conversation, and JSON-schema constraints (no bare `items: {}`, no top-level `$ref`) — and adjust the interface shape now while the cost is low. Keep the tool *definition* format (plain object with JSON-schema-shaped `parameters`) deliberately minimal and avoid encoding any OpenAI-specific field names (e.g. `tool_call_id`) into the core `Tool`/`ToolCall` types; wrap vendor-specific IDs in an opaque field.
+- Treat the route as genuinely public/anonymous from the start; do not repurpose `wp_rest` cookie nonces as the real security boundary.
+- Use referer/origin checks plus the rate limiting from Pitfall 1 instead, explicitly documented in code comments as "abuse mitigation," not "authentication" — be honest that this is not a true auth boundary, since the protected secret (the OpenAI key) never leaves the server regardless of what an attacker does to this route.
+- If stronger validation is desired, generate a short-lived, single-use token server-side when the page first renders (via `wp_localize_script`, not the REST nonce system) and require it on the token-mint call, invalidating it after first use via a transient.
 
 **Warning signs:**
-- `LLMProvider`'s tool-call result type has a field literally named after an OpenAI API field (`tool_call_id`, `function.arguments` as a raw JSON string instead of parsed object).
-- The interface assumes exactly one tool call per LLM turn.
-- Tool parameter validation/normalization (e.g. ensuring array `items` always has `type`) doesn't exist anywhere — meaning a beginner's tool definition that works against OpenAI would silently fail against Gemini later.
+- Intermittent "voice avatar doesn't connect" reports, especially on cached pages (see Pitfall 3) — a sign of nonce-expiry/caching interaction.
+- Any code path calling `wp_verify_nonce()` against `is_user_logged_in()` for this specific public route — a sign the wrong auth model was applied.
 
 **Phase to address:**
-Tool-calling interface design / `ToolExecutor` promotion phase — verify against at least a written sketch of a second vendor (Anthropic or Gemini) even though no real adapter ships this milestone.
+REST/token-route design phase — same phase as Pitfall 1; the "no real auth, only abuse mitigation" decision must be explicit and documented, not discovered as a bug later.
 
 ---
 
-### Pitfall 3: VAD-segmented "whole utterance" HTTP calls reproduce Whisper's silence/short-audio hallucination failure mode
+### Pitfall 3: Full-page cache or CDN caches the token route or embeds a per-visitor token in cached HTML
 
 **What goes wrong:**
-Thonburian STT receives short, VAD-segmented audio clips (a few seconds each) rather than long continuous audio. Whisper-family models (including the Thonburian fine-tune) are well-documented to hallucinate repeated phrases specifically when given short clips, clips with leading/trailing silence, or near-silent/noisy segments — because the model's audio embeddings go near-zero and it "fills in" the most recently seen phrase. If VAD segmentation is imperfect (clips a fraction of leading silence, or includes a tail of room noise after the user stops talking), the STT service will return confidently-wrong repeated text (e.g. the same Thai phrase 5 times) rather than an empty/low-confidence result, and the LLM stage will treat this hallucinated text as real user input.
+Many WP sites run page caching (WP Super Cache, W3 Total Cache, host-level full-page cache, Cloudflare) by default. If the token-mint endpoint is implemented as GET (cacheable by convention in many proxy/CDN configs) or if a developer embeds the token directly in server-rendered shortcode/block HTML, every visitor hitting a cached page receives the *same* stale or shared ephemeral token — broken at best (expired token), a security bug at worst (a live token shared across unrelated visitors).
 
 **Why it happens:**
-This is a known, specific Whisper failure mode (not generic ASR noise) triggered by exactly the conditions this architecture produces by design: short, separately-cut audio segments instead of long-form streaming audio with cross-chunk context. `transformers.pipeline`'s default decoding thresholds (`compression_ratio_threshold≈2.4`, `no_speech_threshold≈0.6`) are tuned for long-form chunked use and are not aggressive enough to suppress this on short clips.
+The shortcode's own output (mount-point div + static config JSON) is genuinely cache-safe, but the token-mint call is dynamic/per-session. This distinction is easy to blur when writing the PHP quickly, especially since the rest of the plugin's settings really are static and cacheable.
 
 **How to avoid:**
-In the `thonburian-stt` service: (1) trim leading/trailing silence from each incoming utterance before inference (a cheap energy-based VAD pass, not just relying on the SDK-side VAD's boundaries), (2) set and tune `no_speech_threshold` / `compression_ratio_threshold` explicitly rather than relying on pipeline defaults, (3) reject or flag transcripts that are suspiciously short audio + suspiciously long/repetitive text (a simple repetition-ratio check on the output string), (4) return a confidence/no-speech signal in the HTTP response so the SDK side can distinguish "silence, no transcript" from "garbled transcript" instead of always treating 200 OK as "valid user speech."
+- Implement the token-mint endpoint as `POST` only, with `Cache-Control: no-store` explicitly set on the response.
+- Never embed an ephemeral token directly in server-rendered shortcode/block HTML — the front-end bundle must always fetch the token live, client-side, after the (cacheable) page has loaded.
+- Document in the readme that the shortcode/block markup is cache-safe but the live `fetch()` for the token must not be proxied/cached by aggressive "cache everything" rules.
 
 **Warning signs:**
-- End-to-end testing produces a transcript that repeats the same word/phrase 3+ times for what was a short or quiet utterance.
-- The LLM responds nonsensically to a "user said nothing" event because Thonburian STT returned hallucinated text instead of empty string.
-- No silence-trimming or repetition-detection step exists between `thonburian-stt`'s raw pipeline output and the HTTP response body.
+- Avatar works on first load but fails to reconnect after the page is re-served from cache.
+- Multiple visitors report identical, simultaneous connection failures — a sign of a shared cached token expiring for all of them at once.
 
 **Phase to address:**
-`thonburian-stt` service implementation phase — must be handled inside the Python service itself (closest to the audio), not patched over later in the SDK's STT adapter.
+REST/token-route design phase for the `POST` + `no-store` decision; integration/QA phase for verifying behavior with a caching plugin (e.g. WP Super Cache) active.
 
 ---
 
-### Pitfall 4: Treating GPU-resident models as stateless request handlers leads to OOM or serialized requests under concurrency
+### Pitfall 4: Multiple React copies / version mismatch between the bundled SPA and the active theme or another plugin
 
 **What goes wrong:**
-Both `thonburian-stt` (Whisper-large, ~3GB+ VRAM at fp16) and `jai-tts` (F5-TTS, ~8GB+ VRAM, 10-30x slower on CPU) are large models. A naive FastAPI/Flask implementation that loads the model inside the request handler (or relies on multiple worker processes each loading their own copy) either pays a 5-30 second cold-start penalty per request, or multiplies VRAM usage by the worker count until the GPU OOMs. Separately, if both endpoints are called concurrently with no concurrency limit, simultaneous transcription + synthesis requests can exceed available VRAM and crash the process mid-request — which, in this project's pipeline, means a single bad turn takes down the whole backend service for all other users.
+If the plugin bundles React 19 + ReactDOM as ordinary global scripts (not isolated, not declared against WordPress's own registered `react`/`react-dom` handles), and the active theme or another plugin also loads React (possibly an older version exposed globally) — or WordPress core's own bundled React loads on the same admin screen during block-editor previews — script execution order determines which `window.React` wins. Symptoms range from silent no-ops to "Invalid hook call" errors, or duplicate React instances rendering inconsistently into the same DOM tree.
 
 **Why it happens:**
-Standard web-framework deployment patterns (multiple worker processes, autoscaling on request count) assume cheap, stateless, CPU-bound handlers. ML inference servers are the opposite: expensive-to-load, GPU-stateful, and the model load itself is the dominant cost, not request routing. This mismatch is the single most common mistake reported across self-hosted Whisper/PyTorch serving writeups.
+WordPress core has bundled `react`/`react-dom` (via `wp-element`) since WP 5.0. A plugin author unaware of this bundles their own copy via Vite/webpack as a normal dependency rather than marking it `external`, duplicating React on any page where WP-core's React also loads — common on Gutenberg-adjacent themes/plugins.
 
 **How to avoid:**
-Load each model exactly once at process startup (FastAPI `lifespan` context manager, not per-request or per-worker), run a single worker process per GPU (not multiple uvicorn workers each loading a model copy), and gate concurrent inference with an explicit semaphore (e.g. `asyncio.Semaphore(1)` or `Semaphore(N)` sized to measured VRAM headroom) so excess requests queue instead of running simultaneously and OOMing. For this project's expected scale (a demo/proof-of-concept, not high-throughput production), default to serializing GPU calls (`Semaphore(1)`) rather than attempting batching — correctness and stability over throughput.
+- Decide explicitly: either (a) fully isolate the bundle (no leaked globals — an IIFE/module wrapper that never assigns `window.React`/`window.ReactDOM`), or (b) externalize against WP-core's bundled `react`/`react-dom` handles via `@wordpress/dependency-extraction-webpack-plugin` and enqueue with matching `$deps`. **Given this plugin specifically needs React 19** and WP-core's bundled version may lag, full isolation (option a) is the safer default — verify WP core's currently-bundled React version before ever choosing option (b).
+- Test the embed on a wp-admin "Edit Page" screen (where Gutenberg's own React is loaded) and on a front-end page with a theme/plugin known to bundle its own React (e.g. a page builder), not just a vanilla theme.
 
 **Warning signs:**
-- `model = pipeline(...)` or `model = FlowTTSPipeline(...)` appears inside a route handler function instead of at module/startup scope.
-- `uvicorn --workers N` with N > 1 used for a GPU-bound service.
-- No semaphore/lock around the inference call; load-testing with 2+ concurrent requests crashes the process or returns CUDA OOM errors.
-- First request after service start takes 10-30+ seconds with no warmup step run at startup.
+- Console errors: "Invalid hook call," "Cannot read properties of null (reading 'useState')," or React DevTools detecting two separate React instances on one page.
+- Avatar renders fine in isolated dev testing but breaks only when a specific theme/plugin is also active.
 
 **Phase to address:**
-`thonburian-stt` and `jai-tts` service scaffolding phase — this is foundational service architecture, not an optimization to defer.
+Build-tooling/bundling phase (initial webpack/Vite config decision) — a one-time architectural choice that's expensive to reverse once the enqueue contract becomes public API that site owners build custom CSS/JS around.
 
 ---
 
-### Pitfall 5: Bundled "default reference voice" for JaiTTS is treated as a one-time setup detail instead of a quality-critical, validated asset
+### Pitfall 5: Script enqueue ordering and missing dependency declarations break the bundle on real sites
 
 **What goes wrong:**
-F5-TTS-class zero-shot cloning quality is extremely sensitive to the reference audio: anything under ~3 seconds, noisy, multi-speaker, or with leading/trailing silence not trimmed measurably degrades output quality, and reference text that doesn't exactly match what's actually said in the reference audio (mismatched transcript) causes artifacts. If the bundled default Thai voice sample is grabbed quickly (e.g. cut from an arbitrary recording) without verifying clip length, noise floor, single-speaker isolation, and an exactly-matching reference transcript, the entire `jai-tts` service's default-voice output quality suffers — and because it's the *bundled default*, every demo and every beginner's first run hits this, not an edge case.
+The plugin's built JS (and any CSS/WASM/ONNX assets, if VAD is reused from elsewhere in this codebase) must load in a specific order. If enqueued with `wp_enqueue_script` without correct `$deps` arrays, or if a performance/caching plugin (Autoptimize, WP Rocket, LiteSpeed Cache) aggressively combines/defers/reorders scripts site-wide, the bundle can execute before its dependencies are ready, causing silent blank-mount failures.
 
 **Why it happens:**
-"Reference audio" sounds like a config detail (just point to a WAV file) rather than a quality-critical model input with its own validation requirements. The JaiTTS/F5-TTS documentation's requirements (clean 3-10s clip, trimmed silence, exact-matching transcript) are easy to skim past since the pipeline will *run* successfully with a bad reference clip — it just produces degraded audio, which is a "looks done but isn't" failure mode (see checklist below), not a crash.
+Vite/webpack produce a content-hashed, code-split asset graph; a developer enqueues by guessed filename rather than reading the build manifest, and the resulting `$deps` array omits transitive chunks — works in dev (single bundle) and breaks once code-splitting appears.
 
 **How to avoid:**
-Treat the bundled default reference voice as a deliverable with explicit acceptance criteria: 3-10 seconds, single speaker, low noise floor, silence trimmed from both ends, and a reference-text string that is verified character-for-character against what is actually spoken (re-transcribe it with Thonburian STT itself as a cross-check). Document these constraints in the `jai-tts` service so any future custom voice a developer supplies is validated against the same checklist (reject/warn on clips under ~3s or over ~15s, warn if no reference text provided).
+- Generate and consume a build manifest (`@wordpress/scripts`' `*.asset.php` pattern, or a parsed Vite `manifest.json`) so `$deps`/version/hash are always derived from actual build output, never hand-maintained.
+- Enqueue conditionally from the shortcode/block render callback itself — only on pages that actually contain the shortcode/block — rather than via a blanket `wp_enqueue_scripts` hook on every page load; this also reduces interference from "combine all JS" optimizer plugins.
+- Explicitly test with a popular caching/optimization plugin active in JS-combine/defer mode — the most common real-world breakage source for embedded JS widgets.
 
 **Warning signs:**
-- The bundled reference WAV file has no accompanying validation script or documented provenance (where it came from, how it was trimmed).
-- Generated demo audio has audible artifacts, mispronunciations, or a "muffled"/inconsistent voice timbre that nobody flagged because no listening QA pass happened.
-- Reference text is typed from memory/approximation rather than transcribed from the actual reference audio.
+- Works on a clean install but breaks "for no reason" on a real client site — almost always a JS-optimization plugin or theme deferred-script handling.
+- Intermittent failures correlated with load timing (mount point not yet in DOM when the bundle executes).
 
 **Phase to address:**
-`jai-tts` service scaffolding phase (asset preparation), with a dedicated manual QA listening pass before the end-to-end demo phase.
+Build-tooling/asset-pipeline phase for manifest-driven enqueue; front-end shortcode/block render phase for conditional per-page enqueue logic.
 
 ---
 
-### Pitfall 6: VAD/turn-taking cooldown logic, already fragile for OpenAI, gets copy-pasted instead of generalized — multiplying a known bug class
+### Pitfall 6: Gutenberg block editor preview diverges from front-end render (mic/WebRTC/token calls fire inside wp-admin)
 
 **What goes wrong:**
-This codebase already has a documented, fragile pattern: `OpenAISTTTTSProvider`'s turn lifecycle duplicates a "resume mic + 500ms cooldown + reset status" recovery sequence in both the success and error paths (per CONCERNS.md), specifically to prevent the TTS output bleeding into the mic and re-triggering VAD ("loopback"). When the same VAD pause/resume/cooldown logic gets reimplemented inside the new generic orchestrator for non-OpenAI providers — whose TTS playback timing characteristics differ (JaiTTS audio may have different latency-to-first-byte, different tail silence, different playback duration) — there's a strong risk of copy-pasting the same 500ms-magic-number heuristic without re-validating it against the new providers' actual audio characteristics, and of reintroducing the duplicate-success/error-path bug in the generalized version.
+A Gutenberg block's `edit()` function runs inside the wp-admin editor canvas (an iframe since WP 6.x) — a different DOM/security/permissions-policy context than the public front-end, and one that re-renders on every attribute change. If `edit()` naively mounts the *same* full SPA (including mic access requests, WebRTC connection attempts, or the token-mint fetch), it will: trigger mic permission prompts inside wp-admin, mint real ephemeral tokens on every editor re-render while an admin is just typing (multiplying API costs), and likely behave inconsistently since iframe permissions policies differ from the front-end.
 
 **Why it happens:**
-The existing fix is a heuristic tuned empirically for one specific TTS player's audio tail behavior, not a principled acoustic echo cancellation solution. Generalizing the *interface* without re-deriving the *timing constants* per backend is the path of least resistance under deadline pressure, and the new orchestrator will have at least one new playback pipeline (JaiTTS audio) with different characteristics than what 500ms was tuned against.
+The natural instinct for "one JS bundle shared by shortcode and block" is to call the exact same mount function in both contexts, without accounting for the editor canvas's different lifecycle and security context.
 
 **How to avoid:**
-When building the generic orchestrator's turn-lifecycle/cooldown logic, extract the "resume + cooldown + ready" sequence into a single shared function used by both success and error paths (eliminating the duplication CONCERNS.md flags), and make the cooldown duration a configurable parameter per VAD/TTS pairing rather than a hardcoded constant — then explicitly test it against JaiTTS's actual audio output (which may have a longer or shorter tail than OpenAI's TTS) before assuming the same 500ms value generalizes.
+- The block's `edit()` should render a static, inert preview (placeholder graphic + a text summary of configured settings) — never the live, connecting SPA. `save()`/the front-end render callback mounts the real interactive bundle only on the public page.
+- If a live editor preview is wanted later, gate it behind an explicit user click ("Preview Avatar") — never auto-mount, never auto-fetch a token on render.
+- Use `block.json`'s `viewScript` field (supported since WP 5.9+) to ship a genuinely separate front-end-only script from the editor's `editorScript`, rather than one file branching on context — the cleanest guarantee that no mic/WebRTC code path can ever load inside wp-admin.
 
 **Warning signs:**
-- The new orchestrator has the same "resume mic" logic written twice (once on the happy path, once on the error path).
-- The 500ms constant from `OpenAISTTTTSProvider.ts` is reused verbatim in the generic orchestrator with no comment indicating it was re-validated for the new TTS backend.
-- End-to-end testing with JaiTTS shows the mic re-triggering VAD on JaiTTS's own audio tail (loopback symptom recurring with a new provider).
+- OpenAI token-mint counts spike correlated with admin content-editing sessions, not visitor traffic.
+- Mic permission prompts appear while editing a page in wp-admin.
 
 **Phase to address:**
-Generic pipeline orchestrator implementation phase — explicitly budget time to validate timing assumptions against the JaiTTS audio pipeline specifically, not just OpenAI's.
+Gutenberg block implementation phase — the `editorScript`/`viewScript` split must be decided when the block is first scaffolded; merging them later means re-splitting an already-shared bundle.
 
 ---
 
-### Pitfall 7: HTTP request/response audio framing mismatches (sample rate, encoding, multipart vs. raw body) discovered only at integration time
+### Pitfall 7: `upload_mimes` for `.glb`/`.gltf`/`.vrm` is too permissive, or content-sniffing rejects valid files (fileinfo false positive)
 
 **What goes wrong:**
-The SDK posts VAD-segmented audio utterances to Python services over "streaming-chunked HTTP." If the audio encoding contract (sample rate, bit depth, channel count, container format — raw PCM vs. WAV header vs. multipart form field) isn't pinned down explicitly and matched on both sides, the failure mode is silent degradation, not a clean error: Whisper-family models still "succeed" on resampled/wrong-channel-count audio but produce garbled or hallucinated transcripts (compounding Pitfall 3), and F5-TTS-based JaiTTS may produce audio at an unexpected sample rate that the SDK's `TTSPlayer`/Web Audio playback path doesn't handle, causing pitch-shifted or sped-up/slowed-down playback that "plays" without erroring.
+WordPress does not whitelist `.glb`/`.gltf`/`.vrm` by default. Two opposite failure modes occur: (a) the naive fix only widens the extension allowlist via `upload_mimes` without validating actual file content, letting a disguised malicious file (renamed to `.glb`) land in the Media Library; or (b) `.gltf` (the JSON-based, non-binary glTF variant) gets rejected even after MIME registration, because PHP's `finfo` sniffs its bytes as `text/plain`/`application/json` (it IS JSON under the hood), and `wp_check_filetype_and_ext()` flags the extension/content MIME mismatch — a documented WP core fileinfo inconsistency, not specific to this plugin.
 
 **Why it happens:**
-Audio format mismatches between client and server rarely throw type-level errors — `transformers.pipeline` and F5-TTS pipelines are permissive about input shape (they'll resample, they'll accept various bit depths) and produce *plausible* but wrong output rather than failing loudly. This is exactly the kind of cross-language (TS ↔ Python), cross-service boundary where assumptions silently diverge since there's no shared type system enforcing the contract.
+Developers copy an `upload_mimes` snippet that only adds the extension mapping and never test with content-sniffing filters active; behavior appears correct in dev (where fileinfo happens to align) but fails differently on other hosts (fileinfo's "incorrect/historical `application/*` answers" are documented as varying server-to-server). VRM files are themselves `.glb`-format binary glTF containers, so they avoid the JSON-sniff problem that plain `.gltf` has — but the `.glb`/`.vrm` binary signature still needs validating, not just trusting by extension.
 
 **How to avoid:**
-Pin and document the exact audio contract at the HTTP boundary in both directions (e.g. 16kHz mono 16-bit PCM WAV in, 24kHz (or whatever JaiTTS natively outputs) mono WAV out) and validate it server-side (reject/resample with a warning if the incoming audio doesn't match expected sample rate/channels, rather than passing it through blind). Add an explicit integration test that round-trips a known audio fixture through each service and asserts both the HTTP status and basic audio properties (duration, sample rate) of the response, not just "200 OK."
+- Restrict the upload feature to `.glb` and `.vrm` (binary glTF containers) only — explicitly do NOT support plaintext `.gltf`, sidestepping the fileinfo JSON-sniff mismatch entirely; this milestone's use case (admin-uploaded avatar models) doesn't need `.gltf`.
+- Register `model/gltf-binary` for both `.glb` and `.vrm` via `upload_mimes` (VRM has no IANA-registered MIME type; reusing `model/gltf-binary` for the same container format is the pattern other GLB-supporting WP plugins, e.g. `eldinor/babylon-wordpress-plugin`, already use).
+- Additionally hook `wp_check_filetype_and_ext` to validate the binary glTF magic bytes (first 4 bytes must equal ASCII `glTF` = `0x67 0x6C 0x54 0x46`) before trusting the extension-derived MIME — `upload_mimes` alone only changes what extension is *permitted*, it does not validate *content*, and this magic-byte check is what actually blocks a "rename a PHP shell to `avatar.glb`" attack.
+- Restrict the upload capability to `manage_options` (admins only) — never expose VRM/GLB upload to any public-facing form or non-admin role.
+- Enforce an explicit max file size (e.g. 50MB) to prevent storage abuse even from a trusted admin's mistake.
 
 **Warning signs:**
-- No documented audio format contract exists between the TS adapters and the Python services (just "send audio, get audio back").
-- Manual testing reveals TTS output that sounds pitched-up/down or sped-up/slowed-down.
-- STT accuracy is poor in ways that don't match Pitfall 3's hallucination signature (i.e., consistently wrong rather than repetitive) — a sign of resampling/encoding mismatch rather than a model limitation.
+- "Sorry, this file type is not permitted for security reasons" reported specifically for `.gltf` (not `.glb`) — confirms the fileinfo JSON-sniff issue rather than a config bug.
+- `upload_mimes` modified but `wp_check_filetype_and_ext` left untouched — a sign content validation was skipped and only the extension allowlist was widened.
 
 **Phase to address:**
-Adapter implementation phase (`ThonburianSTTProvider`, `JaiTTSProvider`) — define the wire contract before writing either side of the HTTP call, not after both are "working" independently.
+Avatar-upload feature phase — both the `upload_mimes` registration AND magic-byte content validation must ship together. Shipping the MIME allowlist alone is the classic "looks done but isn't" trap: legitimate test files pass, the vulnerability only surfaces under adversarial input.
+
+---
+
+### Pitfall 8: `upload_mimes` is a global filter — widening it for `.glb`/`.vrm` expands the site-wide upload attack surface, not just this plugin's own UI
+
+**What goes wrong:**
+`upload_mimes` is a blunt, global WordPress filter — there is no core mechanism to scope "allow `.glb` only when uploaded via this specific admin screen." Once registered, ANY user/role/plugin with upload capability anywhere on the site (the standard Media Library "Add New" screen, a contact-form file-attachment feature, any contributor-level upload) can now also upload `.glb`/`.vrm`, since the filter isn't scoped to this plugin's own upload action.
+
+**Why it happens:**
+Plugin authors test only their own upload UI and don't consider that the same global filter touches every other upload path on the site, including lower-trust roles or third-party plugins with lax upload forms.
+
+**How to avoid:**
+- Scope the `upload_mimes` filter callback narrowly: add it immediately before calling `wp_handle_upload`/`media_handle_upload` for this specific feature, and remove it immediately after, rather than registering it unconditionally for the entire request lifecycle.
+- Document in the readme/security notes that enabling `.glb`/`.vrm` uploads is potentially site-wide if the filter cannot be scoped this tightly in practice, so site owners with open registration or contributor roles are aware.
+- Since binary glTF/GLB files aren't executable in the traditional PHP-shell-upload sense, the remaining residual risk after content validation (Pitfall 7) is storage/quota abuse and parser-level vulnerabilities in whatever renders the file client-side (three.js/`@pixiv/three-vrm`) — treat uploaded VRM content as untrusted input in the existing `VRMAvatar`/`GLBAvatar` rendering code.
+
+**Warning signs:**
+- A site security scan flags `.glb` as a newly-permitted upload type site-wide immediately after plugin activation, surprising the admin.
+
+**Phase to address:**
+Avatar-upload feature phase — the decision to scope the filter narrowly (vs. leaving it globally registered) must be made when the upload handler is first written; narrowing it later requires re-testing every upload code path on the site.
+
+---
+
+### Pitfall 9: WordPress.org review rejection — undisclosed "phone home" to OpenAI, or bundled minified JS with no source
+
+**What goes wrong (if/when distributed via WordPress.org):**
+The plugin's core function calls an external third-party service (OpenAI) using a key the *site owner* supplies. WP.org reviewers still expect prominent readme disclosure of any external service contacted, what data is sent (audio, conversation text, the admin-configured personality/instructions), and a link to that service's Terms of Use/privacy policy — this disclosure obligation exists regardless of who owns the credential. Separately, the bundled React 19 + Three.js + `@pixiv/three-vrm` SPA, if shipped only as a minified production build with no accompanying source or link to a public repo, fails the "no obscured code" guideline outright.
+
+**Why it happens:**
+First-time WP plugin authors coming from an npm-only background ship exactly what they'd publish to npm (a minified `dist/` bundle) and assume "it's open source on GitHub" is implicitly sufficient, without realizing the *readme.txt itself* must state that and link to it.
+
+**How to avoid:**
+- Add an explicit "External services" section to `readme.txt`: this plugin sends visitor audio and admin-configured conversation context to OpenAI's Realtime API using the site owner's own API key; link OpenAI's API Terms of Use and Privacy Policy. No separate consent-flow is needed beyond the admin configuring their own key — but documenting the data flow is still mandatory.
+- Keep a readme link to the plugin's public source repository (this monorepo or a dedicated mirror) so reviewers and future maintainers can always find unminified source; don't rely on the minified bundle alone being "inspectable enough."
+- Re-confirm WP.org distribution is even the target before this phase — if this plugin is only ever privately distributed (direct zip), this pitfall category doesn't block ship, but documenting it now is good practice if WP.org distribution is wanted later.
+
+**Warning signs:**
+- WP.org review rejection citing "obscured code" or "undocumented external service" — the two most common first-submission rejection reasons for any plugin with a JS build step.
+
+**Phase to address:**
+Release/distribution phase for the actual submission — but the readme disclosure section and the WP.org-vs-private decision should be drafted in the documentation phase, since it affects what's safe to promise; the "no obscured code" requirement should inform the build-tooling phase decision to commit/publish unminified source alongside the production bundle from day one rather than retrofitting it under review pressure.
 
 ---
 
 ## Technical Debt Patterns
 
-Shortcuts that seem reasonable but create long-term problems.
-
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|------------------|
-| Promote `ToolExecutor.ts` into `packages/core` with only cosmetic renaming, no interface redesign | Fast dedup, satisfies "no more duplication" goal immediately | Bakes OpenAI-shaped tool-call semantics into the "generic" core, requiring a breaking change when Bedrock/Gemini adapters are eventually built | Never — this is the one interface in the milestone explicitly meant to outlive a single vendor |
-| Hardcode `Semaphore(1)` (fully serialized inference) in both Python services with no config | Simple, guaranteed to avoid GPU OOM during this milestone's proof-of-concept scale | Throughput ceiling of 1 request at a time per service; fine for a demo, wrong default if anyone later points production traffic at it | Acceptable for this milestone's demo/PoC scope — flag clearly in README/docstring as a scale limit, not a permanent architecture decision |
-| Reuse the OpenAI provider's 500ms VAD-loopback cooldown constant unchanged in the generic orchestrator | Saves time re-deriving timing for new providers | Likely either insufficient (loopback recurs with JaiTTS) or excessive (sluggish turn-taking) since it was tuned for a different TTS player's audio tail | Never without at least one manual test against the new TTS provider's actual playback |
-| Skip silence-trimming/repetition-detection in `thonburian-stt` for the first working version | Faster to a working demo path | Demo audio with any background noise or quiet speech produces hallucinated repeated-phrase transcripts that look like a "broken pipeline" bug rather than a known, fixable model behavior | Acceptable only as a tracked TODO with the known failure mode documented, not silently deferred |
-| Use the orphaned `LLMProvider`/`TTSProvider` types in `packages/core/src/types/mock.ts` as a starting point for the new interfaces because "something similar already exists" | Less typing from scratch | Per PROJECT.md, these types are explicitly unrelated/orphaned from `RealtimeProvider` and not wired into any hook — reusing them risks importing unvetted assumptions and creating a second source of confusion | Never — PROJECT.md explicitly warns against conflating these |
+|----------|-------------------|----------------|-----------------|
+| Single shared JS bundle for both Gutenberg `edit()` and front-end render, branching on context at runtime | Faster initial build setup, one less webpack entry | Editor accidentally loads WebRTC/mic code paths (Pitfall 6); harder to tree-shake editor-only code out of the front-end bundle | Acceptable only as an early dev-spike to prove the SPA mounts at all — must split into `editorScript`/`viewScript` before any real mic/token testing |
+| No server-side rate limiting on the token-mint route at launch ("add it if abuse happens") | Ships faster, simpler PHP | Site owner's OpenAI billing unprotected from day one; retrofitting auth onto a publicly-documented route risks breaking existing embeds | Never acceptable for a route holding a real billable secret — a crude IP+transient limit is cheap upfront |
+| Mapping `.glb`/`.vrm`/`.gltf` all to one MIME via `upload_mimes` without magic-byte validation | Saves an extra filter/hook | Disguised-file upload risk persists indefinitely; "looks done" because legitimate test files always pass | Acceptable only for a purely local/dev build never exposed beyond a trusted admin upload path; never acceptable once shipped |
+| Bundling React 19 as a normal dependency without checking for collision with WP-core's bundled React | Simpler build config, no externals setup | Conflicts only manifest on real-world sites with specific themes/plugins (Pitfall 4), hard to reproduce after the fact | Acceptable only if full bundle isolation (no global leak) is verified — otherwise never acceptable |
+| Embedding the ephemeral token directly in server-rendered shortcode HTML instead of a live client fetch | Avoids one round-trip | Breaks under any page caching (Pitfall 3); bakes a session-specific secret into cacheable HTML | Never acceptable — the live-fetch pattern costs one extra request and is the only cache-safe approach |
 
 ## Integration Gotchas
 
-Common mistakes when connecting to external services.
-
 | Integration | Common Mistake | Correct Approach |
-|--------------|-----------------|-------------------|
-| `transformers.pipeline("automatic-speech-recognition", ...)` for Thonburian Whisper | Using pipeline defaults for `chunk_length_s`, `no_speech_threshold`, `compression_ratio_threshold` on short VAD-segmented clips, inheriting long-form-audio-tuned defaults | Explicitly set/tune thresholds for short-clip input; trim silence before inference; consider calling `model.generate()` directly instead of the high-level pipeline for more control, per HF's own caveat about pipeline accuracy on edge cases |
-| F5-TTS `FlowTTSPipeline` (ThonburianTTS inference repo) | Treating reference audio as a static config file without validating duration/noise/transcript match; assuming any "default voice" sample will produce good output | Validate reference clip against documented F5-TTS constraints (3-10s, trimmed silence, exact transcript match) before bundling as default |
-| FastAPI/Flask serving either Python model | Loading the model inside the request handler or running multiple GPU-bound worker processes | Load once at process startup (`lifespan`/module scope), single worker per GPU, explicit semaphore-gated concurrency |
-| SDK ↔ Python service HTTP boundary | Assuming "send audio bytes, get audio bytes back" is a sufficient contract without pinning sample rate/encoding/container format | Document and validate the exact audio wire format on both sides; add a round-trip fixture test |
-| Generic `LLMProvider` tool-calling interface vs. future Bedrock/Gemini | Modeling the interface only against OpenAI's single-tool-call, `role: "tool"` round-trip shape since it's the only vendor implemented this milestone | Sketch (even without code) how Anthropic/Gemini's multi-tool-call and JSON-schema constraints would map onto the same interface before finalizing it |
-| Reusing `ToolExecutor.ts` duplication fix | Treating "moved the file to packages/core" as equivalent to "validated it's vendor-agnostic" | Treat the move as an interface-redesign task, not a copy-paste relocation |
+|-------------|----------------|------------------|
+| OpenAI Realtime ephemeral token minting (PHP → OpenAI REST API) | Treating `wp_remote_post` to OpenAI as fire-and-forget with no timeout/error handling, leaving the visitor's front-end hanging if OpenAI is slow/down | Set an explicit timeout on `wp_remote_post` and verify WP's default HTTP timeout (often 5s) is sufficient; return a clear JSON error the front-end can surface ("voice service temporarily unavailable") rather than a silent hang |
+| WordPress Media Library (`wp_handle_upload`/`media_handle_upload`) for VRM/GLB | Calling the upload handler before MIME/content-check filters are registered, causing inconsistent rejection depending on hook load order | Register `upload_mimes` and the magic-byte `wp_check_filetype_and_ext` filter on `init` (or `plugins_loaded`) unconditionally for the request lifecycle the upload runs in — not lazily only when the settings page itself loads |
+| `@ricky0123/vad-web` (VAD) static asset serving, if reused for any client-side mic logic | Assuming ONNX/WASM assets resolve relative to the bundle's enqueue URL automatically, the way a Next.js `public/` folder would serve them | Copy ONNX/WASM files into the plugin's own `assets/` directory at build time and pass `plugins_url()`-derived absolute paths into the bundle's runtime config — WP's enqueue system doesn't auto-serve arbitrary build output |
+| Gutenberg block registration (`block.json`) | Letting the block's `render_callback`/`render.php` drift from the shortcode's PHP, causing accepted attributes/config shape to diverge across releases | Have both the shortcode handler and the block's render callback call one shared internal PHP function that builds the config array passed to the front-end bundle — a single source of truth for the config shape the JS expects |
 
 ## Performance Traps
 
-Patterns that work at small scale but fail as usage grows.
-
 | Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|------------------|
-| Fully serialized (`Semaphore(1)`) inference on both Python services | Fine for one developer testing the demo; requests start queuing visibly once 2+ simultaneous utterances arrive | Document the limit explicitly; size semaphore to measured VRAM headroom if concurrency beyond a single demo user is ever needed | Breaks (becomes a noticeable bottleneck) the moment more than one concurrent end-to-end demo session is run, or any load test beyond 1 user |
-| MFCC/DTW lipsync analysis already runs on every audio frame on the main thread (existing issue per CONCERNS.md) | UI jank/dropped frames when CPU is also handling new pipeline-orchestration overhead | Be aware this exists already; don't add more main-thread synchronous work in the new generic pipeline's React integration on top of it | Already present; compounds if the new pipeline adds additional synchronous per-frame work in `packages/react` |
-| `setInterval` 100ms state-sync polling in `useRealtime.ts` (existing issue per CONCERNS.md) | Constant background re-renders (10/sec) for the lifetime of any connected session | Don't model the new generic pipeline's React state sync after this pattern; prefer pure event-driven callbacks | Already present in `openai-stt-tts`/`openai-realtime` integration; avoid replicating in new `generic-stt-tts` React wiring |
-| No retry/backoff on STT/TTS/LLM HTTP calls (existing pattern per CONCERNS.md, `STTClient`/`ChatClient`/`TTSPlayer` fail immediately on any error) | A single transient network blip to `thonburian-stt`/`jai-tts` (e.g. brief GPU contention causing a timeout) fails the entire user turn rather than retrying | Add basic retry/backoff specifically for the new self-hosted services, which are more likely to have transient slowness (cold model, GPU contention) than a managed API | Becomes visible the first time the Python service is even slightly slow (e.g. under concurrent load with `Semaphore(1)` queuing) and a request times out |
+|------|----------|------------|----------------|
+| Token-mint route fires a synchronous blocking `wp_remote_post` to OpenAI automatically on page load, before any visitor interaction | Page (or first interaction) feels sluggish; PHP worker pool tied up waiting on an external call | Only mint a token on explicit user interaction (e.g. clicking "start talking"), never automatically on page load | Becomes visible on any shared/limited PHP-FPM hosting plan once traffic to the embedding page is non-trivial |
+| Unbounded VRM/GLB file size accepted on admin upload | Slow Media Library; slow first paint for visitors (full model must download before the avatar renders); hosting storage/bandwidth costs | Enforce a max upload size (e.g. 50MB) and document recommended VRM optimization (texture compression, draco/meshopt) in the admin help text | Becomes a visitor-facing problem the moment any admin uploads an un-optimized, multi-hundred-MB raw export |
+| No verified caching headers on the served VRM/GLB binary from `wp-content/uploads/` | Repeat visitors re-download the full avatar model every page view | Rely on standard WP/webserver static-file caching (usually correct out of the box) but verify hosting doesn't exclude `.glb`/`.vrm` from static-asset cache rules (some host configs whitelist by extension) | Low priority for v1; noticeable once a site has meaningful repeat-visitor traffic |
 
 ## Security Mistakes
 
-Domain-specific security issues beyond general web security.
-
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Exposing `thonburian-stt`/`jai-tts` HTTP endpoints without auth, mirroring the existing unauthenticated proxy/negotiate pattern flagged in CONCERNS.md | Anyone who can reach the service can run (GPU-billed, or at minimum compute-billed) inference requests, potentially exhausting the single-concurrency semaphore as a denial-of-service vector against legitimate users | Treat these as backend-only services not exposed directly to browsers; require the same proxy pattern already used for OpenAI keys, and add basic rate limiting given the cheap-to-trigger, expensive-to-compute nature of ASR/TTS requests |
+| Using `__return_true` as the token route's `permission_callback` with zero other mitigation | Unmetered abuse of the site owner's OpenAI billing by anyone who discovers the route URL (Pitfall 1) | Layer referer/origin checks + IP-based rate limiting + a daily mint cap, even though none of these are "real" authentication |
+| Trusting browser-claimed file extension/MIME without server-side content validation for `.glb`/`.vrm` | A disguised malicious file lands in the Media Library with a trusted-looking extension (Pitfall 7) | Validate the binary glTF magic bytes server-side, independent of the `upload_mimes` allowlist |
+| Leaving the `upload_mimes` filter globally registered for the entire request lifecycle instead of scoping it to this plugin's own upload action | Expands the site's overall upload attack surface to every other upload path (Pitfall 8) | Add/remove the filter narrowly around this plugin's specific `wp_handle_upload`/`media_handle_upload` call |
+| Embedding the OpenAI API key in the front-end JS bundle "temporarily for testing" | Even a dev-only leak into a built JS file can ship to production if dev/prod build config isn't airtight — this is exactly the failure the ephemeral-token architecture exists to prevent | Keep the real OpenAI key exclusively in a PHP-side option, never pass it to any JS bundle, build script, or `wp_localize_script` payload |
+| No capability check (`current_user_can`) on the admin settings page that stores the OpenAI key / handles VRM upload | Any authenticated user, not just admins, could view/change the API key or upload arbitrary `.glb` files if the page only checks `is_user_logged_in()` | Gate the entire settings page and its handlers behind `current_user_can('manage_options')` (or a narrower custom capability), and verify standard WP admin nonces on the settings-save form (this DOES apply normal nonce patterns, since it's a logged-in-admin context, unlike the public token route) |
 
 ## UX Pitfalls
 
-Common user experience mistakes in this domain.
-
 | Pitfall | User Impact | Better Approach |
-|---------|--------------|-------------------|
-| Treating self-hosted STT/TTS latency (multi-second whole-utterance round trip) the same as OpenAI's near-realtime streaming in UI status/loading states | User sees a long silent gap with no "thinking"/"transcribing" indicator, feels like the app froze, may repeat themselves or barge in mid-process | Surface explicit per-stage status (listening → transcribing → thinking → speaking) and tune any "speaking" status trigger (per the existing `speakingStatusSet` pattern in `OpenAISTTTTSProvider`) to the new providers' actual audio-ready timing, not a copy of OpenAI's timing |
-| No user-facing distinction between "STT heard silence" and "STT hallucinated/garbled text" (Pitfall 3) | LLM responds to nonsense, user is confused why the assistant "misheard" them when actually no real speech was a present | Have `thonburian-stt` return an explicit no-speech/low-confidence signal distinct from a real transcript, and have the orchestrator skip the LLM turn entirely on no-speech rather than sending hallucinated text forward |
-| Default bundled JaiTTS voice sounds inconsistent/artifacted because the reference clip wasn't quality-validated (Pitfall 5) | First impression of the whole demo (and of "non-OpenAI vendors work") is a worse-sounding voice than OpenAI's TTS, undermining the milestone's core value proposition | Do a deliberate listening-QA pass on the bundled reference voice and treat it as a release-blocking asset, not a placeholder file |
+|---------|-------------|------------------|
+| Microphone permission prompt fires immediately on page load (auto-connect) | Visitors are startled by an unexpected mic dialog before choosing to interact; many reflexively deny it, breaking the feature for the rest of the session (browsers don't always re-prompt) | Require an explicit "click to start talking" gesture before requesting mic access or minting a token — this also directly mitigates Pitfall 1's abuse surface and the performance trap above |
+| Avatar shown but voice connection silently fails (missing/invalid key, rate limit hit) with no visible error | Visitor sees a frozen/static avatar with no explanation, assumes the site is broken | Surface a visible, non-technical status message in the widget ("Voice chat is temporarily unavailable") sourced from the token route's error response, distinct from a generic console error |
+| Gutenberg editor preview attempts a live connection and visibly fails inside wp-admin (per Pitfall 6) | The admin configuring the block sees confusing errors/permission prompts unrelated to what visitors will actually experience, eroding trust before the plugin is even published | Static/inert editor preview only, as covered in Pitfall 6 |
 
 ## "Looks Done But Isn't" Checklist
 
-Things that appear complete but are missing critical pieces.
-
-- [ ] **`generic-stt-tts` orchestrator compiles and runs against OpenAI-equivalent timing:** Often missing validation against the *actually non-streaming* Thonburian/JaiTTS timing characteristics — verify by running the full pipeline with artificial network/inference delay injected (not just against fast local mocks) to confirm no part of the orchestrator assumes sub-200ms responses.
-- [ ] **Tool-calling "works":** Often missing verification that the interface generalizes beyond OpenAI's exact tool-call round-trip shape — verify by writing (even unimplemented) a second-vendor mapping sketch (Anthropic or Gemini) against the same interface before calling the interface done.
-- [ ] **`thonburian-stt` "transcribes Thai audio correctly":** Often missing testing against short, quiet, and silence-padded clips specifically (not just clean long test recordings) — verify by deliberately testing 1-3 second clips and clips with leading/trailing silence for hallucinated repetition.
-- [ ] **`jai-tts` "clones voice and produces Thai speech":** Often missing validation of the bundled default reference voice's actual quality and a check that reference text exactly matches reference audio — verify with a manual listening pass and a re-transcription cross-check (run the reference clip through `thonburian-stt` and diff against the stored reference text).
-- [ ] **Backend services "run":** Often missing model-loaded-once-at-startup verification and concurrency safety — verify by sending 2 concurrent requests to each service and confirming no CUDA OOM / no duplicate model load, and confirming first-request latency isn't a 10-30s cold load disguised as "normal."
-- [ ] **End-to-end demo "proves multi-vendor pipeline works":** Often missing the VAD-loopback cooldown re-validation against JaiTTS's actual audio tail (Pitfall 6) — verify by running several consecutive turns and confirming the mic doesn't re-trigger on the assistant's own JaiTTS audio output.
-- [ ] **HTTP contract between SDK and Python services "works":** Often missing an explicit, tested audio format contract — verify with a round-trip fixture test asserting sample rate/duration of both the STT request audio and the TTS response audio, not just HTTP 200 status.
+- [ ] **Token-mint REST route:** Often missing rate limiting/abuse caps — verify by calling the route directly with `curl` in a tight loop, bypassing the front-end entirely, and confirming it gets throttled/blocked.
+- [ ] **GLB/VRM upload validation:** Often missing magic-byte content verification — verify by renaming an arbitrary non-GLB file (e.g. `.php`/`.html`) to `.glb` and attempting upload; it must be rejected, not just files that legitimately fail the extension check.
+- [ ] **Gutenberg block editor preview:** Often missing the editor/front-end script split — verify by opening the block in wp-admin's editor and confirming NO mic permission prompt or network call to the token route fires merely from inserting/viewing the block.
+- [ ] **React bundle isolation:** Often missing verification against a real-world theme/plugin combo — verify by activating a popular page builder or caching/optimization plugin alongside this plugin and confirming the avatar still mounts and connects.
+- [ ] **Cache-safety of the token route:** Often missing explicit `Cache-Control: no-store` and `POST`-only enforcement — verify by enabling a full-page caching plugin and confirming the token-mint call is never served from cache (check the Network tab on a second page load).
+- [ ] **WP.org readme disclosure (if ever publicly distributed):** Often missing the "external services" section entirely — verify the readme explicitly names OpenAI, states what data is sent, and links to OpenAI's terms, even though the API key is the site owner's own.
 
 ## Recovery Strategies
 
-When pitfalls occur despite prevention, how to recover.
-
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|----------------|------------------|
-| Streaming-first interface baked in (Pitfall 1) discovered after both adapters are built | HIGH | Introduce a capability-flag/extension interface retroactively, refactor the orchestrator to branch on capability rather than vendor identity, re-test both adapters; costly because it touches the core interface contract every adapter depends on |
-| Tool-calling interface found to be OpenAI-shaped (Pitfall 2) only once a second vendor is attempted later | MEDIUM-HIGH | Introduce an adapter-level normalization layer between the vendor's native tool-call format and the core `ToolCall` type (isolate the damage to one adapter) rather than reopening the core interface if avoidable; if the core type itself must change, audit all consumers (`ToolExecutor`, both STT/TTS providers, `openai-realtime`) for the breaking change |
-| Whisper hallucination on silence (Pitfall 3) discovered in later end-to-end testing | LOW-MEDIUM | Add silence-trimming + repetition-ratio rejection in `thonburian-stt` as a follow-up patch; doesn't require touching the SDK side if the service-level no-speech signal is added cleanly |
-| GPU OOM under concurrency (Pitfall 4) discovered after initial "works on my machine" testing | LOW-MEDIUM | Add the semaphore gate and startup-time model loading; low cost if caught before any deployment, higher cost (service downtime, debugging crash logs) if discovered only via a production-like crash |
-| Bad default reference voice quality (Pitfall 5) discovered late, e.g. during the end-to-end demo | LOW | Re-record/re-trim the reference clip and re-validate against the same checklist; isolated to one asset file, doesn't require code changes |
-| VAD-loopback cooldown timing wrong for JaiTTS (Pitfall 6) discovered during demo testing | LOW-MEDIUM | Make the cooldown configurable per-provider-pairing if not already, tune empirically against JaiTTS's actual playback tail; same class of fix already applied once for OpenAI so the pattern is known |
-| Audio format mismatch (Pitfall 7) discovered via garbled audio late in integration | LOW-MEDIUM | Pin the contract explicitly now, add resampling/validation at the service boundary, add the round-trip fixture test retroactively |
+|---------|---------------|-----------------|
+| Token route abused before rate limiting shipped | MEDIUM | Add IP+transient rate limiting and a daily mint cap retroactively; advise affected site owners to rotate their OpenAI API key immediately; communicate the fix via the plugin changelog |
+| React version collision discovered post-launch on a specific theme | MEDIUM | Switch the build to full bundle isolation (no shared globals) and ship as a patch release; cannot be fixed via a runtime flag, requires a rebuild |
+| `.gltf` (JSON variant) uploads silently rejected for some users due to fileinfo mismatch | LOW | Officially restrict supported formats to `.glb`/`.vrm` only in the UI/docs, removing `.gltf` entirely rather than chasing inconsistent server-level fileinfo behavior |
+| WP.org review rejection for undisclosed external service or obscured code | LOW | Add the readme disclosure section and/or publish unminified source/link to the public repo, then resubmit — a documentation fix, not an architecture fix, in nearly all cases |
+| Malicious file successfully uploaded disguised as `.glb` before magic-byte validation shipped | HIGH | Audit all existing Media Library uploads matching `.glb`/`.vrm` extension for actual `glTF` magic bytes; remove/quarantine any that fail; assume the uploading admin's credentials may also be compromised if the file wasn't uploaded via a known legitimate action |
 
 ## Pitfall-to-Phase Mapping
 
-How roadmap phases should address these pitfalls.
-
 | Pitfall | Prevention Phase | Verification |
-|---------|--------------------|----------------|
-| Streaming-first interface bias (Pitfall 1) | Core interface design phase (STTProvider/TTSProvider/VADProvider/LLMProvider definition) | Interface can express a fully non-streaming provider as the default case, not a special case; both a sketch of OpenAI's streaming path and Thonburian/JaiTTS's whole-utterance path map cleanly onto it before any adapter code is written |
-| OpenAI-shaped tool-calling abstraction (Pitfall 2) | `ToolExecutor` promotion / `LLMProvider` tool-calling design phase | A written mapping of how Anthropic/Gemini's tool-call round-trip and JSON-schema constraints would fit the same interface exists and required no core type changes |
-| Whisper hallucination on short/silent clips (Pitfall 3) | `thonburian-stt` service implementation phase | Test suite includes short (1-3s) and silence-padded clips; service returns distinguishable no-speech signal instead of hallucinated repeated text |
-| GPU OOM / cold-start under concurrency (Pitfall 4) | `thonburian-stt` and `jai-tts` service scaffolding phase | Concurrent-request load test (2+ simultaneous calls) completes without CUDA OOM or duplicate model loads; first request after startup time is measured and acceptable |
-| Unvalidated default reference voice (Pitfall 5) | `jai-tts` service scaffolding / asset preparation phase | Manual listening QA pass completed and documented; reference text cross-checked against re-transcription of the reference audio |
-| VAD-loopback cooldown not re-validated per provider (Pitfall 6) | Generic orchestrator implementation phase | Multi-turn end-to-end test with JaiTTS shows no mic self-triggering; cooldown duration is configurable, not a hardcoded copy of the OpenAI constant |
-| Audio format/encoding mismatch at HTTP boundary (Pitfall 7) | Adapter implementation phase (`ThonburianSTTProvider`, `JaiTTSProvider`) | Documented wire-format contract exists; round-trip fixture test asserts sample rate/duration on both request and response paths |
+|---------|------------------|---------------|
+| Anonymous token route = unmetered API proxy (Pitfall 1) | REST/token-route design phase | `curl` loop test against the route bypassing the browser; confirm 429s after threshold |
+| Nonce model confusion for anonymous visitors (Pitfall 2) | REST/token-route design phase | Code review confirms no `wp_verify_nonce`/`is_user_logged_in` gating on the public route; referer/rate-limit checks present instead |
+| Caching layer serves stale/shared tokens (Pitfall 3) | REST/token-route design phase; verified in integration/QA phase | Enable a page-caching plugin; confirm token route is `POST`-only with `Cache-Control: no-store` and never appears in cached HTML |
+| Multiple React copies colliding with theme/plugin (Pitfall 4) | Build-tooling/bundling phase | Activate a known React-bundling theme/plugin alongside this one; confirm no console hook errors |
+| Script enqueue order / optimizer-plugin interference (Pitfall 5) | Build-tooling/asset-pipeline phase; front-end render phase | Test with WP Rocket/Autoptimize JS-combine mode active; confirm avatar still mounts |
+| Gutenberg editor preview triggers live mic/WebRTC/token calls (Pitfall 6) | Gutenberg block implementation phase | Insert block in wp-admin editor; confirm zero network calls to the token route and no mic permission prompt |
+| `upload_mimes`/`wp_check_filetype_and_ext` too loose or too strict (Pitfall 7) | Avatar-upload feature phase | Attempt upload of a renamed non-GLB file (must reject) and a legitimate `.glb`/`.vrm` (must accept) |
+| `upload_mimes` globally widens site-wide upload surface (Pitfall 8) | Avatar-upload feature phase | Confirm the MIME filter is scoped/conditionally added only around this plugin's own upload call, not registered unconditionally for the full request lifecycle |
+| WP.org "phone home"/obscured-code rejection (Pitfall 9) | Release/distribution phase (readme drafted in documentation phase) | Readme contains an explicit "External services" section naming OpenAI and linking to its terms; unminified source is included or linked |
+
+## Gaps to Address
+
+- No official OpenAI documentation was found specifying per-IP or per-ephemeral-token-mint rate limits for the Realtime API client-secret endpoint specifically — the rate-limiting recommendations in Pitfall 1 are a defensive design pattern synthesized from general API-key abuse prevention, not a documented OpenAI-specific threshold. Validate actual OpenAI rate-limit behavior for the ephemeral-token endpoint against current OpenAI docs at implementation time, since rate-limit tiers are account-plan-dependent and may change.
+- No existing public WordPress plugin combines anonymous ephemeral-token minting + WebRTC + VRM avatar upload in one package — pitfalls for the token route and Gutenberg-block/SPA interaction (Pitfalls 1, 2, 3, 6) are synthesized architectural risk analysis, not confirmed bug reports from a directly comparable shipped product. Treat as MEDIUM confidence accordingly.
+- Could not verify the current (2026) version of React that WordPress core bundles via the registered `react` script handle — this matters for the Pitfall 4 decision between full bundle isolation vs. externalizing against WP-core's React. Check the current Gutenberg/WP core changelog at implementation time before deciding.
 
 ## Sources
 
-- [Speech Input & Turn Detection - Pipecat](https://docs.pipecat.ai/pipecat/learn/speech-input) — official docs on VAD latency budget and turn-detection limitations
-- [Pipecat Voice Agent in Production: Complete Guide](https://luonghongthuan.com/en/blog/pipecat-voice-agent-production-scalable-guide/) — production issues and optimization patterns for pipecat-style pipelines
-- [Severe latency and response desynchronization · pipecat-ai/pipecat#3218](https://github.com/pipecat-ai/pipecat/issues/3218) — real-world pipecat latency/desync issue report
-- [Preemptive speech generation option · pipecat-ai/pipecat#3321](https://github.com/pipecat-ai/pipecat/issues/3321) — documents the VAD-end-of-speech-gating latency cost in pipecat's architecture
-- [Sequential Pipeline Architecture for Voice Agents - LiveKit](https://livekit.com/blog/sequential-pipeline-architecture-voice-agents) — Audio In → VAD → STT → LLM → TTS → Audio Out architecture and barge-in design
-- [Advice on Building Voice AI in June 2025 - Daily.co](https://www.daily.co/blog/advice-on-building-voice-ai-in-june-2025/) — practitioner advice on voice pipeline composition
-- [LLM API Differences That Break Your Code - FutureSearch](https://futuresearch.ai/blog/llm-provider-quirks/) — concrete cross-provider tool-calling/JSON-schema/temperature gotchas (Gemini items.type, no top-level $ref, Anthropic thinking-mode tool_choice restriction)
-- [Whisper Hallucination on Silence - DEV Community](https://dev.to/nareshipme/whisper-hallucination-on-silence-why-your-transcript-loops-the-same-phrase-2pg4) — root cause and mitigation of repeated-phrase hallucination on silence/short clips
-- [Hallucination on audio with no speech · openai/whisper#1606](https://github.com/openai/whisper/discussions/1606) — official-repo discussion confirming the failure mode and decoding-threshold causes
-- [Investigation of Whisper ASR Hallucinations Induced by Non-Speech Audio (arXiv)](https://arxiv.org/pdf/2501.11378) — academic analysis of the hallucination mechanism
-- [The $0 Scalability Fix: How Whisper Microservice Saved Us from GPU OOM - Medium](https://medium.com/@patelhet04/the-0-scalability-fix-how-whisper-microservice-saved-us-from-gpu-oom-65dfd41a2180) — concurrency/VRAM exhaustion war story and semaphore-based fix
-- [The Concurrency Mistake Hiding in Every FastAPI AI Service](https://jamwithai.substack.com/p/the-concurrency-mistake-hiding-in) — model-loading-per-request and worker-count vs. GPU-memory mismatch pattern
-- [F5-TTS Setup Guide for Local Voice Cloning - BuilderAI](https://builderai.tools/blog/running-f5-tts-locally-for-voice-cloning) — reference audio quality constraints (3-10s, silence trimming, VRAM requirements)
-- [RVCBench: Benchmarking the Robustness of Voice Cloning Across Modern Audio Generation Models (arXiv)](https://arxiv.org/pdf/2602.00443) — systematic real-world voice-cloning failure modes (short/noisy references, multi-speaker contamination, identity drift)
-- [Barge-In Detection for Voice Agents - Beluga AI Framework](https://beluga-ai.org/docs/use-cases/voice-turn-barge-in-detection/) — barge-in architecture and latency budget components
-- [Voice Agent Interruption Handling Runbook - Hamming AI](https://hamming.ai/resources/voice-agent-interruption-handling-runbook) — interruption/cancellation signal handling between TTS and LLM state
-- `.planning/codebase/CONCERNS.md` (this repo) — existing fragile turn-lifecycle, duplicated `ToolExecutor`, VAD-loopback cooldown heuristic, and untested fragile-area findings used to ground Pitfalls 2 and 6 in this specific codebase
+- [Why wp_verify_nonce() Fails in WordPress REST API Endpoints](https://purpleturtlecreative.com/blog/2022/10/why-wp_verify_nonce-fails-in-wordpress-rest-api-endpoints/)
+- [WordPress REST API Auth nonces in POST requests](https://rosswintle.uk/2024/08/wordpress-rest-api-auth-nonces-in-post-requests/)
+- [Authentication – REST API Handbook](https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/)
+- [register_rest_route() – Function Reference](https://developer.wordpress.org/reference/functions/register_rest_route/)
+- [Handling Permissions in your WordPress REST routes](https://dev.to/david_woolf/handling-permissions-in-your-wordpress-rest-routes-c6j)
+- [How to Properly Restrict Access to WordPress REST API Routes – Plugin Vulnerabilities](https://www.pluginvulnerabilities.com/2022/12/13/how-to-properly-restrict-access-to-wordpress-rest-api-routes/)
+- [How to Secure WordPress REST API (wp-json) from Attacks in 2026](https://wpthrill.com/how-to-protect-wordpress-rest-api-from-abuse/)
+- [WordPress REST API Security Hardening (2026)](https://benryan.com.au/blog/wordpress-rest-api-security-hardening)
+- [wp_check_filetype_and_ext() – Function Reference](https://developer.wordpress.org/reference/functions/wp_check_filetype_and_ext/)
+- [#39550 Some Non-image files fail to upload after 4.7.1 – WordPress Trac](https://core.trac.wordpress.org/ticket/39550)
+- [#40175 Upload Validation / MIME Handling – WordPress Trac](https://core.trac.wordpress.org/ticket/40175)
+- [upload_mimes – Hook Reference](https://developer.wordpress.org/reference/hooks/upload_mimes/)
+- [GitHub: eldinor/babylon-wordpress-plugin (GLTF/GLB/STL/OBJ upload support, `model/gltf-binary` MIME mapping precedent)](https://github.com/eldinor/babylon-wordpress-plugin)
+- [Register MIME Type for GLB File Format · Issue #943 · KhronosGroup/glTF](https://github.com/KhronosGroup/glTF/issues/943)
+- [Securing SVG Uploads in WordPress | Daryll Doyle](https://enshrined.co.uk/2018/04/29/securing-svg-uploads-in-wordpress/) (analogous content-sniffing bypass precedent)
+- [Detailed Plugin Guidelines – Plugin Handbook](https://developer.wordpress.org/plugins/wordpress-org/detailed-plugin-guidelines/)
+- [Common issues – Plugin Handbook](https://developer.wordpress.org/plugins/wordpress-org/common-issues/)
+- [guideline-07.md: external-site info vs Phone Home · Issue #53 · WordPress/wporg-plugin-guidelines](https://github.com/WordPress/wporg-plugin-guidelines/issues/53)
+- [100,000+ Install Plugin Phoning Home for Over Two Years – Plugin Vulnerabilities](https://www.pluginvulnerabilities.com/2022/11/11/100000-install-wordpress-plugin-custom-permalinks-has-been-phoning-home-to-developer-for-over-two-years/)
+- [Building a WordPress Plugin with React? Use @wordpress/scripts](https://itsmereal.com/building-a-wordpress-plugin-with-react-use-wordpress-scripts/)
+- [JavaScript Packages and Interoperability in 5.0 and Beyond – Make WordPress Core](https://make.wordpress.org/core/2018/12/06/javascript-packages-and-interoperability-in-5-0-and-beyond/)
+- [gutenberg react version conflict · Issue #62914 · WordPress/gutenberg](https://github.com/WordPress/gutenberg/issues/62914)
+- [@wordpress/server-side-render – Block Editor Handbook](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-server-side-render/)
+- [Isomorphic Gutenberg Blocks | Pantheon.io](https://pantheon.io/blog/isomorphic-gutenberg-blocks)
+- [OpenAI API rate limits documentation](https://developers.openai.com/api/docs/guides/rate-limits)
+- [OpenAI Realtime and audio guide](https://developers.openai.com/api/docs/guides/realtime)
+- [Persistent Rate Limit Errors Despite Implementing Ephemeral Token Caching – OpenAI Community](https://community.openai.com/t/persistent-rate-limit-errors-despite-implementing-ephemeral-token-caching/1091837)
+- Internal codebase reference: `src/app/api/negotiate/route.ts` (existing Next.js ephemeral-token proxy pattern this plugin's PHP route must replicate)
 
 ---
-*Pitfalls research for: Composable voice AI pipeline with self-hosted Thai STT/TTS services*
-*Researched: 2026-06-17*
+*Pitfalls research for: WordPress plugin (bundled React/Three.js SPA + anonymous OpenAI ephemeral-token route + VRM/GLB upload)*
+*Researched: 2026-06-21*

@@ -1,284 +1,266 @@
 # Architecture Research
 
-**Domain:** Composable voice AI pipeline (STT/LLM/TTS orchestration), pipecat-style, for a TypeScript SDK calling sibling Python HTTP inference services
-**Researched:** 2026-06-17
-**Confidence:** HIGH (pipecat core abstractions, verified via official docs + source) / MEDIUM (HTTP integration patterns, verified via general Node/FastAPI best practices, not pipecat-specific since pipecat itself is WebSocket/streaming-first)
+**Domain:** WordPress plugin embedding a bundled React/Three.js SPA (voice-chat VRM avatar), with a PHP backend that mints OpenAI Realtime ephemeral tokens and serves admin-configured settings
+**Researched:** 2026-06-21
+**Confidence:** HIGH (WP REST/enqueue APIs, OpenAI ephemeral-token contract verified against actual SDK code) / MEDIUM (PHP strategy-pattern conventions, third-party plugin examples — WebSearch-verified, not Context7-verified, no single official "WordPress plugin DI" standard exists)
+
+> **Note:** This file supersedes the prior milestone's `generic-stt-tts` pipeline architecture research (pipecat-style VAD/STT/LLM/TTS decomposition), which is now validated/shipped (see `.planning/PROJECT.md` Validated section). This research covers the current milestone only: the WordPress plugin's PHP layer.
 
 ## Standard Architecture
 
 ### System Overview
 
-Pipecat's actual architecture is more granular than "4 swappable classes." It separates **transport/turn-detection** from **pipeline stage processors**, and separates **pipeline composition** from **pipeline execution lifecycle**. This is the key structural insight for khavee-sdk's `generic-stt-tts` package:
-
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         Orchestration Layer                                │
-│  PipelineRunner (process lifecycle: signals, cleanup)                      │
-│  PipelineTask  (frame queueing, cancellation, event handlers)              │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                 │ runs
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         Pipeline (composition)                             │
-│  Linked list of FrameProcessors; each .link()s to next, exposes .next/.prev│
-│                                                                              │
-│  [VAD/turn-detect] → [STTProcessor] → [ContextAggregator(user)]            │
-│       → [LLMProcessor] → [ContextAggregator(assistant)] → [TTSProcessor]   │
-└───────────┬───────────────┬────────────────┬────────────────┬─────────────┘
-            │ implements     │ implements      │ implements      │ implements
-            ▼                 ▼                ▼                ▼
-   ┌────────────────┐ ┌───────────────┐ ┌────────────────┐ ┌────────────────┐
-   │ VADAnalyzer     │ │ STTService    │ │ LLMService     │ │ TTSService     │
-   │ (plugged into   │ │ run_stt()     │ │ run_llm() +    │ │ run_tts()      │
-   │ transport/      │ │ audio frame → │ │ register_      │ │ text frame →   │
-   │ aggregator, not │ │ text frame    │ │ function()     │ │ audio frame    │
-   │ a pipeline stage)│ │               │ │                │ │                │
-   └────────────────┘ └───────────────┘ └────────────────┘ └────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  BROWSER (one bundled JS file, output of a new Vite/esbuild package) │
+│  ┌──────────────────────────────────────────────────────────────┐    │
+│  │ KhaveeProvider (React context) + useRealtime + VRMAvatar     │    │
+│  │   └─ OpenAIRealtimeProvider (useProxy: true,                 │    │
+│  │       proxyEndpoint: <WP REST URL>)                          │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+│        ▲ mounts into                      │ POST {sessionConfig}     │
+│        │ <div id="khaveeai-root"          │ GET  → ephemeralToken    │
+│        │      data-config="...">          ▼                         │
+├────────┼───────────────────────────────────────────────────────────┤
+│        │              WORDPRESS PHP (server)                        │
+│  ┌─────┴──────────┐  ┌────────────────────────────────────────┐    │
+│  │ Shortcode /    │  │ REST Controller                         │    │
+│  │ Gutenberg Block│  │ POST /khaveeai/v1/session               │    │
+│  │ (render path)  │  │  ├─ ConfigSourceInterface (admin opts)  │    │
+│  └───────┬────────┘  │  └─ TokenProviderInterface (OpenAI call) │    │
+│          │            └──────────────┬───────────────────────────┘    │
+│          ▼                           ▼                                │
+│  ┌──────────────────────────────────────────────────────────────┐    │
+│  │ Admin Settings Page (Settings API) → wp_options                │    │
+│  │ ConfigSource: WPOptionsConfigSource (this milestone)            │    │
+│  │ ConfigSource: PlatformApiConfigSource (future, NOT built now)   │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                     │ POST (server-to-server, API key never leaves PHP)
+                                     ▼
+                    https://api.openai.com/v1/realtime/client_secrets
 ```
-
-**Critical insight (HIGH confidence, verified against official docs):** VAD is **not** a peer pipeline stage alongside STT/LLM/TTS in pipecat. `SileroVADAnalyzer` is a plugin passed into `LLMUserAggregatorParams`/transport input, used purely for turn-taking and interruption-trigger detection. It does not transform Frame → Frame the way STTService/LLMService/TTSService do. This matters directly for khavee-sdk: `VADProvider` is correctly a *peer interface* in your design (since you POST whole VAD-segmented utterances, VAD's job — turn boundary detection — is load-bearing, not cosmetic), but it should **not** be designed as "just another pipeline stage with the same shape as STT/LLM/TTS." It has a fundamentally different contract: it doesn't transform content, it segments a continuous stream into discrete units and fires lifecycle events (speech-start, utterance-ready). Your existing `AudioRecorder.ts` already gets this right — it's an event emitter (`onSpeechStart`, `onUtteranceReady`, `onError`), not a `transform(input): output` function. Preserve that shape as `VADProvider`, don't force it into the same `process(input): Promise<output>` shape as STT/LLM/TTS.
 
 ### Component Responsibilities
 
 | Component | Responsibility | Typical Implementation |
 |-----------|----------------|------------------------|
-| `FrameProcessor` (pipecat) | Single-purpose transform with a uniform `process_frame(frame, direction)` method; pushes frames downstream/upstream rather than returning values | Base class every service/aggregator extends |
-| `Pipeline` (pipecat) | Links processors into a chain (`.link()`), nothing more — composition only, no execution | Built once per session from an array |
-| `PipelineTask` (pipecat) | Owns frame queue, cancellation, interruption propagation, event handlers (`on_error`, etc.) | One per active conversation/session |
-| `PipelineRunner` (pipecat) | Process-level lifecycle: signal handling (SIGINT/SIGTERM), GC, calls `task.run()` | One per process, not per session |
-| `STTService`/`LLMService`/`TTSService` (pipecat) | Vendor-specific `run_stt`/`run_llm`/`run_tts` implementations; everything else (frame plumbing, settings, audio buffering) is shared in the base class | Subclass per vendor |
-| `VADAnalyzer` (pipecat) | Turn-boundary/interruption detection; plugged into transport or context aggregator, not a chained stage | `SileroVADAnalyzer`, WebRTC VAD |
-| Context aggregator (pipecat) | Accumulates conversation history (user turn / assistant turn) as a frame processor, decoupled from the LLM service itself | `LLMContextAggregatorPair` |
-
-This decomposition is more granular than khavee-sdk needs for a turn-based (not full-duplex streaming) pipeline — pipecat's frame/queue/direction machinery exists to support continuous bidirectional audio streams with mid-utterance interruption. khavee-sdk's actual transport reality (VAD-segmented utterance → whole-blob POST → whole-response) is closer to pipecat's *conceptual* service boundaries (`STTService`, `LLMService`, `TTSService` as the vendor-swappable unit) without needing the full `Frame`/`FrameProcessor`/`FrameDirection` queueing machinery. Adopt the **boundary philosophy**, not the **literal frame-passing mechanism**.
+| Bootstrap/main plugin file | Plugin header, autoload, hook registration, container wiring | `wordpress-plugin/khaveeai.php` |
+| Config source strategy | Resolve "what API key, instructions, voice, avatar URL to use" from *some* backing store | Interface + 1 concrete class this milestone (WP options) |
+| Token provider strategy | Resolve "how do I get a short-lived OpenAI Realtime token" from *some* upstream | Interface + 1 concrete class this milestone (direct OpenAI call) |
+| REST controller | Translate HTTP request → call config source + token provider → JSON response shaped exactly as `OpenAIRealtimeProvider`'s `useProxy` branch expects | `WP_REST_Controller` subclass, registered on `rest_api_init` |
+| Shortcode/Block render path | Produce the mount-point `<div>` + bootstrap data (REST URL, nonce, avatar URL, public-safe config) once, shared by shortcode and block | One shared render function/class, two thin adapters calling it |
+| Enqueue manager | Register/enqueue the one built JS bundle + bootstrap data, once per page load, regardless of how many times shortcode/block appear | `wp_enqueue_script` + `wp_add_inline_script` (not `wp_localize_script`) |
+| Admin settings page | Render/save the WP Admin UI backing the config source (API key field, textarea, voice picker, Media Library avatar picker) | WP Settings API (`register_setting`, `add_settings_field`) or a small custom admin page |
 
 ## Recommended Project Structure
 
 ```
-packages/
-├── core/src/
-│   ├── types/
-│   │   ├── pipeline.ts          # NEW: VADProvider, STTProvider, LLMProvider, TTSProvider interfaces
-│   │   ├── tools.ts             # NEW (or extend existing): Tool = {name, description, parameters, handler}
-│   │   └── realtime.ts          # UNCHANGED: RealtimeProvider stays the outer contract both
-│   │                             #   OpenAISTTTTSProvider and the new generic pipeline provider implement
-│   └── pipeline/
-│       ├── ToolExecutor.ts       # PROMOTED from openai-stt-tts/openai-realtime (dedup target)
-│       └── PipelineOrchestrator.ts  # NEW: generic turn orchestration, vendor-agnostic
-└── providers/
-    ├── generic-stt-tts/src/      # NEW package — the focus of this milestone
-    │   ├── GenericSTTTTSProvider.ts   # implements RealtimeProvider; composes {vad, stt, llm, tts}
-    │   ├── index.ts
-    │   └── __tests__/
-    ├── thonburian-stt/src/       # NEW: STTProvider adapter calling thonburian-stt service over HTTP
-    │   ├── ThonburianSTTProvider.ts
-    │   └── index.ts
-    ├── jai-tts/src/               # NEW: TTSProvider adapter calling jai-tts service over HTTP
-    │   ├── JaiTTSProvider.ts
-    │   └── index.ts
-    └── openai-stt-tts/             # UNTOUCHED this milestone
+wordpress-plugin/
+├── khaveeai.php                          # Plugin bootstrap: header docblock, version const,
+│                                          #   require autoloader, hook registration only
+├── includes/
+│   ├── Plugin.php                        # Composition root — wires concrete strategies into
+│   │                                      #   the REST controller and admin page (the ONE place
+│   │                                      #   that knows which ConfigSource/TokenProvider is active)
+│   ├── ConfigSource/
+│   │   ├── ConfigSourceInterface.php     # get_runtime_config(): array{instructions, voice, avatar_url, model}
+│   │   │                                 #   get_api_key(): string  (server-side only, never returned to REST response)
+│   │   └── WpOptionsConfigSource.php     # Reads wp_options via get_option('khaveeai_settings')
+│   │                                     #   (PlatformApiConfigSource.php is future work, NOT built this milestone)
+│   ├── TokenProvider/
+│   │   ├── TokenProviderInterface.php    # mint_session(array $sessionConfig, string $apiKey): array
+│   │   │                                 #   {ephemeralToken, sessionId, expiresAt}
+│   │   └── OpenAiDirectTokenProvider.php # wp_remote_post to api.openai.com/v1/realtime/client_secrets
+│   │                                     #   (PlatformApiTokenProvider.php is future work, NOT built this milestone)
+│   ├── Rest/
+│   │   └── SessionController.php         # WP_REST_Controller: registers POST /khaveeai/v1/session,
+│   │                                     #   permission_callback for anonymous-but-rate-limited access,
+│   │                                     #   calls ConfigSource + TokenProvider, shapes response
+│   ├── Render/
+│   │   └── AvatarRenderer.php            # Single shared method: build mount-div HTML + inline
+│   │                                     #   bootstrap JSON (called by both Shortcode and Block)
+│   ├── Shortcode/
+│   │   └── AvatarShortcode.php           # Registers [khaveeai_avatar], parses shortcode atts,
+│   │                                     #   delegates to AvatarRenderer
+│   ├── Block/
+│   │   ├── block.json                    # Block metadata (attributes mirror shortcode atts 1:1)
+│   │   └── AvatarBlock.php               # register_block_type with a render_callback that
+│   │                                     #   delegates to AvatarRenderer (server-side/dynamic render —
+│   │                                     #   editor preview uses ServerSideRender, no duplicated JS logic)
+│   ├── Admin/
+│   │   └── SettingsPage.php              # WP Settings API page: API key, instructions, voice,
+│   │                                     #   Media Library avatar picker → writes wp_options
+│   └── Assets/
+│       └── AssetManager.php              # wp_enqueue_script/style for the built bundle,
+│                                         #   wp_add_inline_script for bootstrap data (REST URL + nonce)
+├── build/
+│   └── khaveeai-bundle.js                # Output of a bundler step that imports @khaveeai/react +
+│                                         #   @khaveeai/providers-openai-realtime and mounts into
+│                                         #   [data-khaveeai-root] — built by a NEW small Vite/esbuild
+│                                         #   package outside the existing tsc-based packages, copied in
+├── assets/
+│   └── editor.js                         # Minimal Gutenberg editor-side script (block registration,
+│                                         #   InspectorControls for the same attributes) — separate
+│                                         #   small bundle, NOT the same file as khaveeai-bundle.js
 ```
 
 ### Structure Rationale
 
-- **Interfaces live in `@khaveeai/core`, not in `generic-stt-tts`:** Any future vendor adapter (Bedrock STT, Gemini TTS, a different LLM) must depend only on `@khaveeai/core`, never on `generic-stt-tts`, mirroring the existing convention ("provider packages depend only on `@khaveeai/core`, never on each other"). If `VADProvider`/`STTProvider`/`LLMProvider`/`TTSProvider` lived inside `generic-stt-tts`, every vendor adapter package would need to depend on the orchestrator package just to get the types — backwards dependency direction.
-- **The orchestrator (turn-loop logic) is generic and vendor-agnostic — it belongs in `@khaveeai/core` or its own provider package, not duplicated per vendor combination:** This is the direct generalization of `OpenAISTTTTSProvider`'s `runTurn`/`runTurnFromText`. One orchestrator class, constructed with `{ vad, stt, llm, tts }` instances, replaces N hand-written monolithic provider classes (one per vendor combination).
-- **`thonburian-stt`/`jai-tts` adapter packages are thin:** Each contains only an HTTP client implementing one interface (`STTProvider` or `TTSProvider`) — no orchestration logic, no VAD, no tool-calling. This matches the "small vendor-specific stage classes per new package" pattern your own STRUCTURE.md already recommends.
-- **`ToolExecutor` promotion to `packages/core/src/pipeline/`** rather than `types/`: it's executable logic (a registry + dispatch), not a type — keep the types/logic split that already exists (`types/` vs `client/` vs `tools/`).
+- **`ConfigSource/` and `TokenProvider/` as sibling interface+impl folders:** these are the two seams the milestone explicitly calls out as needing to be swappable later without touching the JS bundle. Keeping them as small, narrowly-scoped interfaces (not one fat "ProviderInterface") means the future Platform-mode classes are pure *additions* — `PlatformApiConfigSource implements ConfigSourceInterface` and `PlatformApiTokenProvider implements TokenProviderInterface` — wired in by changing one line in `Plugin.php`, never touching `SessionController.php`, `Render/`, or any JS.
+- **`Render/AvatarRenderer.php` as a shared class, not duplicated in Shortcode/Block:** WordPress shortcodes and Gutenberg blocks are registered through entirely different APIs (`add_shortcode` vs `register_block_type`), but both ultimately need to produce the same mount-point markup + bootstrap JSON. Centralizing that in one renderer means shortcode attributes and block attributes must map to the *same* config shape (enforced by both adapters calling the same method signature), which directly satisfies "share one render path without duplicating logic."
+- **`Plugin.php` as composition root:** WordPress has no built-in service container. Rather than pull in a DI library (overkill for ~6-8 classes), one `Plugin.php` file constructs concrete strategy instances and injects them into `SessionController` and `SettingsPage` via constructor args. This is the smallest unit of "dependency injection" needed — swapping strategies later means changing the `new WpOptionsConfigSource()` / `new OpenAiDirectTokenProvider()` lines in exactly one file.
+- **`Assets/AssetManager.php` separate from `Render/`:** enqueuing must happen on `wp_enqueue_scripts` (a WordPress hook with strict timing — too late to call reliably from inside a shortcode callback that may run during `the_content` filtering, after the head has already been printed in many themes/caching setups). Keeping asset registration on its own hook, decoupled from *whether* the shortcode/block is actually used on the page, avoids the classic "script not loaded because shortcode rendered after wp_head" bug (see Anti-Pattern 1).
+- **`build/khaveeai-bundle.js` lives under `wordpress-plugin/` but is built by a separate bundler config, not `tsc`:** every other package in this monorepo builds with `tsc` (type-checking, multi-file output for library consumption). The WP bundle is the opposite — one consumer-facing IIFE/UMD file with React/Three.js inlined. This needs Vite or esbuild, not `tsc`. Treating it as its own buildable unit (even if its output physically lives inside `wordpress-plugin/`) keeps the existing `tsc`-based package builds untouched, satisfying the "must not break existing providers" constraint.
 
 ## Architectural Patterns
 
-### Pattern 1: Interface-per-stage with uniform async method signature, NOT frame/queue machinery
+### Pattern 1: Strategy interfaces for config source and token minting
 
-**What:** Define `STTProvider`, `LLMProvider`, `TTSProvider` as plain async-method interfaces (`transcribe(audio): Promise<Transcript>`, `complete(messages, tools): Promise<CompletionResult>`, `speak(text): Promise<AudioResult>`). Define `VADProvider` separately as an event-emitter interface (`start()`, `stop()`, `onSpeechStart`, `onUtteranceReady(blob)`, `onError`), matching what `AudioRecorder.ts` already does.
-
-**When to use:** When the transport reality is "buffer a complete utterance, send it whole, get a complete response back" — i.e. exactly this project's HTTP-chunked reality, not pipecat's continuous-frame-stream reality.
-
-**Trade-offs:** Loses pipecat's ability to interrupt mid-TTS-token-stream or mid-transcription (not needed here — neither Whisper nor F5-TTS streams partial results). Gains massive simplicity: no frame queue, no direction enum, no cancellation-of-partial-frame logic. This is the right trade for the stated "no true streaming ASR/TTS" constraint.
+**What:** Two narrow PHP interfaces — `ConfigSourceInterface` (where do settings come from) and `TokenProviderInterface` (how is a session token minted) — each with exactly one concrete implementation this milestone, instantiated in one composition-root file.
+**When to use:** Whenever the milestone explicitly says "swappable later, don't touch the JS bundle" — this is precisely that case (Custom mode now, Platform mode later, blocked on a `khavee-app` endpoint that doesn't exist yet, per `.planning/PROJECT.md`).
+**Trade-offs:** Pro — zero cost today (it's just one `implements` clause per class), all the cost is paid later when adding the second implementation, and the JS bundle genuinely never needs to change because the REST response shape is the actual contract, not the PHP class names. Con — a single-implementation interface can look like premature abstraction to a reviewer; mitigate by keeping both interfaces under 2-3 methods each (no speculative methods for Platform mode that aren't needed yet).
 
 **Example:**
-```typescript
-// packages/core/src/types/pipeline.ts
-export interface STTProvider {
-  transcribe(audio: Blob, opts?: { language?: string }): Promise<{ text: string }>;
+```php
+interface ConfigSourceInterface {
+    /** Public-safe display/runtime config — never includes the API key. */
+    public function get_runtime_config(): array; // ['instructions' => ..., 'voice' => ..., 'avatar_url' => ..., 'model' => ...]
+
+    /** Server-side-only secret, never serialized into a REST response or the JS bundle. */
+    public function get_api_key(): string;
 }
 
-export interface LLMProvider {
-  complete(
-    messages: ChatMessage[],
-    tools?: Tool[],
-  ): Promise<{ text: string; toolCalls?: ToolCall[]; usage?: UsageReport }>;
-}
-
-export interface TTSProvider {
-  speak(text: string, opts?: { voice?: string }): Promise<{ audio: ArrayBuffer; mimeType: string }>;
-}
-
-export interface VADProvider {
-  start(): Promise<void>;
-  stop(): void;
-  onSpeechStart?: () => void;
-  onUtteranceReady?: (audio: Blob) => void;
-  onError?: (error: Error) => void;
+interface TokenProviderInterface {
+    /**
+     * @param array $session_config Shape matching OpenAIRealtimeProvider's `sessionConfig` (model, instructions, voice, tools, audio).
+     * @param string $api_key Resolved by ConfigSourceInterface::get_api_key(), passed in — TokenProvider never reads wp_options itself.
+     * @return array{ephemeralToken: string, sessionId: ?string, expiresAt: ?int}
+     */
+    public function mint_session(array $session_config, string $api_key): array;
 }
 ```
 
-### Pattern 2: Generic orchestrator composed from stage instances (the pipecat `Pipeline` analog)
+### Pattern 2: One shared render path, two thin registration adapters
 
-**What:** One class (`GenericSTTTTSProvider` or a `PipelineOrchestrator` in core) takes `{ vad, stt, llm, tts, tools }` in its constructor and implements the turn loop generically: `vad.onUtteranceReady` → `stt.transcribe()` → append to history → `llm.complete()` (loop while `toolCalls` present, dispatching through `ToolExecutor`) → `tts.speak()` → play. This directly mirrors pipecat's `Pipeline([stt, context_aggregator, llm, tts])` composition, minus the frame queue.
-
-**When to use:** Always, for this package — it's the entire point of the milestone (replacing N monolithic provider classes with 1 orchestrator + N small stage adapters).
-
-**Trade-offs:** The orchestrator must still implement the full `RealtimeProvider` interface (connect/disconnect, mic control, events, `getAudioAnalyser()`) since that's the seam `@khaveeai/react`'s `useRealtime` depends on — so it isn't *purely* generic plumbing, it also owns the turn-state machine, history trimming, and mic-cooldown logic currently embedded in `OpenAISTTTTSProvider`. Lift that logic largely verbatim; only the `new AudioRecorder()`/`new STTClient()`/`new ChatClient()`/`new TTSPlayer()` constructor lines become constructor parameters.
+**What:** `AvatarRenderer::render(array $atts): string` is the single function that knows how to turn a normalized attributes array into mount-point HTML. `AvatarShortcode` and `AvatarBlock` are each ~10-20 lines: parse their respective input format (`shortcode_atts()` vs block `$attributes` array) into the *same* normalized shape, then call `AvatarRenderer::render()`.
+**When to use:** Any time a WP plugin must support both shortcode and block for the same feature — this is a well-established pattern in real-world plugins (widget-embedding plugins commonly use a shared render callback for exactly this reason, per general WP plugin development conventions surveyed).
+**Trade-offs:** Pro — config shape (instructions override, voice override, avatar override per-instance) is defined exactly once; admin defaults and per-shortcode/per-block overrides merge through one code path, so there's no risk of shortcode and block attributes silently drifting apart. Con — block attributes need a `block.json` schema that's kept in sync by hand with the shortcode's accepted attribute names (no codegen exists for this in core WP) — mitigate with a single PHP constant/array listing the canonical attribute names, referenced by both `block.json`'s comments and the shortcode's `shortcode_atts()` defaults.
 
 **Example:**
-```typescript
-export class GenericSTTTTSProvider implements RealtimeProvider {
-  constructor(private deps: {
-    vad: VADProvider;
-    stt: STTProvider;
-    llm: LLMProvider;
-    tts: TTSProvider;
-    tools?: Tool[];
-  }, private config: GenericSTTTTSConfig) {}
+```php
+final class AvatarRenderer {
+    public function __construct(
+        private ConfigSourceInterface $config_source,
+        private AssetManager $assets
+    ) {}
 
-  async connect() {
-    this.deps.vad.onUtteranceReady = (wav) => this.runTurn(wav);
-    await this.deps.vad.start();
-  }
-
-  private async runTurn(wav: Blob) {
-    const { text } = await this.deps.stt.transcribe(wav, { language: this.config.language });
-    await this.runTurnFromText(text);
-  }
-  // runTurnFromText: same shape as OpenAISTTTTSProvider's, but calls
-  // this.deps.llm.complete(...) / this.deps.tts.speak(...) instead of concrete clients
+    public function render(array $atts): string {
+        $defaults = $this->config_source->get_runtime_config();
+        $merged = wp_parse_args($atts, $defaults); // per-instance atts override admin defaults
+        $this->assets->enqueue(); // idempotent — safe to call N times if N shortcodes/blocks on one page
+        $id = 'khaveeai-' . wp_unique_id();
+        return sprintf(
+            '<div id="%s" class="khaveeai-root" data-khaveeai-config="%s"></div>',
+            esc_attr($id),
+            esc_attr(wp_json_encode($this->public_safe($merged)))
+        );
+    }
 }
 ```
 
-### Pattern 3: Tool-calling as a core LLMProvider capability with provider-agnostic schema
+### Pattern 3: REST controller as the only thing that talks to both strategies
 
-**What:** `Tool = { name, description, parameters: JSONSchema, handler: (args) => Promise<unknown> }` lives in `@khaveeai/core`. Every `LLMProvider.complete()` accepts `tools?: Tool[]` and returns `toolCalls?: ToolCall[]` in a normalized shape; a shared `ToolExecutor` (promoted from the duplicated files) dispatches `toolCalls` to `handler`s and the orchestrator feeds results back into `messages` before calling `complete()` again.
+**What:** `SessionController::create_session(WP_REST_Request $request)` is the single method that: (1) asks `ConfigSourceInterface` for runtime config + API key, (2) merges any client-supplied `sessionConfig` overrides from the POST body (mirroring what `OpenAIRealtimeProvider.ts` sends), (3) calls `TokenProviderInterface::mint_session()`, (4) shapes the response to exactly match what `OpenAIRealtimeProvider`'s `useProxy` branch parses.
+**When to use:** This is the seam between PHP and the existing TypeScript provider — get this contract wrong and the JS bundle breaks regardless of which strategy implementations are behind it.
+**Trade-offs:** No real trade-off — this is the one place where the response shape is genuinely load-bearing and must match the TS code exactly (see Integration Points below for the exact shape, taken directly from `OpenAIRealtimeProvider.ts:206-219`).
 
-**When to use:** Always — this matches pipecat's `FunctionSchema` (verified, HIGH confidence: pipecat's own `FunctionSchema` is `{name, description, properties, required, handler}`, essentially identical to the project's stated plain-object design) and is the standard shape every vendor's function-calling API (OpenAI, Anthropic, Gemini, Bedrock) already converges on — JSON Schema `properties`/`required` is the lowest common denominator.
-
-**Trade-offs:** None significant — this is the de facto industry-standard shape; building a different one would only hurt vendor portability.
-
-```typescript
-export interface Tool {
-  name: string;
-  description: string;
-  parameters: { type: 'object'; properties: Record<string, unknown>; required?: string[] };
-  handler: (args: Record<string, unknown>) => Promise<unknown>;
+**Example:**
+```php
+public function create_session( WP_REST_Request $request ): WP_REST_Response {
+    $api_key = $this->config_source->get_api_key();
+    if ( empty( $api_key ) ) {
+        return new WP_REST_Response( [ 'error' => 'khaveeai_not_configured' ], 503 );
+    }
+    $session_config = $request->get_param( 'sessionConfig' ) ?? [];
+    $result = $this->token_provider->mint_session( $session_config, $api_key );
+    // Shape MUST match ProxyTokenResponse parsed in OpenAIRealtimeProvider.ts connect()
+    return new WP_REST_Response( [
+        'data' => [
+            'ephemeralToken' => $result['ephemeralToken'],
+            'sessionId'      => $result['sessionId'] ?? null,
+        ],
+    ], 200 );
 }
 ```
 
 ## Data Flow
 
-### Request Flow (turn-based, HTTP-chunked)
+### Request Flow (page load → connect → session token)
 
 ```
-[User speaks]
-    ↓ (continuous mic stream)
-[VADProvider: AudioRecorder] --onUtteranceReady(wav: Blob)--→ [Orchestrator.runTurn]
-    ↓
-[STTProvider.transcribe(wav)] --HTTP POST multipart/form-data--→ [thonburian-stt service]
-    ↓ {text}
-[Orchestrator: append user turn to history]
-    ↓
-[LLMProvider.complete(messages, tools)] --HTTP POST JSON--→ [vendor LLM API]
-    ↓ {text, toolCalls?}
-[if toolCalls: ToolExecutor.dispatch → handler() → append tool result → complete() again]
-    ↓ {text: final}
-[Orchestrator: append assistant turn to history, fire onUsageReport]
-    ↓
-[TTSProvider.speak(text)] --HTTP POST JSON--→ [jai-tts service]
-    ↓ {audio: ArrayBuffer, mimeType}
-[Orchestrator: decode via Web Audio API, play through AnalyserNode (lipsync) + destination]
-    ↓
-[onAudioData fires → chatStatus: "speaking"] → playback ends → mic resumes after cooldown
-```
+1. WP renders page → AvatarShortcode/AvatarBlock → AvatarRenderer::render()
+       ↓ (server-side, on every page request)
+   AssetManager::enqueue() → wp_enqueue_script(bundle) + wp_add_inline_script(bootstrap JSON: {restUrl, nonce, defaultConfig})
+       ↓ HTML response includes <div data-khaveeai-config="..."> + <script> tags
 
-### State Management
-
-State management is unchanged from the existing pattern — no new central store needed:
-
-```
-[Orchestrator instance: conversation[], messages[], chatStatus, _isTurnActive]
-    ↓ (event callbacks: onMessage, onChatStatusChange, onAudioData, onError, onUsageReport)
-[useRealtime hook] ←→ [React state] → [VRMAvatar / UI]
+2. Browser: bundle's entry point reads data-khaveeai-config off the mount div
+       ↓
+   new OpenAIRealtimeProvider({ useProxy: true, proxyEndpoint: <restUrl from bootstrap>, instructions, voice, ...})
+       ↓ user clicks Connect →
+   provider.connect() → POST <restUrl> with { sessionConfig: {...} }
+       ↓
+3. WP REST: SessionController::create_session()
+       ↓ permission_callback already passed (rate-limit + public-by-design check, see Integration Points)
+   ConfigSourceInterface::get_api_key() → wp_options
+       ↓
+   TokenProviderInterface::mint_session(sessionConfig, apiKey)
+       ↓ server-to-server only
+   POST https://api.openai.com/v1/realtime/client_secrets  (Authorization: Bearer <real OpenAI key>)
+       ↓
+   { value: "ek_...", session: {...} }  ← OpenAI's actual response shape
+       ↓ PHP reshapes to khaveeai's REST contract
+   { data: { ephemeralToken: "ek_...", sessionId: "..." } }
+       ↓ HTTP response to browser
+4. Browser: provider.connect() resolves bearerToken = data.ephemeralToken
+       ↓ browser itself, directly (no PHP involved) →
+   POST https://api.openai.com/v1/realtime/calls  (Authorization: Bearer ek_..., body: SDP offer)
+       ↓
+   WebRTC session established directly between browser and OpenAI
 ```
 
 ### Key Data Flows
 
-1. **Audio in (browser → Python service):** `VADProvider` produces a WAV `Blob` in-browser. `STTProvider` adapter (e.g. `ThonburianSTTProvider`) POSTs it as `multipart/form-data` (matches existing `STTClient.ts` convention) to the Python service's `/transcribe`-style endpoint, receives `{ text: string }` JSON back.
-2. **Text in/out (browser ↔ vendor LLM):** Unchanged shape from `ChatClient.ts` — JSON in, JSON out, just behind the new `LLMProvider` interface instead of a concrete class.
-3. **Text in, audio out (browser → Python service):** `TTSProvider` adapter (e.g. `JaiTTSProvider`) POSTs `{ text: string, voice?: string }` JSON to the Python service's `/synthesize`-style endpoint, receives a binary audio response (`audio/wav`) back, decoded via Web Audio API exactly as `TTSPlayer.ts` already does.
-4. **Tool calls (in-process, no network beyond the LLM call itself):** `LLMProvider.complete()` returns `toolCalls`; `ToolExecutor` looks up registered `handler`s and invokes them locally (or they may themselves make HTTP calls — that's the tool author's concern, not the pipeline's).
-
-## Cross-Language HTTP Integration (TypeScript SDK ↔ Python services)
-
-This is not a pipecat pattern (pipecat is Python-native end-to-end and typically uses WebSocket streaming to vendor APIs) — these recommendations come from general Node↔FastAPI HTTP integration practice, MEDIUM confidence, cross-checked against multiple sources.
-
-### Request/response shape
-
-- **STT (`thonburian-stt`):** `POST /transcribe`, `Content-Type: multipart/form-data` with a single `file` field (WAV bytes) — this matches the existing `STTClient.ts` convention exactly, so `ThonburianSTTProvider` can reuse the same request-building code path. Response: `{ "text": "...", "language"?: "th" }` JSON, `200 OK`. FastAPI side: `UploadFile` parameter, `transformers.pipeline(..., chunk_length_s=...)` for long audio, returns `JSONResponse`.
-- **TTS (`jai-tts`):** `POST /synthesize`, `Content-Type: application/json` body `{ "text": "...", "voice"?: "default" }` (omit reference-audio/reference-text from the public HTTP contract — bake the bundled default Thai voice into the service so the SDK-facing contract stays "text in, audio out" simple, per the beginner-DX constraint). Response: raw `audio/wav` bytes with `Content-Type: audio/wav`, or alternatively base64-encoded JSON if the consuming app's infra makes binary responses awkward — prefer raw binary (`FileResponse`/`StreamingResponse` in FastAPI) since `TTSPlayer.ts` already expects to `fetch()` and `arrayBuffer()` a binary body, avoiding a base64 decode step.
-- **Audio encoding:** WAV (PCM) both directions — already the format `AudioRecorder.ts` produces and `TTSPlayer.ts` consumes; no new codec work needed. Whisper and F5-TTS both natively operate on PCM/WAV, so no transcoding is needed at either Python service boundary.
-
-### Error propagation
-
-- Python services should return structured JSON error bodies even on failure (`{ "error": "...", "detail": "..." }`) with appropriate HTTP status codes (422 for bad input, 500 for model/inference failure, 503 if model still loading) rather than raw FastAPI tracebacks — easy to do via a FastAPI exception handler.
-- TypeScript adapters should follow the existing `STTClient.ts`/`ChatClient.ts` convention: check `res.ok`, throw a plain `Error` with status code + body text baked into the message. Do not introduce a typed error hierarchy in this milestone — it would be inconsistent with the rest of the codebase's "plain Error, normalized at the provider boundary" pattern (verified in `.planning/codebase/ARCHITECTURE.md`'s Error Handling section).
-- The orchestrator's existing try/catch-at-lifecycle-boundary pattern (normalize to `Error`, forward via `onError?.()`, reset `chatStatus` to a safe state in `finally`) needs no redesign — it already treats STT/LLM/TTS calls as "any of these can throw," which is exactly what HTTP-backed Python services will do (network failure, timeout, 500, malformed response).
-
-### Timeouts
-
-- Use `AbortSignal.timeout(ms)` (native, no extra dependency) per-call in each adapter, with stage-appropriate defaults: STT (Whisper inference on a VAD-segmented utterance, typically a few seconds of audio) ~15-30s; TTS (F5-TTS zero-shot cloning is comparatively slow) ~30-60s. Make both configurable in each provider's config type, since cold-start/model-loading on first request will be much slower than steady-state — consider a longer timeout specifically for a service's first call after startup, or have the Python service expose a `/health` or warm-up endpoint the demo app can ping before allowing user interaction.
-- Distinguish abort-due-to-timeout from abort-due-to-deliberate-cancel (the orchestrator's existing `cancel()`/interrupt path) the same way `TTSPlayer.speak()` already does for its own `AbortError` — re-use that pattern rather than inventing a new one, since the LLM/STT/TTS provider adapters now have the same "this fetch might be deliberately aborted by the user interrupting" requirement that `TTSPlayer` already solved.
-
-### What pipecat does differently here (and why khavee-sdk shouldn't copy it)
-
-Pipecat's vendor integrations (Deepgram, Cartesia, ElevenLabs, etc.) are predominantly WebSocket-based for true streaming partial results, with documented reconnection/backoff logic for idle timeouts and dropped connections (verified: GitHub issues #1818, #3699 describe exactly this complexity). Since neither `thonburian-stt` nor `jai-tts` support incremental streaming, none of that reconnection/backoff machinery is needed — request/response HTTP with a sane timeout and a thrown `Error` is the entire error-handling surface required. Resist the temptation to over-build retry/reconnect logic modeled on pipecat's WebSocket services; it solves a problem this project doesn't have.
+1. **Admin config → browser bootstrap:** `wp_options['khaveeai_settings']` → `WpOptionsConfigSource::get_runtime_config()` → `AvatarRenderer::render()` merges with per-instance shortcode/block atts → serialized into `data-khaveeai-config` attribute (public-safe fields only: instructions, voice, avatar URL, model — never the API key) → read by the bundle's mount script on `DOMContentLoaded`.
+2. **API key never crosses the PHP/browser boundary:** `get_api_key()` is called only inside `SessionController::create_session()`, passed directly into `TokenProviderInterface::mint_session()` as a function argument, and is never included in any value returned to the REST response or echoed into page HTML. This is the one invariant that must hold across both current and future TokenProvider implementations.
+3. **Anonymous visitor → session token:** unlike most WP REST design guidance (which assumes a logged-in user with a `wp_rest` nonce), this endpoint must work for anonymous front-end visitors. The REST route's `permission_callback` cannot require `wp_verify_nonce()` against the standard `wp_rest` action tied to a logged-in user's nonce, because anonymous visitors get a weaker, cache-fragile nonce. See Integration Points for the concrete recommended approach (public + IP-based rate limiting, not user-auth nonce).
 
 ## Scaling Considerations
 
 | Scale | Architecture Adjustments |
 |-------|--------------------------|
-| Single demo/dev usage | Current design is sufficient: one orchestrator instance per browser session, Python services run as single-process FastAPI apps with the model loaded in memory at startup. |
-| Multiple concurrent users hitting shared Python services | Both Whisper and F5-TTS inference are GPU/CPU-bound and not trivially concurrent per-process — the bottleneck is the Python service, not the TypeScript SDK. Add a request queue or run multiple worker processes behind a load balancer in `thonburian-stt`/`jai-tts` (out of scope for this milestone, but the HTTP contract being stateless/whole-utterance-in-whole-response-out makes horizontal scaling of the Python services straightforward later). |
-| High call volume needing partial/streaming responses | Would require swapping the underlying models (e.g. a streaming-capable Whisper variant, or a TTS model with chunked synthesis) — explicitly out of scope per PROJECT.md; the interfaces (`transcribe(): Promise<Transcript>`, `speak(): Promise<AudioResult>`) would need to become async generators/streams at that point, a breaking interface change, not a config change. |
+| Single-site, low traffic | Current design as-is: transient-based per-IP rate limiting on the REST route is sufficient; `wp_options` for config is fine (autoloaded option, cached by object cache if present). |
+| Multiple shortcodes/blocks per page, moderate traffic | `AssetManager::enqueue()` must be idempotent (guard with `wp_script_is($handle, 'enqueued')`) so N widget instances on one page don't double-enqueue the bundle or fire duplicate `wp_add_inline_script` bootstrap blocks — each instance needs its own DOM id but shares one script tag. |
+| High traffic / many concurrent sessions | Transient-based rate limiting (object cache-backed, e.g. Redis via a persistent object cache plugin) becomes important since each `connect()` call is a real OpenAI API call with cost; consider moving from per-IP transient counting to a dedicated rate-limit plugin or Cloudflare-level rule if traffic grows, since PHP-level transients alone don't reliably synchronize across multi-server WP setups without a shared object cache. |
 
 ### Scaling Priorities
 
-1. **First bottleneck:** Python service inference latency (especially `jai-tts`'s F5-TTS zero-shot cloning, generally slower than STT). Mitigate with a `/health`/warm-up endpoint and clear timeout configuration, not architecture changes.
-2. **Second bottleneck:** Browser-side `AudioContext`/Web Audio decode of larger TTS responses — already handled by the existing `TTSPlayer.ts` pattern, no new work needed.
+1. **First bottleneck:** Unauthenticated REST route being hit by bots/scrapers to enumerate ephemeral tokens or exhaust OpenAI quota — mitigate immediately (this milestone, not deferred) with per-IP transient rate limiting in the controller's `permission_callback`, returning 429 past a low threshold (e.g. 5-10 session-creation requests per minute per IP, since this is a high-cost endpoint, not a read endpoint).
+2. **Second bottleneck:** `wp_options` autoload bloat if the avatar/settings blob grows large (e.g. storing a base64 avatar instead of a Media Library attachment ID) — mitigated by storing only the Media Library attachment ID in options and resolving the URL via `wp_get_attachment_url()` at render time, not storing the binary or full URL in options.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Forcing VADProvider into the same request/response shape as STT/LLM/TTS
+### Anti-Pattern 1: Enqueuing scripts from inside the shortcode/block render callback
 
-**What people do:** Define `VADProvider` as `process(audioChunk): Promise<VADResult>` to look symmetrical with the other three interfaces.
+**What people do:** Call `wp_enqueue_script()` directly inside the shortcode handler or block `render_callback`, assuming "it'll just work because the function runs during page render."
+**Why it's wrong:** Shortcodes run during `the_content` filtering, which in many themes happens *after* `wp_head` has already printed enqueued `<script>`/`<style>` tags (when scripts are not registered for footer output), or scripts can be missed entirely if a caching/page-builder plugin pre-renders content outside the normal hook sequence. This is one of the most commonly reported real-world WP plugin bugs for "widget doesn't show up."
+**Do this instead:** Register the script/style on `wp_enqueue_scripts` (always, unconditionally, with `'in_footer' => true`) so it's queued correctly regardless of when/whether the shortcode actually renders; the bundle's mount script simply no-ops if it finds no `[data-khaveeai-config]` elements in the DOM. Optionally use `has_shortcode()`/block-presence detection on the *current post* as a performance optimization to skip enqueuing on pages that definitely don't use it — but never make enqueuing depend on the shortcode/block callback firing first.
 
-**Why it's wrong:** VAD's job is continuous stream segmentation with lifecycle events (speech-start, utterance-ready, silence), not a single request/response transform. Pipecat itself treats VAD as a plugin into the transport/aggregator layer, not a peer `*Service`. Forcing a `process()` shape would require the orchestrator to poll or chunk audio unnaturally, and would diverge from the already-working `AudioRecorder.ts` event-emitter design.
+### Anti-Pattern 2: Requiring a logged-in-user nonce on a public-facing REST route
 
-**Do this instead:** Keep `VADProvider` as an event-emitter/lifecycle interface (`start()`, `stop()`, `onUtteranceReady`), matching `AudioRecorder.ts`'s existing shape almost exactly — just extract its public surface into a `@khaveeai/core` interface.
-
-### Anti-Pattern 2: Building pipecat's full Frame/FrameDirection/queue machinery for a turn-based, non-streaming pipeline
-
-**What people do:** See "frame processor" and "pipeline" in pipecat's docs and conclude the generalized provider needs a `Frame` class hierarchy, a `FrameDirection` enum, and per-processor input/output queues.
-
-**Why it's wrong:** That machinery exists in pipecat to support continuous bidirectional frame flow with mid-stream interruption across many concurrent processors. khavee-sdk's actual transport reality — VAD-segmented whole utterances POSTed to HTTP endpoints that return whole responses — has no mid-stream frames to interrupt. Building frame/queue infrastructure for this would be substantial unnecessary complexity with no corresponding capability gained (Whisper and F5-TTS don't emit partial results to interrupt mid-stream anyway).
-
-**Do this instead:** Adopt pipecat's *boundary philosophy* (one swappable interface per pipeline stage, generic orchestrator composes them) without its *frame-passing mechanism*. Plain async methods (`transcribe`, `complete`, `speak`) returning complete results are sufficient and match the project's actual constraints.
-
-### Anti-Pattern 3: Flat config inheritance across all four interfaces
-
-**What people do:** One `GenericSTTTTSConfig extends RealtimeConfig` with ~20 flattened fields (`sttEndpoint`, `sttModel`, `ttsEndpoint`, `ttsVoice`, `vadThreshold`, ...), exactly the existing `OpenAISTTTTSConfig` anti-pattern already flagged in `.planning/codebase/ARCHITECTURE.md`.
-
-**Why it's wrong:** Each new vendor combination grows the flat type further; a non-VAD STT vendor has no use for VAD fields, a non-streaming TTS vendor has no use for streaming fields — there's no way to express "this STT implementation's config" independently of "this TTS implementation's config" when they need genuinely different shapes (e.g. `ThonburianSTTConfig` needs `{ endpoint, language }`, `JaiTTSConfig` needs `{ endpoint, voice, timeoutMs }`).
-
-**Do this instead:** Compose, don't flatten — each `*Provider` implementation owns its own config type, constructed independently and passed into the orchestrator as already-instantiated objects: `new GenericSTTTTSProvider({ vad: new AudioRecorder(vadConfig), stt: new ThonburianSTTProvider(sttConfig), llm: ..., tts: ... }, orchestratorConfig)`.
+**What people do:** Copy the common WP REST API security advice verbatim — register the route with a `permission_callback` that calls `wp_verify_nonce($nonce, 'wp_rest')` — without accounting for the fact that this endpoint must serve anonymous, not-logged-in front-end visitors.
+**Why it's wrong:** A nonce generated for an anonymous visitor (`wp_create_nonce('wp_rest')` when `is_user_logged_in()` is false) is tied to UID `0`, and many full-page caching setups will serve a stale nonce baked into cached HTML, causing legitimate visitors to intermittently get `rest_cookie_invalid_nonce` errors. This is a frequently-reported real-world issue for public-facing AJAX/REST widgets on cached WP sites.
+**Do this instead:** Register the route with `'permission_callback' => '__return_true'` (intentionally public) and implement actual abuse prevention via IP-based rate limiting (transient counter, 429 past threshold) plus optional lightweight checks (e.g. `Origin`/`Referer` header matching the site's own domain, as a hot-linking deterrent, not as real security). Document explicitly in code comments that this route is intentionally public-by-design, not an oversight — this matches the trust model OpenAI's own ephemeral-token pattern assumes (the short-lived, scoped token itself is the security boundary, not the minting route's auth).
 
 ## Integration Points
 
@@ -286,45 +268,49 @@ Pipecat's vendor integrations (Deepgram, Cartesia, ElevenLabs, etc.) are predomi
 
 | Service | Integration Pattern | Notes |
 |---------|---------------------|-------|
-| `thonburian-stt` (Python/FastAPI, Whisper) | `POST /transcribe`, multipart WAV in, JSON `{text}` out | Cold-start model load is slow; expose a warm-up/health endpoint. Whisper's `chunk_length_s` handles longer utterances but VAD segmentation should keep utterances short already. |
-| `jai-tts` (Python/FastAPI, F5-TTS) | `POST /synthesize`, JSON `{text}` in, binary `audio/wav` out | Bundle the default reference voice server-side so the public HTTP contract stays simple (text in, audio out) even though the underlying model requires reference audio + reference text for zero-shot cloning. Synthesis latency likely the slowest link in the pipeline — needs the most generous timeout. |
-| Vendor LLM APIs (OpenAI, future Bedrock/Gemini) | JSON request/response via `LLMProvider.complete()`, same shape as existing `ChatClient.ts` | Tool-calling schema must normalize to the lowest-common-denominator JSON Schema shape (matches pipecat's `FunctionSchema`) so future Bedrock/Gemini adapters need no interface changes, only translation inside their own `complete()` implementation. |
+| OpenAI Realtime API (ephemeral token mint) | Server-to-server `wp_remote_post()` from `OpenAiDirectTokenProvider::mint_session()` to `https://api.openai.com/v1/realtime/client_secrets`, `Authorization: Bearer <real key>` | HIGH confidence — verified against OpenAI's current official docs (`platform.openai.com/docs/guides/realtime-webrtc`, `platform.openai.com/docs/api-reference/realtime-sessions/create-realtime-client-secret`). Response top-level field is `value` (the `ek_...` token), default TTL ~1 minute. **This does NOT match the existing `src/app/api/negotiate/route.ts`'s SDP-relay pattern** (that route forwards the raw SDP offer to `/v1/realtime?model=...` directly, with no ephemeral-token step) — it instead matches the *other*, currently-unused-in-the-demo-app code path inside `OpenAIRealtimeProvider.connect()` (lines 139-226) that activates when `config.useProxy && config.proxyEndpoint` are both set. The WP plugin must implement the ephemeral-token contract, not the SDP-relay contract, because `useProxy: true` is required for "API key never reaches the browser." This is a concrete discrepancy worth flagging to the roadmapper: the existing demo app is not a working reference for this milestone's PHP route. |
+| OpenAI Realtime API (WebRTC calls) | Browser calls `https://api.openai.com/v1/realtime/calls` directly with the ephemeral token — PHP is not involved in this step at all | Existing `OpenAIRealtimeProvider.ts` behavior (line 230), unchanged by this milestone. The WP plugin's PHP only ever touches the *token-minting* call, never the SDP/WebRTC negotiation itself. |
+| WP Media Library (avatar upload) | Standard `wp_enqueue_media()` + `wp.media` JS picker in the admin settings page, storing the resulting attachment ID in `wp_options`, resolved to a URL via `wp_get_attachment_url()` at render time | Standard WP admin pattern, not a third-party API — no special research needed, well-documented in WP core. |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| `GenericSTTTTSProvider` ↔ `VADProvider`/`STTProvider`/`LLMProvider`/`TTSProvider` | Direct method calls + event callbacks, constructor-injected | This is the seam being generalized this milestone; orchestrator never imports a concrete vendor class. |
-| `GenericSTTTTSProvider` ↔ `@khaveeai/react`'s `useRealtime` | Implements `RealtimeProvider` unchanged | No changes needed downstream in `@khaveeai/react` — the new orchestrator is just another `RealtimeProvider` implementation, same as `OpenAISTTTTSProvider` and `OpenAIRealtimeProvider` today. |
-| `ThonburianSTTProvider`/`JaiTTSProvider` ↔ Python services | HTTP fetch with `AbortSignal.timeout()`, JSON/multipart/binary per above | No shared client library between TS and Python; plain HTTP contract is the only coupling, by design (stated language-boundary constraint). |
-| `LLMProvider.complete()` ↔ `ToolExecutor` | Orchestrator mediates: gets `toolCalls` from `complete()`, calls `ToolExecutor.dispatch()`, feeds results back into next `complete()` call | `ToolExecutor` itself has no dependency on any specific `LLMProvider` implementation — it only needs the normalized `ToolCall`/`Tool` shapes from `@khaveeai/core`. |
+| Browser bundle ↔ WP REST route | HTTP POST, JSON in/out, contract = `{ sessionConfig }` in → `{ data: { ephemeralToken, sessionId } }` out | This is the one contract that must never change shape when swapping `ConfigSourceInterface`/`TokenProviderInterface` implementations — it's what makes the "don't touch the JS bundle" requirement achievable. Both current and future (Platform-mode) implementations must produce identically-shaped responses. |
+| `AvatarShortcode`/`AvatarBlock` ↔ `AvatarRenderer` | Direct PHP method call, normalized attributes array in, HTML string out | No HTTP/REST involved — this is the "share one render path" boundary, resolved entirely server-side at WP render time, not at JS runtime. |
+| `SessionController` ↔ `ConfigSourceInterface`/`TokenProviderInterface` | Direct PHP method calls, constructor-injected (composition root in `Plugin.php`) | No WP hooks/filters used for this wiring — using `apply_filters()` to let strategies be swapped via a filter is tempting but unnecessary complexity for two implementations chosen by the plugin itself; the composition root choosing the concrete class is sufficient and simpler to reason about. Revisit only if Platform mode needs to be a *site-admin* runtime choice rather than a milestone-time code choice. |
+| Admin settings page ↔ `ConfigSourceInterface` | `WpOptionsConfigSource` reads/writes `wp_options` directly; `SettingsPage.php` never bypasses the interface to read options itself | Keeps the admin UI decoupled from "where config actually lives," so a future Platform-mode settings page (e.g. "enter your khavee-app API key instead of an OpenAI key") can reuse the same `SettingsPage` rendering scaffold by swapping which `ConfigSourceInterface` backs it. |
+| Gutenberg block editor preview ↔ PHP render | Server-side render via `register_block_type`'s `render_callback` (dynamic block, not a static `save()` that serializes HTML into post content) | Using a dynamic block (PHP-rendered on both editor preview, via `ServerSideRender`, and the live front end) ensures the editor preview and the front end always go through the *same* `AvatarRenderer::render()` call — avoiding drift between what the editor shows and what visitors see, a common pitfall when teams instead duplicate rendering logic in JS for the editor preview. |
 
 ## Suggested Build Order
 
-Given the dependency graph above, the natural build order is:
+1. **`includes/ConfigSource/ConfigSourceInterface.php` + `WpOptionsConfigSource.php`** — no dependencies on anything else; defines the config shape everything downstream consumes.
+2. **`includes/TokenProvider/TokenProviderInterface.php` + `OpenAiDirectTokenProvider.php`** — no dependency on ConfigSource (takes the API key as a parameter, doesn't fetch it itself); can be built/tested in parallel with step 1.
+3. **`includes/Rest/SessionController.php`** — depends on both interfaces from steps 1-2 (via constructor injection); this is the contract the JS bundle needs, so having it working and testable via `curl`/Postman before touching any JS de-risks the integration.
+4. **`includes/Plugin.php`** (composition root) — wires steps 1-3 together; minimal but needed before the plugin does anything on a real WP install.
+5. **`includes/Admin/SettingsPage.php`** — depends on `ConfigSourceInterface` (step 1) to read/write; can be built before or after step 3/4, no hard blocking dependency, but needed before real end-to-end testing since `WpOptionsConfigSource` needs actual settings to read.
+6. **The bundler package for `build/khaveeai-bundle.js`** (separate small TS package, e.g. `wordpress-plugin/bundle-src/` built with Vite/esbuild, importing `@khaveeai/react` + `@khaveeai/providers-openai-realtime`) — can start in parallel with steps 1-5 since it only needs to know the REST contract shape (already defined by step 3's interface, doesn't need step 3's implementation finished) and the `data-khaveeai-config` attribute shape.
+7. **`includes/Render/AvatarRenderer.php`** — depends on `ConfigSourceInterface` (step 1) and needs to know the bundle's expected bootstrap data shape (step 6), so build after both are stable.
+8. **`includes/Assets/AssetManager.php`** — depends on the bundle file existing (step 6) and is called by `AvatarRenderer` (step 7); register on `wp_enqueue_scripts` per Anti-Pattern 1.
+9. **`includes/Shortcode/AvatarShortcode.php`** — depends on `AvatarRenderer` (step 7); thin adapter, fastest to build once the renderer exists, and gives an end-to-end testable path (shortcode → renderer → assets → REST → OpenAI) before the block adds editor-side complexity.
+10. **`includes/Block/AvatarBlock.php` + `block.json` + `assets/editor.js`** — depends on `AvatarRenderer` (step 7), built last since it's the most WP-API-specific piece (block registration, `ServerSideRender` editor preview, `InspectorControls`) and benefits from the shortcode path already proving the renderer/REST/bundle integration works.
+11. **`khaveeai.php`** (top-level bootstrap/plugin header) — technically needed for WP to recognize the plugin at all, but can be a minimal stub from day one (just headers + autoloader require) and only needs final hook-registration wiring once steps 1-10 exist to register.
 
-1. **Core interfaces first** (`@khaveeai/core`: `VADProvider`, `STTProvider`, `LLMProvider`, `TTSProvider`, `Tool`, `ToolCall` types) — everything else depends on these, nothing depends on the orchestrator or adapters yet.
-2. **`ToolExecutor` promotion/dedup** into `@khaveeai/core`, adapted to the new `LLMProvider`-normalized `ToolCall` shape — independent of the orchestrator, can be done in parallel with step 1, needed before step 3's tool-calling loop.
-3. **Generic orchestrator** (`GenericSTTTTSProvider` in the new `generic-stt-tts` package) — depends on step 1's interfaces and step 2's `ToolExecutor`. Can initially be built/tested against the *existing* OpenAI-backed concrete helper classes adapted to the new interfaces (reuse `STTClient`/`ChatClient`/`TTSPlayer` logic as the first interface implementations) before any new Python service exists — this de-risks the orchestrator independent of the Python services being ready.
-4. **Python services** (`thonburian-stt`, `jai-tts`) — independent of the TypeScript work entirely; can be built in parallel with steps 1-3 once the HTTP contract (request/response shape above) is agreed.
-5. **`ThonburianSTTProvider`/`JaiTTSProvider` adapters** — depend on step 1's interfaces (`STTProvider`/`TTSProvider`) and step 4's services being reachable; thin HTTP clients, the simplest layer in the whole milestone.
-6. **End-to-end demo wiring** — depends on everything above; first real proof that mixed-vendor (Thonburian STT + any LLM + JaiTTS) composition works through the generic orchestrator.
-
-This ordering lets steps 1-3 (all TypeScript, all in this repo) proceed without waiting on the Python services, and lets step 4 (Python, separate repos) proceed in parallel without waiting on the TypeScript work — they only need to agree on the HTTP contract up front.
+**Rationale for this order:** the two strategy interfaces (1-2) and the REST contract they back (3) are the actual integration risk this milestone calls out explicitly — building and curl-testing that triangle first means the eventual JS bundle work (6) has a stable, already-verified contract to target, and the render/shortcode/block layers (7-10) are comparatively low-risk, well-documented WordPress patterns that can be built quickly once the harder PHP-to-OpenAI integration is proven.
 
 ## Sources
 
-- [Pipeline & Frame Processing — Pipecat official docs](https://docs.pipecat.ai/guides/learn/pipeline) — HIGH confidence, official docs
-- [pipecat/src/pipecat/processors/frame_processor.py — GitHub source](https://github.com/pipecat-ai/pipecat/blob/main/src/pipecat/processors/frame_processor.py) — HIGH confidence, primary source
-- [PipelineTask — Pipecat docs](https://docs.pipecat.ai/server/pipeline/pipeline-task) — HIGH confidence, official docs
-- [pipecat/src/pipecat/pipeline/runner.py — GitHub source](https://github.com/pipecat-ai/pipecat/blob/main/src/pipecat/pipeline/runner.py) — HIGH confidence, primary source
-- [Function Calling — Pipecat docs](https://docs.pipecat.ai/pipecat/learn/function-calling) — HIGH confidence, official docs, directly validates the project's planned `{name, description, parameters, handler}` tool shape
-- [SileroVADAnalyzer — Pipecat docs](https://docs.pipecat.ai/server/utilities/audio/silero-vad-analyzer) — HIGH confidence, official docs, confirms VAD is transport/aggregator-level, not a peer pipeline stage
-- [stt_service / tts_service / llm_service — pipecat-ai reference docs](https://reference-server.pipecat.ai/en/stable/api/pipecat.services.html) — MEDIUM-HIGH confidence, official reference docs
-- GitHub issues #1818 (CartesiaTTSService idle timeout), #3699 (SarvamSTTService WebSocket reconnection), #2876 (ErrorFrame on init failure) — MEDIUM confidence, real-world issue reports illustrating WebSocket-specific complexity not applicable to khavee-sdk's HTTP-based design
-- General Node.js `AbortController`/`AbortSignal.timeout()` and FastAPI `UploadFile`/`StreamingResponse` best practices — MEDIUM confidence, multiple cross-checked sources, not pipecat-specific
-- `.planning/codebase/ARCHITECTURE.md`, `.planning/codebase/STRUCTURE.md`, `.planning/PROJECT.md` — existing codebase analysis, ground truth for current state
+- [Realtime API with WebRTC | OpenAI API](https://platform.openai.com/docs/guides/realtime-webrtc) — HIGH confidence, official docs, confirms `/v1/realtime/client_secrets` ephemeral token endpoint and `/v1/realtime/calls` WebRTC negotiation endpoint
+- [Create client secret | OpenAI API Reference](https://platform.openai.com/docs/api-reference/realtime-sessions/create-realtime-client-secret) — HIGH confidence, official API reference, confirms response shape (`value` field, `ek_` prefix, default ~1 min TTL)
+- `/Users/whitemalt/Documents/khavee-sdk/packages/providers/openai-realtime/src/OpenAIRealtimeProvider.ts` (lines 134-260) — HIGH confidence, this is the actual consuming code; the `useProxy`/`proxyEndpoint` branch and its `ProxyTokenResponse` type define the exact contract the WP REST route must satisfy
+- `/Users/whitemalt/Documents/khavee-sdk/src/app/api/negotiate/route.ts` — HIGH confidence (read directly), documents that the *existing* Next.js demo route uses a different, older SDP-relay pattern not matching the `useProxy` contract — flagged as a discrepancy, not something to copy
+- [Adding Custom Endpoints – REST API Handbook | Developer.WordPress.org](https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/) — HIGH confidence, official WP docs, `register_rest_route`/`permission_callback` patterns
+- [How to Properly Restrict Access to WordPress REST API Routes – Plugin Vulnerabilities](https://www.pluginvulnerabilities.com/2022/12/13/how-to-properly-restrict-access-to-wordpress-rest-api-routes/) — MEDIUM confidence, community source, corroborates `__return_true` vs nonce trade-off for public endpoints
+- WebSearch: WP REST rate limiting via transients (wpthrill.com, benryan.com.au, wpwinners.com, headwall-hosting.com — multiple independent sources agreeing on transient-based per-IP throttling pattern) — MEDIUM confidence, no single official WP core doc for this specific pattern, but consistent across independent community sources
+- WebSearch: WordPress DI/strategy pattern conventions (carlalexander.ca "Using dependency injection with WordPress", x-wp/di and lucatume/di52 GitHub repos) — MEDIUM confidence; confirms "interfaces over concrete classes, avoid the God Class singleton anti-pattern" is established community best practice, but there is no single official WordPress-endorsed DI standard — the composition-root approach recommended here is a deliberately lightweight compromise given the small number of swappable classes in this plugin, not a claim that this is "the" WordPress way
+- WebSearch: `wp_localize_script` vs `wp_add_inline_script` vs data attributes for passing PHP config into JS (developer.wordpress.org reference page, yourwpweb.com) — MEDIUM confidence; `wp_add_inline_script` is documented in WP core as the modern replacement for `wp_localize_script` when not localizing translatable strings, which matches this plugin's use case (passing REST URL/nonce/config, not i18n strings)
+- Gutenberg dynamic blocks / `ServerSideRender` pattern for editor-preview-matches-frontend — MEDIUM confidence, well-established Gutenberg convention referenced across WordPress block development community sources, not independently re-verified against a single canonical doc in this research pass — flag for validation if block editor preview behavior diverges from expectations during implementation
 
 ---
-*Architecture research for: composable voice AI pipeline (pipecat-style STT/LLM/TTS provider generalization)*
-*Researched: 2026-06-17*
+*Architecture research for: WordPress plugin PHP layer — config-source/token-provider strategy seam, React SPA bridging, shared shortcode/block render path, anonymous REST session minting*
+*Researched: 2026-06-21*

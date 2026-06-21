@@ -1,179 +1,168 @@
 # Project Research Summary
 
-**Project:** Khavee Generic Voice Pipeline (`generic-stt-tts` milestone)
-**Domain:** Composable, pipecat-style voice AI pipeline (TypeScript SDK) + lightweight self-hosted Python ML inference services (Whisper-class Thai STT, F5-TTS-class Thai voice-cloning TTS)
-**Researched:** 2026-06-17
+**Project:** Khavee WordPress Plugin (Custom Mode) — v2.0 Milestone
+**Domain:** WordPress plugin (PHP backend + bundled React 19/Three.js frontend SPA) embedding an existing OpenAI Realtime voice-chat VRM avatar
+**Researched:** 2026-06-21
 **Confidence:** MEDIUM-HIGH
 
 ## Executive Summary
 
-This milestone generalizes khavee-sdk's existing OpenAI-only `openai-stt-tts` provider into a pipecat-style composable pipeline: four swappable interfaces (`VADProvider`, `STTProvider`, `LLMProvider`, `TTSProvider`) wired together by one generic orchestrator, proven end-to-end with two real non-OpenAI, non-English vendors — a self-hosted Thonburian Whisper STT service and a self-hosted JaiTTS (F5-TTS-based) voice-cloning TTS service. Experts in this space (pipecat, LiveKit Agents, Vocode) converge on the same boundary philosophy — one interface per pipeline stage, a generic orchestrator that composes them, tool-calling as a core LLM capability — but their frame/queue machinery exists to support continuous, mid-stream-interruptible audio that neither target vendor actually supports. The correct move, confirmed across all four research files, is to adopt pipecat's *conceptual* service boundaries while explicitly rejecting its *streaming-frame* mechanics: build "whole utterance in, whole result out" as the default contract, not a special case bolted onto a streaming-first design.
+This milestone is a WordPress plugin that surfaces khavee-sdk's existing `OpenAIRealtimeProvider` (full-duplex WebRTC voice + VRM avatar) inside any WordPress site, fully self-configured from WP admin. It is **not** new voice-pipeline work — the hard SDK problem (STT/LLM/TTS orchestration) was solved in prior milestones. The new work is entirely WordPress-shaped: a PHP backend that mints OpenAI Realtime ephemeral tokens server-side (so the API key never reaches the browser), an admin settings screen (API key, instructions, voice, VRM/GLB avatar upload via Media Library), and a shortcode + Gutenberg block that both render a shared bundled JS SPA. Experts build this category of plugin (chatbot/3D-embed WP plugins) with: WP Settings API for config, `@wordpress/scripts` for the JS build, Media Library for file upload, and a single shared PHP render path feeding both the shortcode and block so they never drift apart.
 
-The recommended approach keeps the TypeScript side dependency-free (plain interfaces, no new runtime deps, no Zod for tool schemas — already decided in PROJECT.md and validated as differentiated versus competitors) and reuses every existing convention (`fetch()`-based HTTP clients, WAV blob production, `{role, content}` message arrays, try/catch-normalize-to-Error). The Python side is straightforward: FastAPI + Uvicorn + `transformers>=5.3.0` (critical: ignore the Thonburian model card's stale, CVE-vulnerable `4.37.2` pin) for STT, and a vendored `FlowTTSPipeline` (F5-TTS + custom XLM-R duration predictor) for TTS, both behind a simple multipart/JSON HTTP contract matching existing `STTClient.ts`/`TTSPlayer.ts` patterns.
+The recommended approach is two small PHP strategy interfaces — `ConfigSourceInterface` (where settings come from) and `TokenProviderInterface` (how a session token is minted) — each with exactly one concrete implementation this milestone (WP options-backed config, direct-to-OpenAI token minting), wired together in a single composition-root file (`Plugin.php`). This satisfies the project's explicit constraint that a future "Platform mode" must slot in without touching the JS bundle: the REST contract (`{sessionConfig} -> {ephemeralToken, sessionId}`) is the actual seam, not the PHP class names. The frontend is a separately-bundled (Vite/esbuild, not `tsc`) React 19 SPA that imports `@khaveeai/react` + `@khaveeai/providers-openai-realtime` unmodified, configured via `useProxy: true` pointed at the new WP REST route.
 
-The key risks all stem from one root cause: only one vendor (OpenAI) currently exists to validate the abstraction against, so it's easy to accidentally bake OpenAI-shaped assumptions into "generic" interfaces — on tool-calling semantics (multi-call support, result round-trip shape), on streaming assumptions, and on VAD/TTS-loopback timing constants tuned only for OpenAI's audio characteristics. A second, structurally different risk class is specific to the two self-hosted models: Whisper-family hallucination on short/silent VAD-segmented clips, and F5-TTS's extreme sensitivity to reference-voice audio quality. Both are well-documented, known failure modes with established mitigations (silence-trimming + repetition detection; reference-clip validation checklist) that must be designed in from the start, not patched on after a "looks done" demo.
+The dominant risk cluster is **the public REST route itself**: because the avatar must work for anonymous, logged-out site visitors, the token-minting endpoint cannot use WordPress's standard nonce-based REST auth (which only protects logged-in user sessions and is documented to silently break under page caching). It must be registered as genuinely public (`permission_callback => '__return_true'`) and protected instead by IP-based rate limiting, a daily mint ceiling, and `Cache-Control: no-store` — without these, any visitor who discovers the route URL can run up the site owner's real OpenAI billing indefinitely, with no auth boundary stopping them. A second risk cluster is around the bundled JS itself: React-version collisions with WordPress core's bundled React, Gutenberg editor preview accidentally firing live mic/WebRTC/token calls inside wp-admin, and `.glb`/`.vrm` file upload needing both MIME allow-listing AND binary magic-byte validation (the allow-list alone is a known disguised-file-upload vector). All of these are addressed in the architecture's recommended structure (separate `editorScript`/`viewScript`, bundle isolation, scoped `upload_mimes` filter) — see PITFALLS.md for full detail.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**TypeScript SDK side:** No new runtime dependencies. The orchestrator, four provider interfaces, and `ToolExecutor` dedup are all plain TS, matching the existing monorepo's zero-dependency-by-default convention. Plain interfaces replace the need for any pipecat-style `Frame`/`FrameProcessor` machinery — this is an interface-design problem, not a new-tech problem.
-
-**Python serving side:** FastAPI 0.137.x + Uvicorn 0.49.x is the unambiguous standard for wrapping ML inference as HTTP — async-native, automatic validation, native multipart/streaming-response support. `uv` is recommended for dependency management (10-100x faster than pip/Poetry for large ML wheels).
+The plugin is built with `@wordpress/scripts` (webpack-based, zero-config, auto-generates the PHP `*.asset.php` dependency manifest) for the JS build — explicitly **not** the newer `@wordpress/build` (esbuild-based), which is documented as not production-ready as of April 2026. PHP backend uses Composer for PSR-4 autoloading only (no HTTP client dependency — WordPress core's `wp_remote_post()`/`wp_remote_get()` is used instead of Guzzle, avoiding vendored-dependency version-conflict risk with other plugins). The frontend SPA reuses `@khaveeai/react`, `@khaveeai/core`, and `@khaveeai/providers-openai-realtime` directly (pinned to exact versions already used in the monorepo — `react@^19.1.0`, `three@^0.180.0`, `@pixiv/three-vrm@^3.4.2`) rather than reimplementing avatar rendering.
 
 **Core technologies:**
-- Plain TS interfaces + hand-rolled orchestrator — replicates pipecat's `FrameProcessor`/`STTService`/`LLMService`/`TTSService` boundary philosophy without its queue/frame-direction machinery; this project's 4 fixed stages don't need an arbitrary pipeline graph
-- `@ricky0123/vad-web` (already in repo) — proven browser VAD, no reason to change
-- FastAPI + Uvicorn — async-native ML-inference HTTP boundary; Flask would require manual threadpool management to avoid blocking
-- `transformers>=5.3.0,<6` (pin explicitly) — the Thonburian model card's stated `4.37.2` falls inside CVE-2026-4372's RCE vulnerability window (patched in 5.3.0); no breaking API changes affect the ASR pipeline task across this jump
-- `f5-tts`/vendored `FlowTTSPipeline` ("ThonburianTTS" repo) — JaiTTS's custom XLM-R duration predictor requires this specific wrapper, not the vanilla `f5_tts.infer` CLI
-- `soundfile` over `librosa` for WAV I/O — avoids pulling in SciPy/numba just to read/write WAV files
-- Streaming-chunked HTTP (whole-utterance POST), not WebSocket/WebRTC — neither model supports true incremental streaming, so a persistent socket would add connection-lifecycle complexity with zero latency benefit
+- `@wordpress/scripts` (^32.4.0) — zero-config webpack build, auto-generated asset manifest for cache-busted, dependency-tracked script enqueueing
+- PHP 8.0+ (or 7.4-syntax-target if wordpress.org distribution is wanted) with Composer PSR-4 autoloading — no scaffolding generator needed; structure is already pre-defined (`includes/`, `src/`)
+- `@khaveeai/react` / `@khaveeai/core` / `@khaveeai/providers-openai-realtime` (workspace or published) — the entire reason this plugin is fast to build; existing, validated SDK packages are consumed unmodified
+- `wp_remote_post()` (WP core HTTP API) — for the one server-to-server call to OpenAI's ephemeral-token endpoint; explicitly avoid Guzzle/cURL via Composer
+- `wp-env` (`@wordpress/env`) — disposable local WordPress+MySQL Docker environment for manual testing against a real WP core version
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Per-stage provider interfaces (`VADProvider`, `STTProvider`, `LLMProvider`, `TTSProvider`) with one core method each
-- Generic pipeline orchestrator composing any `{vad, stt, llm, tts}` combination
-- Tool/function-calling as a core LLM capability, not bolted on per-vendor — plain-object `{name, description, parameters, handler}`, no Zod/decorators
-- Tool result format normalized regardless of vendor (`{success, message}`, already exists in `ToolExecutor`)
-- Per-stage configuration objects (compose, don't flatten — already flagged as an anti-pattern in the existing codebase)
-- Barge-in/interruption support (cancel in-flight LLM/TTS work via `AbortSignal`-style hooks)
-- Errors normalized to `Error` instances, forwarded via callback, never thrown to crash the session
-- Explicit audio format/sample-rate contract between stages (16kHz mono PCM16 WAV in for STT, 24kHz mono PCM16 WAV out for TTS)
-- Streaming-vs-chunked capability declaration per stage (simple boolean flag, cheap now, expensive to retrofit)
-- Vendor-neutral conversation/message history format (`{role, content}[]`, already exists internally)
+WP admins evaluating this plugin expect it to look and behave like other reputable API-key-driven WP plugins (AI chatbot plugins, 3D-embed plugins): native Settings API forms, masked credential fields, both a shortcode and a Gutenberg block sharing logic, and Media Library-based file upload — not custom forms or raw `<input type=file>` handlers.
 
-**Should have (differentiators):**
-- Zero-schema-library tool registration — genuine differentiator versus LiveKit JS (requires Zod) and most TS agent frameworks
-- First-class avatar/lipsync event surface preserved generically across any TTS vendor — khavee's actual product wedge; no competitor researched (pipecat/LiveKit/Vocode/Vapi) has this
-- First reference implementation using fully non-Western, Thai-native vendors — proves the abstraction isn't OpenAI-shaped in disguise
-- Mixed-vendor pipelines (STT vendor A + TTS vendor B + LLM vendor C) as a documented, demoed flagship use case
-- Single shared `ToolExecutor` removing the current byte-for-byte duplication tech debt
+**Must have (table stakes):**
+- Admin settings page via Settings API (`register_setting`), capability-gated to `manage_options`
+- API key as masked `type="password"` field with last-4 redisplay on reload (never re-echo the full key)
+- `[khaveeai_avatar]` shortcode AND an equivalent Gutenberg block, both sharing one PHP attribute-resolution function so they never drift apart
+- Media Library upload for `.glb`/`.vrm` avatar files (allow-listed via `upload_mimes`, validated server-side beyond extension)
+- Public WP REST route that mints the ephemeral OpenAI token server-side (key never reaches the browser) — this is the entire value proposition, not a differentiator
+- Conditional script/style enqueueing only on pages that actually use the shortcode/block (avoid sitewide multi-MB bundle bloat)
+- Admin-visible error notice when the API key is missing/invalid; neutral placeholder for regular visitors
+
+**Should have (competitive):**
+- Full-duplex real-time *voice* (not text chat) — already built, this plugin just surfaces it; no competing WP AI-chat plugin combines this with an animated lip-synced 3D avatar
+- Personality/instructions textarea exposed directly (not paywalled, unlike some competitors)
+- Voice picker populated from the SDK's existing voice enum (single source of truth, not hand-duplicated in PHP)
 
 **Defer (v2+):**
-- True incremental/partial streaming STT/TTS — explicitly out of scope; would force fake streaming over backends that don't support it
-- Real Bedrock/Gemini provider adapters — design interfaces to support them later, don't build now
-- Migrating `openai-stt-tts` onto the new generic interfaces — defer until interfaces are proven across 2+ real adapters
-- Token-budget-aware (tiktoken-style) history trimming — vendor-specific tokenizer differences make this deeper than this milestone's scope
-- Reconciliation of the orphaned legacy `LLMProvider`/`TTSProvider` in `mock.ts` — unrelated cleanup, not this milestone's concern
+- Multi-profile/multi-bot configuration manager (ship "one global default + per-shortcode override" only)
+- Native page-builder widgets (Elementor/Divi) — shortcode already covers all builders via their generic shortcode/HTML widgets
+- Usage/conversation analytics dashboard — no backend to aggregate against in Custom mode
+- `wp-config.php` constant key override and a "Test Connection" button — useful but not launch-blocking (v1.x)
+- Platform mode (API-key-driven config from hosted `khavee-app`) — explicitly out of scope, blocked on a `khavee-app` backend that doesn't exist yet
 
 ### Architecture Approach
 
-Adopt pipecat's *boundary philosophy* (one swappable interface per stage, generic orchestrator composes them) without its *frame-passing mechanism* (no `Frame`/`FrameDirection`/queue machinery — that exists to support continuous bidirectional streaming with mid-utterance interruption, which this project's whole-utterance HTTP reality doesn't need or support). Interfaces live in `@khaveeai/core` (never in `generic-stt-tts` itself) so future vendor adapters depend only on core, mirroring the existing "provider packages never depend on each other" convention.
+The architecture centers on two narrow PHP strategy interfaces (`ConfigSourceInterface`, `TokenProviderInterface`), each with one concrete implementation this milestone, wired together by a single composition-root file (`Plugin.php` — WordPress has no built-in DI container, and one isn't needed for ~6-8 classes). A REST controller (`SessionController`) is the only thing that talks to both strategies and is the seam that must exactly match the response shape `OpenAIRealtimeProvider.ts`'s `useProxy` branch expects. Shortcode and Gutenberg block are both thin adapters calling one shared `AvatarRenderer::render()` method, ensuring config-shape parity between the two embed methods. The JS bundle is built separately (Vite/esbuild) from the rest of the monorepo's `tsc`-based packages, since it must produce one consumer-facing bundled file, not a library.
 
 **Major components:**
-1. `VADProvider` — event-emitter interface (`start()`, `stop()`, `onUtteranceReady`), NOT a request/response transform like the other three; matches existing `AudioRecorder.ts` shape exactly. Pipecat itself treats VAD as a transport-layer plugin, not a peer pipeline stage — forcing it into the same shape as STT/LLM/TTS is a documented anti-pattern.
-2. `STTProvider`/`LLMProvider`/`TTSProvider` — plain async-method interfaces (`transcribe()`, `complete()`, `speak()`) returning complete results, matching the "buffer whole utterance, POST whole, get whole response" transport reality
-3. `GenericSTTTTSProvider` (orchestrator) — implements `RealtimeProvider` unchanged (no downstream changes needed in `@khaveeai/react`), takes `{vad, stt, llm, tts, tools}` as constructor args, runs the turn loop generically (mirrors `OpenAISTTTTSProvider`'s `runTurn`/`runTurnFromText` almost verbatim)
-4. `ToolExecutor` (promoted to `packages/core/src/pipeline/`) — shared dispatch logic, must be redesigned (not just relocated) to avoid baking in OpenAI-specific tool-call semantics
-5. `ThonburianSTTProvider`/`JaiTTSProvider` — thin HTTP client adapters, no orchestration logic, implementing one interface each
+1. `ConfigSourceInterface` / `WpOptionsConfigSource` — resolves admin-configured settings (API key, instructions, voice, avatar URL) from `wp_options`
+2. `TokenProviderInterface` / `OpenAiDirectTokenProvider` — mints an OpenAI Realtime ephemeral token server-to-server via `wp_remote_post`
+3. `SessionController` (REST) — the PHP/JS integration contract: `POST /khaveeai/v1/session` -> `{sessionConfig}` in, `{data:{ephemeralToken, sessionId}}` out
+4. `AvatarRenderer` — single shared render path producing mount-point HTML + bootstrap JSON, called by both `AvatarShortcode` and `AvatarBlock`
+5. `AssetManager` — registers/enqueues the built bundle on `wp_enqueue_scripts` (never inside the shortcode/block callback — see Pitfall below), idempotent across multiple instances per page
+6. Frontend SPA (`build/khaveeai-bundle.js`) — imports `@khaveeai/react` + `@khaveeai/providers-openai-realtime` unmodified, constructs `OpenAIRealtimeProvider` with `useProxy: true` pointed at the WP REST route
 
-Suggested build order (from ARCHITECTURE.md): core interfaces first → `ToolExecutor` promotion (parallel) → generic orchestrator (testable against adapted existing OpenAI helper classes before Python services exist) → Python services (parallel, independent of TS work) → thin adapters → end-to-end demo wiring.
+A concrete discrepancy flagged by research: the existing `src/app/api/negotiate/route.ts` (SDP-relay pattern) is **not** the contract to replicate — the WP route must instead implement the ephemeral-token-minting contract (`OpenAIRealtimeProvider.ts` lines 139-226, the `useProxy`/`proxyEndpoint` branch), which is a different, currently-less-exercised code path in the existing provider.
 
 ### Critical Pitfalls
 
-1. **Designing the abstraction around OpenAI (the easy vendor), not Thonburian/JaiTTS (the hard ones)** — Build the non-streaming path and both real adapters first; verify OpenAI's streaming-capable path can be expressed as a specialization, not the template everything else gets forced into.
-2. **Tool-calling abstraction silently OpenAI-shaped** — With only one real LLM vendor in scope, it's easy to promote `ToolExecutor` with cosmetic renaming only. Before finalizing, sketch (even as a comment) how Anthropic/Gemini's multi-tool-call round-trip and JSON-schema constraints (no bare `items: {}`, no top-level `$ref`) would map onto the same interface — and avoid encoding OpenAI-specific field names (`tool_call_id`) into core types.
-3. **Whisper hallucination on short/silent VAD-segmented clips** — A well-documented Whisper failure mode (repeated-phrase hallucination) triggered specifically by the short, separately-cut audio segments this architecture produces by design. Must trim silence and tune/check `no_speech_threshold`/`compression_ratio_threshold` inside `thonburian-stt` itself, and return a distinguishable no-speech signal rather than always treating 200 OK as valid speech.
-4. **GPU-resident models treated as stateless request handlers** — Load each model once at startup (not per-request, not per-worker), single worker per GPU, gate concurrency with an explicit semaphore (`Semaphore(1)` is an acceptable default for this milestone's demo scale) to avoid OOM crashes that take down the service for all users.
-5. **VAD-loopback cooldown logic copy-pasted instead of re-validated** — The existing 500ms magic-number cooldown was tuned empirically for OpenAI's TTS audio tail. Reusing it verbatim for JaiTTS risks either insufficient (loopback recurs) or excessive (sluggish turn-taking) behavior; make it configurable and explicitly test against JaiTTS's actual playback characteristics.
+1. **Anonymous token route becomes an unmetered OpenAI billing proxy** — because the route must work for logged-out visitors, `permission_callback` is effectively `__return_true`; without IP-based rate limiting (WP transients), a daily mint ceiling, and shortest-possible token scope, anyone who discovers the route can run up the site owner's OpenAI bill with no browser/avatar involved at all. Must be architected in from the first implementation, not retrofitted.
+2. **Nonce-based auth assumed to "just work" for anonymous visitors** — WP's standard `wp_rest` cookie-nonce pattern only protects logged-in users and is documented to silently fail under page caching for anonymous visitors. The route must be treated as genuinely public with abuse-mitigation (referer/origin checks + rate limiting), not pseudo-authenticated.
+3. **Caching layers serve stale/shared ephemeral tokens** — if the token endpoint is GET-cacheable or a token is embedded in server-rendered shortcode/block HTML, every visitor to a cached page gets the same expired/shared token. Must be `POST`-only with explicit `Cache-Control: no-store`, fetched live client-side, never baked into cacheable HTML.
+4. **Multiple React copies colliding with WP core or theme/plugin-bundled React** — WP core has bundled React via `wp-element` since 5.0; this plugin needs React 19 specifically, so full bundle isolation (no leaked globals) is the safer default over externalizing against a potentially-older WP-core React version.
+5. **Gutenberg editor preview fires live mic/WebRTC/token calls inside wp-admin** — naively mounting the same SPA in the block's `edit()` triggers mic permission prompts and mints real tokens on every admin keystroke/re-render. Must use `block.json`'s separate `editorScript`/`viewScript` so the editor shows only a static inert preview.
+6. **`.glb`/`.vrm` upload validation is "looks done but isn't"** — allow-listing the MIME via `upload_mimes` alone (without binary magic-byte content validation) lets a disguised malicious file land in the Media Library under a trusted-looking extension; both the filter AND `wp_check_filetype_and_ext` magic-byte validation are required together, and `upload_mimes` is a global filter that must be scoped narrowly around this plugin's own upload action, not left registered for the full request lifecycle.
 
 ## Implications for Roadmap
 
-Based on combined research, suggested phase structure:
+Based on combined research, the natural phase structure follows the architecture's own "Suggested Build Order" (the two PHP strategy interfaces and the REST contract are the actual integration risk; render/shortcode/block layers are comparatively low-risk, well-documented WP patterns to build once the PHP-to-OpenAI contract is proven via `curl`):
 
-### Phase 1: Core Interfaces & Tool-Calling Foundation
-**Rationale:** Everything else in the milestone depends on these types; no adapter or orchestrator work can meaningfully start until the contract is fixed, and Pitfall 1/Pitfall 2 are both interface-design-time decisions that are expensive to retrofit later.
-**Delivers:** `VADProvider`, `STTProvider`, `LLMProvider`, `TTSProvider`, `Tool`, `ToolCall` types in `@khaveeai/core`; promoted/redesigned `ToolExecutor`.
-**Addresses:** Per-stage provider interfaces, plain-object tool registration, normalized tool result format, vendor-neutral message history shape (all FEATURES.md table stakes).
-**Avoids:** Pitfall 1 (streaming-first bias baked into the base contract) and Pitfall 2 (OpenAI-shaped tool-calling abstraction) — both must be explicitly checked against a written second-vendor sketch (Anthropic/Gemini) before this phase is considered done, even though no real second adapter ships this milestone.
+### Phase 1: PHP Backend Core — Config/Token Strategies + REST Contract
+**Rationale:** This is the genuine integration risk this milestone calls out — get the `ConfigSourceInterface`/`TokenProviderInterface`/`SessionController` contract working and `curl`-testable before any JS exists, de-risking the rest of the build.
+**Delivers:** `ConfigSourceInterface` + `WpOptionsConfigSource`, `TokenProviderInterface` + `OpenAiDirectTokenProvider`, `SessionController` REST route, `Plugin.php` composition root
+**Addresses:** "WP REST route that mints an ephemeral OpenAI Realtime token server-side" (FEATURES.md table stakes); the config-source/token-provider swappable-strategy constraint from PROJECT.md
+**Avoids:** Pitfalls 1, 2, 3 (anonymous-route abuse, nonce confusion, cache-safety) — must be architected into the route's first implementation, including rate limiting (IP+transient), `__return_true` + abuse mitigation (not nonce auth), `POST`-only + `Cache-Control: no-store`
 
-### Phase 2: Generic Pipeline Orchestrator
-**Rationale:** Can be built and tested against adapted existing OpenAI helper classes (reusing `STTClient`/`ChatClient`/`TTSPlayer` logic as first interface implementations) before either Python service is ready — de-risks the orchestrator independently and lets this phase run in parallel with Phase 3.
-**Delivers:** `GenericSTTTTSProvider` implementing `RealtimeProvider`, composing `{vad, stt, llm, tts, tools}`, with the turn-state machine, history trimming, and configurable (not hardcoded) mic-cooldown logic.
-**Uses:** Plain interfaces + hand-rolled orchestrator (STACK.md), composed config objects not flat inheritance (ARCHITECTURE.md Anti-Pattern 3).
-**Implements:** Pattern 2 (generic orchestrator composed from stage instances) and Pattern 1 (interface-per-stage, uniform async signature) from ARCHITECTURE.md.
+### Phase 2: Admin Settings Page
+**Rationale:** Depends only on `ConfigSourceInterface` (Phase 1, step 1); needed before real end-to-end testing since `WpOptionsConfigSource` needs actual settings to read, but has no hard blocking dependency on the REST route being finished.
+**Delivers:** Settings API page — masked API key field (last-4 redisplay), instructions textarea, voice picker, Media Library avatar picker (`.glb`/`.vrm`)
+**Uses:** WP Settings API (`register_setting`, `add_settings_field`), `wp.media` JS picker — no new schema/validation library
+**Implements:** `Admin/SettingsPage.php` reading/writing through `ConfigSourceInterface`, never bypassing it directly to `wp_options`
+**Avoids:** Pitfalls 7, 8 (upload MIME allow-list + magic-byte validation shipped together, scoped narrowly to this plugin's own upload action, not left globally registered)
 
-### Phase 3: Python Backend Services (thonburian-stt, jai-tts)
-**Rationale:** Entirely independent of the TypeScript work — only needs the HTTP contract agreed up front (audio format, request/response shape) — so it can proceed in parallel with Phases 1-2. This is also where the highest-severity, hardest-to-retrofit model-specific pitfalls live (hallucination, GPU OOM, reference-voice quality), so it needs dedicated, unhurried attention rather than being squeezed in alongside adapter wiring.
-**Delivers:** `thonburian-stt` FastAPI service (`transformers>=5.3.0` pinned, silence-trimming + repetition-ratio rejection, model loaded once at startup, semaphore-gated concurrency) and `jai-tts` FastAPI service (vendored `FlowTTSPipeline`, validated/QA'd bundled default Thai reference voice, same startup/concurrency safeguards).
-**Addresses:** Thonburian STT backend, JaiTTS backend (FEATURES.md P1 items).
-**Avoids:** Pitfall 3 (Whisper hallucination on silence), Pitfall 4 (GPU OOM under concurrency), Pitfall 5 (unvalidated default reference voice quality).
+### Phase 3: Frontend Bundle (React SPA)
+**Rationale:** Can start in parallel with Phases 1-2 since it only needs to know the REST contract shape (already defined by Phase 1's interface design, not its finished implementation) and the bootstrap-data attribute shape — but should be sequenced after Phase 1's contract is `curl`-verified to avoid building against a moving target.
+**Delivers:** A new small Vite/esbuild-built TS package (`wordpress-plugin/bundle-src/`) that imports `@khaveeai/react` + `@khaveeai/providers-openai-realtime` unmodified and mounts into `[data-khaveeai-root]`, constructing `OpenAIRealtimeProvider` with `useProxy: true`
+**Uses:** Existing, unmodified `@khaveeai/react`/`@khaveeai/providers-openai-realtime` per the explicit constraint that the existing provider stays untouched
+**Avoids:** Pitfall 4 (React version collision) — decide bundle isolation vs. externalization here; this is a one-time architectural choice, expensive to reverse once the enqueue contract is public API
 
-### Phase 4: Vendor Adapters & Audio Contract
-**Rationale:** Depends on Phase 1's interfaces and Phase 3's services being reachable; thin HTTP clients are the simplest layer in the milestone, but the audio wire-format contract must be pinned and tested explicitly here, before either side is assumed "working."
-**Delivers:** `ThonburianSTTProvider`/`JaiTTSProvider` adapter classes, a documented and round-trip-tested audio format contract (16kHz mono PCM16 WAV in, 24kHz mono PCM16 WAV out).
-**Addresses:** Audio format/sample-rate negotiation, streaming capability flags (FEATURES.md).
-**Avoids:** Pitfall 7 (HTTP audio framing mismatches discovered only at integration time) — add an explicit round-trip fixture test, not just "200 OK" checks.
-
-### Phase 5: End-to-End Mixed-Vendor Demo & Documentation
-**Rationale:** The actual proof point of the milestone; depends on everything above. This is also where Pitfall 6 (VAD-loopback cooldown timing) surfaces concretely, since it requires JaiTTS's real audio tail characteristics to validate against.
-**Delivers:** Working Thonburian STT + any LLM + JaiTTS pipeline with tool-calling, multi-turn cooldown validated against JaiTTS's actual playback, beginner-facing documentation/examples for wiring a custom vendor and registering a tool.
-**Addresses:** Mixed-vendor pipelines, end-to-end demo, beginner documentation (FEATURES.md P1 items).
-**Avoids:** Pitfall 6 (copy-pasted VAD-loopback timing) — explicitly budget multi-turn testing against JaiTTS, not just OpenAI.
+### Phase 4: Render Layer — Shortcode + Block + Asset Enqueueing
+**Rationale:** Depends on both `ConfigSourceInterface` (Phase 1/2) and the bundle's bootstrap-data shape (Phase 3) being stable; the shortcode path gives an end-to-end testable flow before the block adds editor-side complexity, so build shortcode before block.
+**Delivers:** `AvatarRenderer` (shared render path), `AssetManager` (idempotent, hook-based enqueueing), `AvatarShortcode`, then `AvatarBlock` + `block.json` + `assets/editor.js`
+**Implements:** Shared render path pattern (one normalized config shape feeding both embed methods); `editorScript`/`viewScript` split for the block
+**Avoids:** Pitfall 5 (enqueue-ordering/optimizer-plugin interference — register on `wp_enqueue_scripts`, never inside the render callback) and Pitfall 6 (Gutenberg editor firing live mic/WebRTC — static inert `edit()` preview only)
 
 ### Phase Ordering Rationale
 
-- Interfaces must come first because every other deliverable (orchestrator, adapters, even the Python services' HTTP contract) depends on the shape decided here — and two of the highest-cost-to-retrofit pitfalls (streaming bias, OpenAI-shaped tool-calling) are interface-design-time decisions.
-- The orchestrator and the Python services can proceed in parallel (confirmed in ARCHITECTURE.md's Suggested Build Order) since the orchestrator can be validated against adapted existing OpenAI helpers while the Python services are built independently — only the HTTP contract needs early agreement.
-- Adapters are deliberately a separate, later phase from the services themselves because the audio-format contract (Pitfall 7) needs to be pinned and tested as its own concern, not discovered implicitly while building the services.
-- The end-to-end demo is last because it's the only phase that can actually exercise Pitfall 6 (cooldown timing against JaiTTS's real audio) and validate that the whole multi-vendor proof point holds together, not just that each piece works in isolation.
+- PHP-to-OpenAI integration (Phase 1) is sequenced first because it is the one piece with no comparable shipped precedent (per PITFALLS.md, "no existing public WordPress plugin combines anonymous ephemeral-token minting + WebRTC + VRM avatar upload") — proving this contract early via `curl` removes risk from every downstream phase.
+- Settings (Phase 2) and the frontend bundle (Phase 3) can proceed in parallel once Phase 1's interfaces (not full implementation) are defined, since both only need the *shape* of the contract.
+- Render/shortcode/block (Phase 4) is sequenced last because it is the most WP-API-specific, best-documented, lowest-risk layer — it should not block on anything except the other three being stable, and shortcode-before-block within this phase gives an earlier end-to-end testable path.
+- This ordering directly mirrors ARCHITECTURE.md's own "Suggested Build Order" section, which explicitly recommends proving the PHP-to-OpenAI triangle before touching JS.
 
 ### Research Flags
 
-Needs research during planning (`--research-phase`):
-- **Phase 3 (Python backend services):** Sparse, narrowly-validated deployment patterns for these two specific models — the vendored `FlowTTSPipeline`/ThonburianTTS repo's exact dependency pins were not directly inspectable during this research (flagged MEDIUM confidence in STACK.md), and Whisper hallucination mitigation thresholds need empirical tuning, not just documentation lookup.
-- **Phase 1 (tool-calling interface):** No second real LLM vendor exists yet to validate against; needs deliberate research into Anthropic/Gemini tool-calling wire formats even without building real adapters, to avoid Pitfall 2.
+Needs deeper research during planning:
+- **Phase 1 (REST/token route):** No official OpenAI documentation specifies per-IP/per-mint rate limits for the ephemeral-token endpoint specifically — validate actual OpenAI rate-limit behavior at implementation time (account-plan-dependent, may change). Also confirm the exact ephemeral-token response shape (`value` field per OpenAI docs) against the existing `OpenAIRealtimeProvider.ts`'s `ProxyTokenResponse` type before finalizing the PHP response-reshaping logic.
+- **Phase 3 (frontend bundle):** Could not verify WordPress core's currently-bundled React version — this determines the Pitfall 4 decision (full isolation vs. externalization). Check the current Gutenberg/WP core changelog before deciding.
+- **Phase 4 (Gutenberg block):** `ServerSideRender`/dynamic-block editor-preview pattern was WebSearch-verified only (no single canonical doc independently re-verified) — flag for validation if editor preview behavior diverges from expectations during implementation.
 
-Phases with standard, well-documented patterns (can skip deep research-phase):
-- **Phase 2 (generic orchestrator):** Direct generalization of already-working `OpenAISTTTTSProvider` logic; pattern is proven in this exact codebase already.
-- **Phase 4 (adapters):** Thin HTTP clients following existing `STTClient.ts`/`TTSPlayer.ts` conventions almost exactly; well-precedented within this repo.
+Phases with standard, well-documented patterns (skip research-phase):
+- **Phase 2 (admin settings page):** WP Settings API, Media Library `wp.media` picker, and `upload_mimes`/`wp_check_filetype_and_ext` are all HIGH-confidence, officially documented WordPress core patterns with direct working-code precedent (e.g. `eldinor/babylon-wordpress-plugin` for the GLB MIME mapping).
+- **Phase 4 (shortcode registration, conditional enqueueing):** Standard, extensively documented WordPress plugin conventions with no novel risk beyond the pitfalls already cataloged.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH (TS side) / MEDIUM-HIGH (Python side) | TS side directly extends an already-mapped codebase. Python side verified against current PyPI/official docs (FastAPI, Uvicorn, transformers versions all HIGH via direct fetch); the two specific models (Thonburian Whisper, JaiTTS's `FlowTTSPipeline`) have narrower, less-verified community deployment patterns — vendored repo's exact dependency file was not directly inspected. |
-| Features | MEDIUM-HIGH | Cross-verified across pipecat, LiveKit Agents, Vocode, Vapi docs/search; no Context7 entries available for these specific frameworks, so individual claims rely on WebSearch-verified official docs/GitHub rather than a single authoritative source. |
-| Architecture | HIGH (pipecat core abstractions) / MEDIUM (HTTP integration patterns) | Pipecat's `FrameProcessor`/`Pipeline`/service class hierarchy verified via official docs + GitHub source directly. Cross-language TS↔Python HTTP integration recommendations are general best practice, not pipecat-specific (pipecat itself is WebSocket/streaming-first end-to-end), so MEDIUM confidence there. |
-| Pitfalls | MEDIUM-HIGH | Architecture/abstraction pitfalls verified against pipecat docs and GitHub issues; Whisper hallucination and GPU-OOM patterns verified against multiple independent community/practitioner sources; codebase-specific risks (VAD-loopback cooldown, ToolExecutor duplication) verified directly against this repo's own `CONCERNS.md`. |
+| Stack | HIGH (core WP APIs) / MEDIUM (bundler choice) | WordPress Settings API, REST auth model, `upload_mimes` verified against official developer.wordpress.org docs. `@wordpress/scripts` vs. Vite/esbuild choice is community-consensus (no Context7 entry), but well-corroborated. |
+| Features | MEDIUM | No single official "embeddable WP widget plugin" spec exists; synthesized by pattern-matching across real shipped competitors (AI Engine, 3D Viewer Block) — internally consistent but not officially codified. |
+| Architecture | HIGH (WP REST/enqueue APIs, OpenAI ephemeral-token contract) / MEDIUM (PHP strategy-pattern/DI conventions) | The REST contract and OpenAI endpoint behavior were verified directly against this repo's own `OpenAIRealtimeProvider.ts` source and official OpenAI docs. The composition-root/strategy-interface approach is informed engineering judgment, not an official WordPress-endorsed standard — no single canonical "WordPress DI" doc exists. |
+| Pitfalls | MEDIUM | Core WordPress behaviors (nonces, `upload_mimes`, plugin-review guidelines) are HIGH confidence (official docs). The specific combination of risks for this plugin (anonymous ephemeral-token minting + WebRTC + VRM upload) has no directly comparable shipped precedent — pitfalls are synthesized risk analysis from closest documented analogs, not confirmed bug reports. |
 
 **Overall confidence:** MEDIUM-HIGH
 
 ### Gaps to Address
 
-- **Vendored `FlowTTSPipeline`/ThonburianTTS repo's exact dependency pins:** Not directly inspectable during research (confirmed `FlowTTSPipeline` import path exists, but not its `requirements.txt`/`pyproject.toml`). Resolve during Phase 3 implementation by pulling the actual repo and reconciling its pins against the `f5-tts`/`torch` versions recommended here.
-- **Tool schema shape — flat custom map vs. real JSON Schema:** FEATURES.md flags that khavee's current `RealtimeTool.parameters` is a custom flat map, not real JSON Schema, while PROJECT.md's stated goal implies JSON-Schema-shaped parameters. This is an open design decision (not a research gap) that must be resolved during Phase 1 before any adapter's translation logic is written.
-- **F5-TTS streaming-output latency claims:** Based on one GitHub issue's discussion (MEDIUM confidence, not benchmarked), used only to confirm the already-decided "whole-utterance HTTP" choice is pragmatic — not load-bearing for any other decision, but worth a quick empirical sanity check during Phase 3.
-- **Exact `torch` patch version compatibility across `transformers>=5.3.0` and `f5-tts`/vendored repo:** PyPI metadata gave a directionally-correct range (2.6+ for transformers, up to 2.8.0 for f5-tts) but not an exact validated pin — resolve empirically when scaffolding Phase 3's `requirements.txt`/`uv` lockfile.
-- **VAD-loopback cooldown timing for JaiTTS specifically:** Cannot be researched in the abstract — requires empirical testing against JaiTTS's actual audio tail once the service exists (Phase 5), flagged explicitly as a "must validate, don't assume" item.
+- **OpenAI rate-limit behavior for the ephemeral-token endpoint specifically** is undocumented by OpenAI for per-IP/per-mint scenarios — the rate-limiting design in Phase 1 is a defensive pattern, not a documented threshold; validate against current OpenAI docs at implementation time.
+- **WordPress core's currently-bundled React version** could not be verified — directly affects the Phase 3 bundle-isolation-vs-externalization decision; check the Gutenberg/WP core changelog before finalizing the build config.
+- **No directly comparable shipped WordPress plugin** combines anonymous ephemeral-token minting + WebRTC + VRM avatar upload in one package — Pitfalls 1, 2, 3, and 6 are synthesized architectural risk analysis rather than confirmed real-world bug reports; treat their mitigations as load-bearing design decisions to verify carefully during Phase 1/4 QA, not optional hardening.
+- **The existing `src/app/api/negotiate/route.ts` is explicitly NOT a working reference** for this milestone's PHP route — it implements a different (SDP-relay) contract than the ephemeral-token contract this plugin needs (`useProxy` branch of `OpenAIRealtimeProvider.ts`). This should be called out explicitly during Phase 1 planning so no one mistakenly ports the wrong pattern.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- pypi.org/project/transformers, fastapi, uvicorn, f5-tts — direct PyPI version/metadata fetches
-- huggingface.co/biodatlab/whisper-th-large-v3-combined model card — direct fetch
-- CVE-2026-4372 coverage (penligent.ai, pluto.security, techrepublic.com, siliconangle.com) — cross-referenced, consistent
-- docs.pipecat.ai (Pipeline & Frame Processing, Function Calling, SileroVADAnalyzer, Text to Speech) — official docs
-- github.com/pipecat-ai/pipecat source (`frame_processor.py`, `runner.py`) — primary source read
-- `.planning/codebase/ARCHITECTURE.md`, `.planning/codebase/STRUCTURE.md`, `.planning/codebase/CONCERNS.md`, `.planning/PROJECT.md` — existing repo ground truth, direct read
+- [Realtime API with WebRTC | OpenAI API](https://platform.openai.com/docs/guides/realtime-webrtc) — ephemeral token endpoint, WebRTC negotiation flow
+- [Create client secret | OpenAI API Reference](https://platform.openai.com/docs/api-reference/realtime-sessions/create-realtime-client-secret) — response shape, TTL
+- [Settings API – Plugin Handbook](https://developer.wordpress.org/plugins/settings/settings-api/)
+- [Authentication – REST API Handbook](https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/)
+- [Adding Custom Endpoints – REST API Handbook](https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/)
+- [upload_mimes – Hook, WordPress Developer Resources](https://developer.wordpress.org/reference/hooks/upload_mimes/)
+- [wp_check_filetype_and_ext() – Function Reference](https://developer.wordpress.org/reference/functions/wp_check_filetype_and_ext/)
+- [@wordpress/build, the next generation of WordPress plugin build tooling – WordPress Developer Blog](https://developer.wordpress.org/news/2026/04/wordpress-build-the-next-generation-of-wordpress-plugin-build-tooling/)
+- Repo inspection: `packages/providers/openai-realtime/src/OpenAIRealtimeProvider.ts`, `src/app/api/negotiate/route.ts`, `packages/react/package.json`, `packages/core/package.json`
 
 ### Secondary (MEDIUM confidence)
-- reference-server.pipecat.ai, deepwiki.com/pipecat-ai/pipecat, anam.ai pipecat frame-processing guide — cross-referenced across 3 sources, consistent
-- docs.livekit.io, deepwiki.com/livekit/agents — LLM/STT/TTS plugin architecture
-- docs.vocode.dev, github.com/vocodedev/vocode-core — component model comparison
-- docs.vapi.ai (tools, custom-tools) — tool-calling wire format comparison
-- dev.to (Whisper hallucination), github.com/openai/whisper#1606, arXiv 2501.11378 — Whisper hallucination root cause, multiple independent sources
-- medium.com (Whisper microservice GPU OOM), jamwithai.substack.com (FastAPI concurrency mistake) — GPU-OOM/concurrency war stories
-- builderai.tools (F5-TTS setup guide), arXiv 2602.00443 (RVCBench) — reference-voice quality constraints
-- futuresearch.ai (LLM provider quirks) — cross-vendor tool-calling/JSON-schema differences (Gemini items.type, no top-level $ref)
-- github.com/SWivid/F5-TTS issues #666, #1225 — sample rate convention, streaming latency caveat
+- [How to Properly Restrict Access to WordPress REST API Routes – Plugin Vulnerabilities](https://www.pluginvulnerabilities.com/2022/12/13/how-to-properly-restrict-access-to-wordpress-rest-api-routes/)
+- [GitHub: eldinor/babylon-wordpress-plugin](https://github.com/eldinor/babylon-wordpress-plugin) — `model/gltf-binary` MIME mapping precedent
+- [AI Engine plugin (WordPress.org)](https://wordpress.org/plugins/ai-engine/), [3D Viewer – glb/gltf Viewer (WordPress.org)](https://wordpress.org/plugins/advanced-3d-model-viewer/) — competitor feature analysis
+- WebSearch: WP REST transient-based rate limiting (multiple independent community sources)
+- WebSearch: WordPress DI/strategy pattern conventions (carlalexander.ca, x-wp/di, lucatume/di52)
 
 ### Tertiary (LOW confidence)
-- huggingface.co/biodatlab/ThonburianTTS model card — search-result summary only, not direct page fetch (FlowTTSPipeline import path)
-- "uv" 2026 ecosystem-adoption trend / Astral acquisition claim — directionally agreed across sources but not independently re-verified as a hard fact
+- OpenAI ephemeral-token endpoint per-IP/per-mint rate-limit specifics — no official documentation found, needs validation at implementation time
+- WordPress core's currently-bundled React version for the editor — not independently verified this research pass
 
 ---
-*Research completed: 2026-06-17*
+*Research completed: 2026-06-21*
 *Ready for roadmap: yes*

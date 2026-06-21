@@ -1,58 +1,65 @@
-# Requirements: Khavee Generic Voice Pipeline
+# Requirements: WordPress Plugin (Custom Mode) — Milestone v2.0
 
-**Defined:** 2026-06-17
-**Core Value:** A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage.
+**Defined:** 2026-06-21
+**Core Value (this milestone):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
 
 ## v1 Requirements
 
-### Core Interfaces & Tool-Calling
+Requirements for this milestone. Each maps to roadmap phases.
 
-- [x] **CORE-01**: SDK exposes VADProvider, STTProvider, LLMProvider, and TTSProvider interfaces in `@khaveeai/core` that any vendor adapter can implement
-- [x] **CORE-02**: Each provider interface declares capability flags (e.g. `supportsStreaming`) so the orchestrator and consumers can branch correctly without redesigning the interface later
-- [x] **CORE-03**: Developer can register a tool with a plain object `{name, description, parameters, handler}` — no schema library (Zod, decorators) required
-- [x] **CORE-04**: SDK normalizes tool-call results to one shape (`{success, message}`) regardless of which LLM vendor produced the call
-- [x] **CORE-05**: Tool-execution logic is defined once in `@khaveeai/core` and reused by both the new generic pipeline and existing realtime providers, removing the current byte-for-byte `ToolExecutor.ts` duplication
-- [x] **CORE-06**: The LLMProvider tool-calling interface avoids encoding OpenAI-specific field names (e.g. `tool_call_id`) so a future non-OpenAI LLM vendor adapter can implement it without an interface redesign
+### Settings & Configuration
 
-### Generic Pipeline Orchestrator
+- [ ] **SET-01**: Admin can configure an OpenAI API key via a WP Settings API page; the saved key is redisplayed masked (e.g. `sk-••••••1234`), never in full
+- [ ] **SET-02**: Admin can configure a personality/instruction system prompt via a textarea
+- [ ] **SET-03**: Admin can select a voice from OpenAI's Realtime voice list via a dropdown
+- [ ] **SET-04**: Admin can upload a VRM or GLB avatar file via the WP Media Library
+- [ ] **SET-05**: Settings page is gated to users with the `manage_options` capability, checked both at menu registration and inside the render callback
+- [ ] **SET-06**: An inline admin-only notice appears on the frontend embed when the API key is missing or invalid; regular visitors see a neutral placeholder instead of a broken widget or console error
 
-- [x] **ORCH-01**: Developer can construct a working voice pipeline by passing `{vad, stt, llm, tts, tools}` to a single generic orchestrator class
-- [x] **ORCH-02**: The generic orchestrator implements the existing `RealtimeProvider` interface, so no changes are required in `@khaveeai/react` to use it
-- [x] **ORCH-03**: User's in-progress speech cancels in-flight LLM/TTS work (barge-in/interruption) via an `AbortSignal`-style hook on the active providers
-- [x] **ORCH-04**: The VAD-to-mic-reopen cooldown timing is a configurable value, not a hardcoded constant, so it can be tuned per TTS vendor's audio characteristics
-- [x] **ORCH-05**: The orchestrator normalizes all provider errors to `Error` instances and forwards them via callback without crashing the active session
+### Embedding (Shortcode + Block)
 
-### Python Backend Services
+- [ ] **EMBED-01**: Site owner can embed the avatar via a `[khaveeai_avatar]` shortcode, usable in any editor or page builder
+- [ ] **EMBED-02**: Shortcode supports per-instance attribute overrides (voice, instructions, avatar) that fall back to the global settings when omitted
+- [ ] **EMBED-03**: Site owner can embed the avatar via an equivalent Gutenberg block whose inspector controls mirror the shortcode's attributes
+- [ ] **EMBED-04**: Shortcode and block resolve attributes (instance override → global default → hardcoded fallback) through one shared PHP function, so the two embed methods cannot drift out of sync
+- [ ] **EMBED-05**: The Gutenberg block's editor preview (`edit()`) never mounts the live SPA, opens a microphone prompt, or mints a real OpenAI token while editing — only the front-end render does
 
-- [ ] **BACK-01**: `thonburian-stt` service accepts a posted audio utterance and returns Thai transcription text using `biodatlab/whisper-th-large-v3-combined` (or base variant)
-- [ ] **BACK-02**: ~~`thonburian-stt` detects and rejects/flags hallucinated transcriptions on short or silent audio segments (silence-trimming + repetition-ratio check), rather than always returning the model's raw output as valid speech~~ — **Deferred for Phase 3** (demo-simplicity tradeoff, see `03-CONTEXT.md` D-01). Revisit if this moves past demo use.
-- [ ] **BACK-03**: `jai-tts` service accepts posted Thai text and returns synthesized WAV audio using the JaiTTS-F5TTS voice-cloning model
-- [ ] **BACK-04**: `jai-tts` ships with a validated default Thai reference voice sample so a caller can synthesize speech by passing text alone, without supplying their own reference audio
-- [ ] **BACK-05**: ~~Both backend services load their model once at startup and gate concurrent inference requests (e.g. a semaphore) to avoid out-of-memory crashes under concurrent load~~ — **Deferred for Phase 3** (demo-simplicity tradeoff, see `03-CONTEXT.md` D-01). Model-load-once-at-startup still applies; the semaphore/gating half is what's deferred. Revisit if this moves past demo use.
+### Session Backend (REST)
 
-### Vendor Adapters & Demo
+- [ ] **REST-01**: Browser can request an ephemeral OpenAI Realtime token from a WP REST route without requiring a logged-in WP session (anonymous site visitors must be able to start a session)
+- [ ] **REST-02**: The OpenAI API key is never transmitted to the browser at any point in the settings, page-render, or session flow
+- [ ] **REST-03**: The token route applies per-IP rate limiting and a daily mint cap, so an anonymous endpoint cannot become an unmetered proxy against the site owner's OpenAI billing
+- [ ] **REST-04**: The token route responds with `Cache-Control: no-store`, so page-caching plugins cannot serve a stale or shared token to a different visitor
 
-- [ ] **ADPT-01**: `ThonburianSTTProvider` implements `STTProvider` by calling the `thonburian-stt` service over HTTP, posting whole VAD-segmented utterances
-- [ ] **ADPT-02**: `JaiTTSProvider` implements `TTSProvider` by calling the `jai-tts` service over HTTP and returning playable WAV audio
-- [ ] **ADPT-03**: The audio wire format between the SDK and each backend service (sample rate, encoding) is explicitly documented and covered by a round-trip test
-- [ ] **ADPT-04**: A working end-to-end demo runs a full voice pipeline using Thonburian STT + an LLM + JaiTTS TTS, including at least one registered tool call, proving STT and TTS can come from different non-OpenAI vendors simultaneously
-- [ ] **ADPT-05**: Documentation/example shows a beginner how to implement a custom STT or TTS vendor adapter and register a tool, using only the patterns established in this milestone
+### Asset Handling & Performance
+
+- [ ] **ASSET-01**: VRM/GLB Media Library uploads are validated server-side beyond file extension (binary magic-byte check) before being accepted, in addition to the `upload_mimes` allowlist
+- [ ] **PERF-01**: The avatar JS bundle and its dependencies are enqueued only on pages that actually contain the shortcode or block (via `has_shortcode()`/`has_block()` detection), not site-wide
+
+### Architecture / Extensibility
+
+- [ ] **ARCH-01**: Config retrieval (API key, instructions, voice, avatar URL) is implemented behind a `ConfigSourceInterface` with one concrete implementation (`WpOptionsConfigSource`) this milestone, so a future platform-driven config source can be added without changing the JS bundle or rendering code
+- [ ] **ARCH-02**: Ephemeral-token minting is implemented behind a `TokenProviderInterface` with one concrete implementation (`OpenAiDirectTokenProvider`) this milestone, so a future platform-driven token provider can be added without changing the JS bundle or REST contract shape
 
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
 
-### Vendor Expansion
+### Platform Mode (Fast-Follow)
 
-- **VEND-01**: Real AWS Bedrock STT provider adapter
-- **VEND-02**: Real Google Gemini TTS provider adapter
-- **VEND-03**: True incremental/partial streaming STT and TTS for vendors that support it
+- **PLAT-01**: Platform mode — API-key-driven config pulled from the hosted `khavee-app` dashboard, swapped in via the `ConfigSourceInterface`/`TokenProviderInterface` seam built this milestone. Blocked on a new API-key-gated ephemeral-token endpoint in `khavee-app` (separate repo, separate milestone).
 
-### SDK Cleanup
+### Settings Enhancements
 
-- **CLEAN-01**: Migrate `openai-stt-tts` onto the new generic provider interfaces
-- **CLEAN-02**: Token-budget-aware (tiktoken-style) conversation history trimming
-- **CLEAN-03**: Reconcile the orphaned legacy `LLMProvider`/`TTSProvider` types in `packages/core/src/types/mock.ts`
+- **SETV2-01**: `wp-config.php` constant override for the API key (`KHAVEEAI_OPENAI_API_KEY`), taking precedence over the DB option, for security-conscious admins
+- **SETV2-02**: "Test Connection" button on the settings page that round-trips a lightweight call to OpenAI to confirm the key works before saving
+
+### Multi-Instance & Distribution
+
+- **MULTI-01**: Multi-profile / multi-bot configuration manager (named configs beyond one global default + per-instance overrides)
+- **MULTI-02**: Native page-builder widgets (Elementor, Divi, Beaver Builder) beyond the generic shortcode/HTML widget support every builder already provides
+- **MULTI-03**: Usage/conversation analytics dashboard inside the plugin
+- **MULTI-04**: Multi-tab settings UI (revisit once field count grows, e.g. when Platform mode adds a distinct mode-selection tab)
 
 ## Out of Scope
 
@@ -60,12 +67,16 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| Refactoring `openai-stt-tts` onto the new interfaces | Left untouched this milestone — it's the only tested provider; avoid regression risk while the new abstraction is unproven |
-| Real AWS Bedrock and Google Gemini adapters | Only illustrative of "any vendor" this milestone; interfaces must support them later, but no adapters are built now |
-| `openai-realtime`'s full-duplex WebRTC provider | Separate architectural concern (single full-duplex session, no discrete STT/LLM/TTS stages) — not modified |
-| True streaming/partial transcription or synthesis | Neither Thonburian Whisper nor JaiTTS support it natively — would force fake streaming with no latency benefit |
-| Resolving the empty `packages/providers/azure` placeholder | Unrelated pre-existing debt, not part of this milestone |
-| Zod or other schema-library-based tool parameter validation | Violates the beginner-DX constraint — plain objects only |
+| Platform mode itself (not just deferred — actively blocked) | Requires a new API-key-gated ephemeral-token endpoint in `khavee-app` that doesn't exist; that's a separate repo/codebase and separate milestone |
+| Encryption-at-rest for the OpenAI API key beyond `wp_options` + capability gating | Proper encryption-at-rest requires a `wp-config.php`-level constant the admin must manually add, which contradicts "fully self-configured in WP admin" for v1; standard `wp_options` + strict capability gating + never echoing the full key is the accepted WP convention |
+| Multi-bot profile management UI | Classic WP over-configurability trap; one global default + per-instance shortcode/block override already covers "different avatar per page" |
+| Native Elementor/Divi/Beaver Builder widgets | Shortcode already works inside every page builder's generic shortcode/HTML widget; native widgets are 2-3x the surface area for marginal UX gain |
+| Client-side-configurable advanced realtime parameters (temperature, VAD thresholds, etc.) in the admin UI | Most WP admins don't know what these mean; keep hardcoded sane defaults in the JS bundle, expose only API key/instructions/voice/avatar |
+| Built-in usage/conversation analytics dashboard | Introduces data-retention/GDPR obligations orthogonal to "embed an avatar"; Custom mode has no backend to aggregate against anyway |
+| Bundling a default VRM avatar inside the plugin package | VRM/GLB files are several MB+; bloats the plugin zip and conflicts with WordPress.org size/review expectations |
+| Multi-tab settings UI | Premature structure at 4 config fields; single flat settings page is sufficient for v1 |
+| Modifying `openai-realtime`'s `OpenAIRealtimeProvider` or the existing Next.js `src/app/api/negotiate/route.ts` | Out of scope per project constraints; the WP PHP route implements the OpenAI ephemeral-token contract directly, not modeled on the demo app's SDP-relay route (confirmed mismatch during research) |
+| `khavee-app` platform changes of any kind | Separate repo/codebase; not part of khavee-sdk milestones |
 
 ## Traceability
 
@@ -73,33 +84,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | Phase 1 | Complete |
-| CORE-02 | Phase 1 | Complete |
-| CORE-03 | Phase 1 | Complete |
-| CORE-04 | Phase 1 | Complete |
-| CORE-05 | Phase 1 | Complete |
-| CORE-06 | Phase 1 | Complete |
-| ORCH-01 | Phase 2 | Complete |
-| ORCH-02 | Phase 2 | Complete |
-| ORCH-03 | Phase 2 | Complete |
-| ORCH-04 | Phase 2 | Complete |
-| ORCH-05 | Phase 2 | Complete |
-| BACK-01 | Phase 3 | Pending |
-| BACK-02 | Phase 3 | Deferred |
-| BACK-03 | Phase 3 | Pending |
-| BACK-04 | Phase 3 | Pending |
-| BACK-05 | Phase 3 | Deferred |
-| ADPT-01 | Phase 4 | Pending |
-| ADPT-02 | Phase 4 | Pending |
-| ADPT-03 | Phase 4 | Pending |
-| ADPT-04 | Phase 5 | Pending |
-| ADPT-05 | Phase 5 | Pending |
+| SET-01 | TBD | Pending |
+| SET-02 | TBD | Pending |
+| SET-03 | TBD | Pending |
+| SET-04 | TBD | Pending |
+| SET-05 | TBD | Pending |
+| SET-06 | TBD | Pending |
+| EMBED-01 | TBD | Pending |
+| EMBED-02 | TBD | Pending |
+| EMBED-03 | TBD | Pending |
+| EMBED-04 | TBD | Pending |
+| EMBED-05 | TBD | Pending |
+| REST-01 | TBD | Pending |
+| REST-02 | TBD | Pending |
+| REST-03 | TBD | Pending |
+| REST-04 | TBD | Pending |
+| ASSET-01 | TBD | Pending |
+| PERF-01 | TBD | Pending |
+| ARCH-01 | TBD | Pending |
+| ARCH-02 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 21 total
-- Mapped to phases: 21 ✓
-- Unmapped: 0 ✓
+- v1 requirements: 19 total
+- Mapped to phases: 0 (filled by roadmapper)
+- Unmapped: 19 ⚠️ (expected before roadmap creation)
 
 ---
-*Requirements defined: 2026-06-17*
-*Last updated: 2026-06-19 — ORCH-01..05 marked Complete (Phase 2 verified); BACK-02/BACK-05 marked Deferred per 03-CONTEXT.md D-01*
+*Requirements defined: 2026-06-21*
+*Last updated: 2026-06-21 after initial definition*

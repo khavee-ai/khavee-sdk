@@ -1,8 +1,9 @@
 # Roadmap: Khavee Generic Voice Pipeline
 
-## Overview
+## Milestones
 
-This milestone takes khavee-sdk from a single hardcoded OpenAI voice pipeline to a pipecat-style composable architecture proven against two real non-OpenAI vendors. The journey starts by fixing the contract — four vendor-neutral provider interfaces and a redesigned tool-calling system in `@khaveeai/core` — before any orchestration or vendor-specific code exists. With the contract fixed, a generic orchestrator is built and validated against adapted existing OpenAI helper logic (no new vendors needed yet). In parallel, two greenfield Python ML services (`thonburian-stt`, `jai-tts`) are scaffolded from scratch at their own sibling paths, hardened against their respective failure modes (Whisper hallucination, GPU OOM). Thin TypeScript adapter classes then bridge the two worlds over an explicitly documented, round-trip-tested HTTP audio contract. The milestone closes with the actual proof point: a working end-to-end demo mixing Thonburian STT + an LLM + JaiTTS TTS with tool-calling, plus beginner-facing documentation showing how to repeat the pattern with any other vendor.
+- ✅ **v1.0 Generic Voice Pipeline** - Phases 1-5 (Phase 5 in progress)
+- 🚧 **v2.0 WordPress Plugin (Custom Mode)** - Phases 6-8 (in progress)
 
 ## Phases
 
@@ -13,11 +14,22 @@ This milestone takes khavee-sdk from a single hardcoded OpenAI voice pipeline to
 
 Decimal phases appear between their surrounding integers in numeric order.
 
+<details>
+<summary>v1.0 Generic Voice Pipeline (Phases 1-5)</summary>
+
 - [x] **Phase 1: Core Interfaces & Tool-Calling** - Define vendor-neutral VAD/STT/LLM/TTS interfaces and a redesigned, shared ToolExecutor in `@khaveeai/core` (completed 2026-06-17)
 - [x] **Phase 2: Generic Pipeline Orchestrator** - Build the `{vad, stt, llm, tts, tools}`-composing orchestrator that implements `RealtimeProvider` (completed 2026-06-18)
 - [x] **Phase 3: Python Backend Services** - Scaffold and harden `thonburian-stt` and `jai-tts` as standalone FastAPI services (completed 2026-06-19)
 - [x] **Phase 4: Vendor Adapters & Audio Contract** - Build thin HTTP adapter classes and pin the audio wire format with a round-trip test (completed 2026-06-19)
 - [ ] **Phase 5: End-to-End Mixed-Vendor Demo & Documentation** - Wire everything into a working mixed-vendor demo with tool-calling, plus beginner docs
+
+</details>
+
+### v2.0 WordPress Plugin (Custom Mode)
+
+- [ ] **Phase 6: PHP Backend Core — Config/Token Strategies + REST Contract** - Build the `ConfigSourceInterface`/`TokenProviderInterface` strategy seam and a public, abuse-resistant REST route that mints OpenAI ephemeral tokens server-side
+- [ ] **Phase 7: Admin Settings Page** - WP Settings API page for API key, instructions, voice, and VRM/GLB avatar upload, reading/writing exclusively through `ConfigSourceInterface`
+- [ ] **Phase 8: Frontend Bundle, Shortcode & Block** - Bundled React SPA embedding the existing `OpenAIRealtimeProvider` + VRM avatar, surfaced via a shared-render-path shortcode and Gutenberg block, enqueued only where used
 
 ## Phase Details
 
@@ -145,17 +157,69 @@ Plans:
 
 **Plans**: TBD
 
+### Phase 6: PHP Backend Core — Config/Token Strategies + REST Contract
+
+**Goal**: A WordPress site can mint a real OpenAI Realtime ephemeral token for an anonymous visitor over a `curl`-testable REST route, with the OpenAI API key never leaving the server, and the config/token logic structured so a future platform-driven implementation can swap in later without touching this contract
+**Depends on**: Nothing (first phase of v2.0; greenfield plugin code)
+**Requirements**: ARCH-01, ARCH-02, REST-01, REST-02, REST-03, REST-04
+**Success Criteria** (what must be TRUE):
+
+  1. `curl`-ing the WP REST token route as an anonymous (logged-out) request returns a valid ephemeral OpenAI Realtime token in the response body, with no WP login/nonce required
+  2. The OpenAI API key never appears in any REST response body, HTTP header, or page source — confirmed by inspecting the route's response payload
+  3. Repeated rapid requests from the same IP are throttled (HTTP 429 or equivalent) once a per-IP rate limit and daily mint cap are exceeded, rather than minting unlimited tokens
+  4. The token route's HTTP response includes `Cache-Control: no-store`, confirmed by inspecting response headers
+  5. Config retrieval (API key, instructions, voice, avatar URL) and token minting are each implemented behind a swappable interface (`ConfigSourceInterface`, `TokenProviderInterface`) with exactly one concrete implementation each, demonstrated by the REST controller depending only on the interfaces, not concrete classes
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 7: Admin Settings Page
+
+**Goal**: A WordPress admin can fully configure the avatar (API key, personality, voice, avatar file) from one WP Settings API page, with the saved configuration immediately readable by Phase 6's `ConfigSourceInterface`
+**Depends on**: Phase 6 (reads/writes through `ConfigSourceInterface`/`WpOptionsConfigSource`)
+**Requirements**: SET-01, SET-02, SET-03, SET-04, SET-05, SET-06, ASSET-01
+**Success Criteria** (what must be TRUE):
+
+  1. An admin can enter an OpenAI API key on the settings page, save it, and on page reload see it redisplayed masked (e.g. `sk-••••••1234`) rather than in full
+  2. An admin can enter personality/instruction text in a textarea, select a voice from a dropdown, and upload a `.vrm` or `.glb` file via the WP Media Library — all three persist after save and reload
+  3. A non-admin user (lacking `manage_options`) cannot see the settings menu item and cannot successfully render the settings page even by navigating directly to its URL
+  4. Uploading a renamed non-VRM/GLB file (correct extension, wrong binary content) through the avatar picker is rejected rather than accepted into the Media Library
+  5. When the API key is unset or invalid, an admin viewing a page with the embedded avatar sees an inline notice identifying the problem, while a logged-out visitor sees a neutral placeholder instead of a broken widget or console error
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 8: Frontend Bundle, Shortcode & Block
+
+**Goal**: A site owner can embed a fully working voice-chat VRM avatar on any page via shortcode or Gutenberg block, using one shared bundle and shared attribute-resolution logic, loaded only where actually used
+**Depends on**: Phase 6 (REST contract + bootstrap shape), Phase 7 (settings provide the default config the bundle renders against)
+**Requirements**: EMBED-01, EMBED-02, EMBED-03, EMBED-04, EMBED-05, PERF-01
+**Success Criteria** (what must be TRUE):
+
+  1. Placing `[khaveeai_avatar]` in any post/page editor (classic editor, block editor, or a page builder's shortcode/HTML widget) renders a working voice-chat VRM avatar on the published page
+  2. A shortcode instance with explicit `voice`/`instructions`/`avatar` attributes overrides the global settings for that instance only, while an instance with no attributes falls back to the global settings
+  3. Inserting the equivalent Gutenberg block and setting its inspector controls produces the same rendered output and override behavior as the shortcode with matching attributes
+  4. Opening the Gutenberg block in the editor never triggers a microphone permission prompt or a real OpenAI token request — only viewing the published front-end page does
+  5. The avatar bundle's JS/CSS assets are present in the page source on a page containing the shortcode/block, and absent from the page source on a page that does not
+
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
-(Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other.)
+(Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other. Phase 8's frontend bundle work can start once Phase 6's REST contract shape is fixed, in parallel with Phase 7, per v2.0 research.)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Interfaces & Tool-Calling | 3/3 | Complete   | 2026-06-17 |
-| 2. Generic Pipeline Orchestrator | 7/7 | Complete   | 2026-06-18 |
-| 3. Python Backend Services | 2/2 | Complete   | 2026-06-19 |
-| 4. Vendor Adapters & Audio Contract | 3/3 | Complete   | 2026-06-19 |
+| 1. Core Interfaces & Tool-Calling | 3/3 | Complete | 2026-06-17 |
+| 2. Generic Pipeline Orchestrator | 7/7 | Complete | 2026-06-18 |
+| 3. Python Backend Services | 2/2 | Complete | 2026-06-19 |
+| 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
+| 6. PHP Backend Core — Config/Token Strategies + REST Contract | 0/TBD | Not started | - |
+| 7. Admin Settings Page | 0/TBD | Not started | - |
+| 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
+</content>

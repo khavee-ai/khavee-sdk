@@ -84,31 +84,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SET-01 | TBD | Pending |
-| SET-02 | TBD | Pending |
-| SET-03 | TBD | Pending |
-| SET-04 | TBD | Pending |
-| SET-05 | TBD | Pending |
-| SET-06 | TBD | Pending |
-| EMBED-01 | TBD | Pending |
-| EMBED-02 | TBD | Pending |
-| EMBED-03 | TBD | Pending |
-| EMBED-04 | TBD | Pending |
-| EMBED-05 | TBD | Pending |
-| REST-01 | TBD | Pending |
-| REST-02 | TBD | Pending |
-| REST-03 | TBD | Pending |
-| REST-04 | TBD | Pending |
-| ASSET-01 | TBD | Pending |
-| PERF-01 | TBD | Pending |
-| ARCH-01 | TBD | Pending |
-| ARCH-02 | TBD | Pending |
+| SET-01 | Phase 7 | Pending |
+| SET-02 | Phase 7 | Pending |
+| SET-03 | Phase 7 | Pending |
+| SET-04 | Phase 7 | Pending |
+| SET-05 | Phase 7 | Pending |
+| SET-06 | Phase 7 | Pending |
+| EMBED-01 | Phase 8 | Pending |
+| EMBED-02 | Phase 8 | Pending |
+| EMBED-03 | Phase 8 | Pending |
+| EMBED-04 | Phase 8 | Pending |
+| EMBED-05 | Phase 8 | Pending |
+| REST-01 | Phase 6 | Pending |
+| REST-02 | Phase 6 | Pending |
+| REST-03 | Phase 6 | Pending |
+| REST-04 | Phase 6 | Pending |
+| ASSET-01 | Phase 7 | Pending |
+| PERF-01 | Phase 8 | Pending |
+| ARCH-01 | Phase 6 | Pending |
+| ARCH-02 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
-- Mapped to phases: 0 (filled by roadmapper)
-- Unmapped: 19 ⚠️ (expected before roadmap creation)
+- Mapped to phases: 19 (Phase 6: 6, Phase 7: 7, Phase 8: 6)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-21*
-*Last updated: 2026-06-21 after initial definition*
+*Last updated: 2026-06-21 after roadmap creation (Phases 6-8 mapped)*
+</content>

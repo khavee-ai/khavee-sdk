@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: WordPress Plugin (Custom Mode)
-status: planning
-last_updated: "2026-06-21T12:20:42.573Z"
+status: ready_to_plan
+last_updated: "2026-06-21T00:00:00.000Z"
 last_activity: 2026-06-21
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,23 +17,25 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-17)
+See: .planning/PROJECT.md (updated 2026-06-21)
 
-**Core value:** A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage.
-**Current focus:** Phase 04 — generic-demo-page
+**Core value (v2.0):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
+**Current focus:** Phase 6 — PHP Backend Core (Config/Token Strategies + REST Contract)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-21 — Milestone v2.0 started
+Phase: 6 of 8 (PHP Backend Core — Config/Token Strategies + REST Contract)
+Plan: TBD — not yet planned
+Status: Ready to plan
+Last activity: 2026-06-21 — ROADMAP.md created for v2.0 (Phases 6-8), 19/19 requirements mapped
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 15 (v1.0 milestone, Phases 1-4)
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -41,8 +43,10 @@ Last activity: 2026-06-21 — Milestone v2.0 started
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 3 | - | - |
-| 03 | 2 | - | - |
+| 1 | 3 | - | - |
+| 2 | 7 | - | - |
+| 3 | 2 | - | - |
+| 4 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -58,9 +62,11 @@ Last activity: 2026-06-21 — Milestone v2.0 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- Milestone-wide: New `generic-stt-tts` package built alongside `openai-stt-tts`, not replacing it — avoids regression risk
-- Milestone-wide: Tool-calling is plain object + handler, no Zod/decorators — beginner-DX constraint
-- Milestone-wide: STT/TTS backend protocol is streaming-chunked HTTP (whole-utterance POST), not WebSocket — neither Thonburian Whisper nor JaiTTS support true incremental streaming
+- v2.0: WordPress plugin targets `OpenAIRealtimeProvider` (full-duplex WebRTC), not `generic-stt-tts` — matches the WP embedding use case shape
+- v2.0: Custom mode only this milestone (self-configured); Platform mode is an explicit fast-follow blocked on a `khavee-app` backend addition
+- v2.0: Config-source and token-provider logic built as swappable PHP strategies (`ConfigSourceInterface`, `TokenProviderInterface`) from the start, each with exactly one concrete implementation this milestone
+- v2.0: PHP backend (Phase 6) sequenced first — proves the OpenAI ephemeral-token contract via `curl` before any JS exists, de-risking Phases 7-8
+- v2.0: Frontend bundle work folded into Phase 8 (Render Layer) rather than its own phase — no standalone requirement maps to bundle infrastructure alone; it's consumed entirely by EMBED-05/PERF-01
 
 ### Pending Todos
 
@@ -68,10 +74,13 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 1: Must avoid baking OpenAI-shaped assumptions into "generic" interfaces — no real second LLM vendor exists yet to validate tool-calling abstraction against (mitigation: written Anthropic/Gemini sketch required before phase is done, per research)
-- Phase 3: `thonburian-stt` and `jai-tts` live at sibling paths `/Users/whitemalt/Documents/thonburian-stt` and `/Users/whitemalt/Documents/jai-tts`, NOT inside khavee-sdk — currently empty, greenfield, no git history. Plans touching these must use absolute paths.
-- Phase 3: Vendored `FlowTTSPipeline`/ThonburianTTS repo's exact dependency pins were not directly inspectable during research — resolve empirically when scaffolding
-- Phase 5: VAD-loopback cooldown (currently a 500ms magic number tuned for OpenAI TTS) cannot be validated against JaiTTS until that service exists — must explicitly retest, not assume
+- Phase 5 (v1.0): VAD-loopback cooldown (currently a 500ms magic number tuned for OpenAI TTS) cannot be validated against JaiTTS until that service exists — must explicitly retest, not assume
+- Phase 6: The public REST token route must be genuinely anonymous (`permission_callback => '__return_true'`) — WP nonce-based auth does not protect anonymous visitors and silently breaks under page caching; rate limiting/daily cap must be designed in from the first implementation, not retrofitted
+- Phase 6: No official OpenAI documentation specifies per-IP/per-mint rate limits for the ephemeral-token endpoint — defensive rate-limiting design must be validated against actual OpenAI behavior at implementation time
+- Phase 6: `src/app/api/negotiate/route.ts` is explicitly NOT the reference pattern for this route — it implements a different SDP-relay contract; the WP route must implement the ephemeral-token-minting (`useProxy`) contract instead
+- Phase 7: VRM/GLB Media Library upload needs `upload_mimes` allow-listing AND binary magic-byte validation together — allow-list alone is a known disguised-file-upload vector
+- Phase 8: WordPress core's currently-bundled React version was not verified during research — affects the bundle-isolation-vs-externalization decision; check Gutenberg/WP core changelog before finalizing build config
+- Phase 8: Gutenberg block's `edit()` must use a separate `editorScript`/`viewScript` split — naively mounting the live SPA in the editor fires real mic prompts and OpenAI token mints on every admin keystroke
 
 ## Deferred Items
 
@@ -83,6 +92,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T07:53:13.086Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-vendor-adapters-audio-contract/04-CONTEXT.md
+Last session: 2026-06-21T00:00:00.000Z
+Stopped at: ROADMAP.md and REQUIREMENTS.md traceability written for v2.0 milestone (Phases 6-8)
+Resume file: None — next step is `/gsd:plan-phase 6`
+</content>

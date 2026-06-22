@@ -389,7 +389,7 @@ run_case(
 		$received = $token_provider->received_session_config;
 
 		return 'ADMIN_CONFIGURED_INSTRUCTIONS' === ( $received['instructions'] ?? null )
-			&& 'ADMIN_CONFIGURED_VOICE' === ( $received['voice'] ?? null )
+			&& ! array_key_exists( 'voice', $received )
 			&& 'ADMIN_CONFIGURED_VOICE' === ( $received['audio']['output']['voice'] ?? null )
 			&& 'pcm16' === ( $received['audio']['output']['format'] ?? null );
 	}

@@ -100,13 +100,22 @@ final class SessionController {
 		$runtime_config = $this->config_source->get_runtime_config();
 
 		$session_config['instructions'] = $runtime_config['instructions'];
-		$session_config['voice']        = $runtime_config['voice'];
 
-		if ( isset( $session_config['audio'] ) && is_array( $session_config['audio'] )
-			&& isset( $session_config['audio']['output'] ) && is_array( $session_config['audio']['output'] )
-		) {
-			$session_config['audio']['output']['voice'] = $runtime_config['voice'];
+		// OpenAI's realtime session schema has no top-level `voice` field —
+		// voice only exists at `audio.output.voice`, and OpenAI rejects any
+		// unrecognized top-level parameter outright. Strip a client-sent
+		// top-level `voice` and always force the admin-configured voice
+		// into the correct nested location, creating the audio.output
+		// structure if the client didn't send one.
+		unset( $session_config['voice'] );
+
+		if ( ! isset( $session_config['audio'] ) || ! is_array( $session_config['audio'] ) ) {
+			$session_config['audio'] = array();
 		}
+		if ( ! isset( $session_config['audio']['output'] ) || ! is_array( $session_config['audio']['output'] ) ) {
+			$session_config['audio']['output'] = array();
+		}
+		$session_config['audio']['output']['voice'] = $runtime_config['voice'];
 
 		return $session_config;
 	}

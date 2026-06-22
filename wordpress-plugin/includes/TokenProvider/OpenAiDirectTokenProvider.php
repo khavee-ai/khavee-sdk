@@ -48,6 +48,9 @@ final class OpenAiDirectTokenProvider implements TokenProviderInterface {
 	 *                            class docblock above.
 	 */
 	public function mint_session( array $session_config, string $api_key ): array {
+		// OpenAI's client_secrets endpoint requires the session config
+		// nested under a top-level "session" key — posting it unwrapped
+		// is rejected with `400 Unknown parameter` for every field.
 		$response = wp_remote_post(
 			self::ENDPOINT,
 			array(
@@ -56,7 +59,7 @@ final class OpenAiDirectTokenProvider implements TokenProviderInterface {
 					'Authorization' => 'Bearer ' . $api_key,
 					'Content-Type'  => 'application/json',
 				),
-				'body'    => wp_json_encode( $session_config ),
+				'body'    => wp_json_encode( array( 'session' => $session_config ) ),
 			)
 		);
 

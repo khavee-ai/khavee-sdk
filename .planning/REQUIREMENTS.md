@@ -26,10 +26,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Session Backend (REST)
 
-- [ ] **REST-01**: Browser can request an ephemeral OpenAI Realtime token from a WP REST route without requiring a logged-in WP session (anonymous site visitors must be able to start a session)
-- [ ] **REST-02**: The OpenAI API key is never transmitted to the browser at any point in the settings, page-render, or session flow
-- [ ] **REST-03**: The token route applies per-IP rate limiting and a daily mint cap, so an anonymous endpoint cannot become an unmetered proxy against the site owner's OpenAI billing
-- [ ] **REST-04**: The token route responds with `Cache-Control: no-store`, so page-caching plugins cannot serve a stale or shared token to a different visitor
+- [x] **REST-01**: Browser can request an ephemeral OpenAI Realtime token from a WP REST route without requiring a logged-in WP session (anonymous site visitors must be able to start a session)
+- [x] **REST-02**: The OpenAI API key is never transmitted to the browser at any point in the settings, page-render, or session flow
+- [x] **REST-03**: The token route applies per-IP rate limiting and a daily mint cap, so an anonymous endpoint cannot become an unmetered proxy against the site owner's OpenAI billing
+- [x] **REST-04**: The token route responds with `Cache-Control: no-store`, so page-caching plugins cannot serve a stale or shared token to a different visitor
 
 ### Asset Handling & Performance
 
@@ -95,10 +95,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EMBED-03 | Phase 8 | Pending |
 | EMBED-04 | Phase 8 | Pending |
 | EMBED-05 | Phase 8 | Pending |
-| REST-01 | Phase 6 | Pending |
-| REST-02 | Phase 6 | Pending |
-| REST-03 | Phase 6 | Pending |
-| REST-04 | Phase 6 | Pending |
+| REST-01 | Phase 6 | Complete |
+| REST-02 | Phase 6 | Complete |
+| REST-03 | Phase 6 | Complete |
+| REST-04 | Phase 6 | Complete |
 | ASSET-01 | Phase 7 | Pending |
 | PERF-01 | Phase 8 | Pending |
 | ARCH-01 | Phase 6 | Pending |

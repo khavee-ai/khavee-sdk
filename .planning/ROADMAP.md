@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Generic Voice Pipeline** - Phases 1-5 (Phase 5 in progress)
-- 🚧 **v2.0 WordPress Plugin (Custom Mode)** - Phases 6-8 (in progress)
+- 🚧 **v2.0 WordPress Plugin (Custom Mode)** - Phases 6-8 (Phase 6 complete)
 
 ## Phases
 
@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### v2.0 WordPress Plugin (Custom Mode)
 
-- [ ] **Phase 6: PHP Backend Core — Config/Token Strategies + REST Contract** - Build the `ConfigSourceInterface`/`TokenProviderInterface` strategy seam and a public, abuse-resistant REST route that mints OpenAI ephemeral tokens server-side
+- [x] **Phase 6: PHP Backend Core — Config/Token Strategies + REST Contract** - Build the `ConfigSourceInterface`/`TokenProviderInterface` strategy seam and a public, abuse-resistant REST route that mints OpenAI ephemeral tokens server-side (completed 2026-06-23)
 - [ ] **Phase 7: Admin Settings Page** - WP Settings API page for API key, instructions, voice, and VRM/GLB avatar upload, reading/writing exclusively through `ConfigSourceInterface`
 - [ ] **Phase 8: Frontend Bundle, Shortcode & Block** - Bundled React SPA embedding the existing `OpenAIRealtimeProvider` + VRM avatar, surfaced via a shared-render-path shortcode and Gutenberg block, enqueued only where used
 
@@ -183,7 +183,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 — live verification checkpoint)*
 
-- [ ] 06-04-PLAN.md — curl-verify.sh exercising the four observable REST criteria + human checkpoint against a live WP install with a real OpenAI key
+- [x] 06-04-PLAN.md — curl-verify.sh exercising the four observable REST criteria + human checkpoint against a live WP install with a real OpenAI key (live verification surfaced and fixed 2 real wire-contract bugs: unwrapped client_secrets body, invalid top-level voice field)
 
 **UI hint**: yes
 
@@ -233,7 +233,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Python Backend Services | 2/2 | Complete | 2026-06-19 |
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
-| 6. PHP Backend Core — Config/Token Strategies + REST Contract | 3/4 | In Progress|  |
+| 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 0/TBD | Not started | - |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
 </content>

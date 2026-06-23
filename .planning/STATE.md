@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: WordPress Plugin (Custom Mode)
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-06-21T13:35:27.739Z"
-last_activity: 2026-06-21 -- Phase 06 execution started
+stopped_at: Phase 6 complete (06-04 live REST verification approved)
+last_updated: "2026-06-23T17:32:16.000Z"
+last_activity: 2026-06-23 -- Phase 06 plan 04 (live REST contract verification) completed
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value (v2.0):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
-**Current focus:** Phase 06 — php-backend-core-config-token-strategies-rest-contract
+**Current focus:** Phase 07 — admin-settings-page (not yet planned)
 
 ## Current Position
 
-Phase: 06 (php-backend-core-config-token-strategies-rest-contract) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 06
-Last activity: 2026-06-21 -- Phase 06 execution started
+Phase: 06 (php-backend-core-config-token-strategies-rest-contract) — COMPLETE
+Plan: 4 of 4
+Status: Phase 06 complete — ready to plan Phase 07
+Last activity: 2026-06-23 -- Phase 06 plan 04 (live REST contract verification) completed and approved
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 15 (v1.0 milestone, Phases 1-4)
+- Total plans completed: 19 (15 v1.0 milestone Phases 1-4, + 4 v2.0 Phase 6)
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -48,11 +48,12 @@ Progress: [░░░░░░░░░░] 0%
 | 2 | 7 | - | - |
 | 3 | 2 | - | - |
 | 4 | 3 | - | - |
+| 6 | 4 | - | - |
 
 **Recent Trend:**
 
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 06-01, 06-02, 06-03, 06-04
+- Trend: Phase 6 (PHP backend core) complete; live verification caught 2 real wire-contract bugs the standalone harnesses missed
 
 *Updated after each plan completion*
 
@@ -68,6 +69,9 @@ Recent decisions affecting current work:
 - v2.0: Config-source and token-provider logic built as swappable PHP strategies (`ConfigSourceInterface`, `TokenProviderInterface`) from the start, each with exactly one concrete implementation this milestone
 - v2.0: PHP backend (Phase 6) sequenced first — proves the OpenAI ephemeral-token contract via `curl` before any JS exists, de-risking Phases 7-8
 - v2.0: Frontend bundle work folded into Phase 8 (Render Layer) rather than its own phase — no standalone requirement maps to bundle infrastructure alone; it's consumed entirely by EMBED-05/PERF-01
+- 06-04: OpenAI's `/v1/realtime/client_secrets` endpoint requires the session config nested under a top-level `session` key (not posted unwrapped) — confirmed via live curl against the real endpoint, fixed in `OpenAiDirectTokenProvider`
+- 06-04: OpenAI's realtime session schema has no top-level `voice` field — voice only exists at `session.audio.output.voice`; `SessionController::apply_trust_model()` now strips any client-sent top-level `voice` and always forces the nested path
+- 06-04: `wordpress-plugin/vendor/` is gitignored (Composer-regenerable); `composer.lock` is tracked despite zero current third-party deps, per application-package convention
 
 ### Pending Todos
 
@@ -93,7 +97,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-21T12:59:04.821Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-php-backend-core-config-token-strategies-rest-contract/06-CONTEXT.md
+Last session: 2026-06-23T17:32:16.000Z
+Stopped at: Phase 6 complete (06-04 live REST verification approved)
+Resume file: None
 </content>

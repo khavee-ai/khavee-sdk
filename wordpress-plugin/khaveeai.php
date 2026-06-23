@@ -20,12 +20,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Composer PSR-4 autoload map: Khavee\Plugin\ => includes/.
-// Guarded by file_exists() so this bootstrap still lints/loads cleanly before
-// `composer install` has been run (e.g. during CI lint checks or a fresh checkout).
+// vendor/ is gitignored (regenerable, never committed) — a fresh checkout
+// or zip distribution will not have it until `composer install` is run
+// inside this directory. Fail gracefully here (admin notice + early
+// return) rather than registering plugins_loaded against an undefined
+// \Khavee\Plugin\Plugin class, which would fatal-error the entire site
+// (CR-02) — not just this plugin's feature.
 $khaveeai_autoloader = __DIR__ . '/vendor/autoload.php';
-if ( file_exists( $khaveeai_autoloader ) ) {
-	require $khaveeai_autoloader;
+if ( ! file_exists( $khaveeai_autoloader ) ) {
+	add_action(
+		'admin_notices',
+		function () {
+			echo '<div class="notice notice-error"><p>' .
+				esc_html__( 'Khavee AI Avatar is installed but inactive: missing Composer dependencies. Run "composer install" inside the plugin directory (wp-content/plugins/wordpress-plugin), then reload this page.', 'khaveeai' ) .
+				'</p></div>';
+		}
+	);
+	return;
 }
+
+require $khaveeai_autoloader;
 
 // Boot the composition root on plugins_loaded — after the autoload
 // require above, so the SessionController instance it constructs is

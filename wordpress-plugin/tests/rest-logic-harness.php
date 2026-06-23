@@ -456,6 +456,36 @@ run_case(
 	}
 );
 
+// ── Case 8b: rate limiter reserves on attempt, even when mint fails ────
+// Regression test for CR-01: record_mint() must fire right after the
+// is_allowed() check (before the provider call), not only on success —
+// otherwise a flood of always-failing requests never counts against the
+// per-IP/daily caps, and concurrent requests can all pass the check
+// before any of them records.
+
+run_case(
+	'SessionController: rate limiter reserves the slot on every attempt, not just on success (CR-01)',
+	function () {
+		$config_source  = new FixtureConfigSource();
+		$token_provider = new FixtureTokenProvider();
+		$token_provider->mode = 'failure';
+		$controller     = build_controller( $config_source, $token_provider );
+
+		$request = new WP_REST_Request( array( 'sessionConfig' => array() ) );
+
+		for ( $i = 0; $i < 5; $i++ ) {
+			$controller->create_session( $request );
+		}
+
+		// All 5 attempts failed at the provider (mode = 'failure'), but the
+		// per-IP budget must already be exhausted, proving record_mint()
+		// ran on attempt rather than only after a successful mint.
+		$sixth = $controller->create_session( $request );
+
+		return 429 === $sixth->status;
+	}
+);
+
 // ── Case 9: API key never appears in any response data/header ──────────
 
 run_case(

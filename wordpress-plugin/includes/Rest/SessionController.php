@@ -126,12 +126,24 @@ final class SessionController {
 	 * Order of operations is load-bearing:
 	 *   1. Rate-limit/cap check (D-05) — BEFORE resolving the API key, so
 	 *      an abusive caller never even reaches key resolution.
-	 *   2. API key resolution — 503 if unconfigured.
-	 *   3. Trust-model override (D-07/D-08) via apply_trust_model() above
+	 *   2. Reserve the slot via record_mint() IMMEDIATELY after the check
+	 *      passes — deliberately BEFORE the ~10s server-to-server OpenAI
+	 *      call, not after a successful mint. Recording after the network
+	 *      call left a check-then-act window: two concurrent requests from
+	 *      the same IP could each pass is_allowed() before either one
+	 *      recorded, bypassing both the per-IP and sitewide caps (CR-01).
+	 *      Reserving here shrinks that window to the handful of in-process
+	 *      instructions between the two calls, and as a side effect also
+	 *      means a flood of requests that all fail at the provider (e.g.
+	 *      a misconfigured key) now counts against the limiter too, instead
+	 *      of being free to retry indefinitely.
+	 *   3. API key resolution — 503 if unconfigured.
+	 *   4. Trust-model override (D-07/D-08) via apply_trust_model() above
 	 *      — admin instructions/voice always win over whatever the client
 	 *      sent, applied BEFORE mint_session() is called.
-	 *   4. Mint via the injected TokenProviderInterface — 502 generic on
-	 *      failure (D-09), record the mint and return 200 on success.
+	 *   5. Mint via the injected TokenProviderInterface — 502 generic on
+	 *      failure (D-09), 200 on success. The reservation from step 2
+	 *      already counted either way.
 	 *
 	 * @param \WP_REST_Request $request
 	 * @return \WP_REST_Response
@@ -142,6 +154,8 @@ final class SessionController {
 		if ( ! $this->rate_limiter->is_allowed( $ip ) ) {
 			return $this->respond( array( 'error' => 'rate_limited' ), 429 );
 		}
+
+		$this->rate_limiter->record_mint( $ip );
 
 		$api_key = $this->config_source->get_api_key();
 
@@ -162,8 +176,6 @@ final class SessionController {
 			// D-09: generic body only — no OpenAI text/status/key info.
 			return $this->respond( array( 'error' => 'session_unavailable' ), 502 );
 		}
-
-		$this->rate_limiter->record_mint( $ip );
 
 		return $this->respond(
 			array(

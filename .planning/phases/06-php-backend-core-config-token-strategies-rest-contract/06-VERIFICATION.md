@@ -1,8 +1,9 @@
 ---
 phase: 06-php-backend-core-config-token-strategies-rest-contract
 verified: 2026-06-23T10:45:00Z
-status: human_needed
-score: 5/5 must-haves verified (roadmap success criteria); 2 unresolved code-review findings escalated for human decision
+resolved: 2026-06-23T11:30:00Z
+status: passed
+score: 5/5 must-haves verified (roadmap success criteria); 2/2 escalated code-review findings fixed
 overrides_applied: 0
 human_verification:
   - test: "Decide whether the CR-01 TOCTOU rate-limiter race condition (concurrent requests bypass per-IP/daily caps) must be fixed before Phase 6 is considered fully closed, or accepted as a tracked follow-up risk."
@@ -119,7 +120,20 @@ At the same time, neither finding falsifies the *literal* wording of the five RO
 
 Separately, `.planning/REQUIREMENTS.md` has a stale tracking inconsistency: ARCH-01/ARCH-02 are shown as unchecked `[ ]` and "Pending" in the traceability table (lines 41-42, 104-105) even though the code evidence in this report shows both are genuinely implemented. This is a documentation-sync issue, not a code gap, and does not block phase completion — but the traceability table should be updated to "Complete" alongside REST-01..04 when this phase closes.
 
+## Resolution
+
+Both escalated items were resolved by user direction ("fix both now") rather than deferred. Full detail in `06-HUMAN-UAT.md`.
+
+- **CR-01:** `SessionController::create_session()` now calls `RateLimiter::record_mint()` immediately after `is_allowed()` passes, before the OpenAI network call, instead of only after a successful mint. Shrinks the check-then-act race window from the full ~10s round-trip to in-process instructions, and closes the related gap where always-failing flood traffic never counted against the cap. Regression test added (`rest-logic-harness.php` Case 8b). Fixed in commit `bbb962f`.
+- **CR-02:** `khaveeai.php` now shows an `admin_notices` warning and returns early when `vendor/autoload.php` is missing, instead of registering `plugins_loaded` against an undefined class. Fixed in commit `bbb962f`.
+- Both standalone harnesses re-run after the fix: 11/11 and 4/4 PASS.
+- Live `curl-verify.sh` re-run against the real WP install + real OpenAI key after the fix: 5/5 PASS, no regression (REST-03 still throttles correctly at the 5-mint per-IP boundary).
+- `.planning/REQUIREMENTS.md` ARCH-01/ARCH-02 stale checkboxes corrected to `[x]`/"Complete".
+
+Status updated to `passed`.
+
 ---
 
 _Verified: 2026-06-23T10:45:00Z_
+_Resolved: 2026-06-23T11:30:00Z_
 _Verifier: Claude (gsd-verifier)_

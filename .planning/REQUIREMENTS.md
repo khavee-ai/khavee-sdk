@@ -38,8 +38,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Architecture / Extensibility
 
-- [ ] **ARCH-01**: Config retrieval (API key, instructions, voice, avatar URL) is implemented behind a `ConfigSourceInterface` with one concrete implementation (`WpOptionsConfigSource`) this milestone, so a future platform-driven config source can be added without changing the JS bundle or rendering code
-- [ ] **ARCH-02**: Ephemeral-token minting is implemented behind a `TokenProviderInterface` with one concrete implementation (`OpenAiDirectTokenProvider`) this milestone, so a future platform-driven token provider can be added without changing the JS bundle or REST contract shape
+- [x] **ARCH-01**: Config retrieval (API key, instructions, voice, avatar URL) is implemented behind a `ConfigSourceInterface` with one concrete implementation (`WpOptionsConfigSource`) this milestone, so a future platform-driven config source can be added without changing the JS bundle or rendering code
+- [x] **ARCH-02**: Ephemeral-token minting is implemented behind a `TokenProviderInterface` with one concrete implementation (`OpenAiDirectTokenProvider`) this milestone, so a future platform-driven token provider can be added without changing the JS bundle or REST contract shape
 
 ## v2 Requirements
 
@@ -101,8 +101,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REST-04 | Phase 6 | Complete |
 | ASSET-01 | Phase 7 | Pending |
 | PERF-01 | Phase 8 | Pending |
-| ARCH-01 | Phase 6 | Pending |
-| ARCH-02 | Phase 6 | Pending |
+| ARCH-01 | Phase 6 | Complete |
+| ARCH-02 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 19 total

@@ -200,7 +200,20 @@ Plans:
   4. Uploading a renamed non-VRM/GLB file (correct extension, wrong binary content) through the avatar picker is rejected rather than accepted into the Media Library
   5. When the API key is unset or invalid, an admin viewing a page with the embedded avatar sees an inline notice identifying the problem, while a logged-out visitor sees a neutral placeholder instead of a broken widget or console error
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — ConfigSourceInterface.is_configured() + WpOptionsConfigSource avatar attachment-ID read resolution + bare-PHP harness (SET-06) [ALREADY WRITTEN — finalized by prior planner run]
+
+**Wave 2** *(blocked on Wave 1 — consumes the is_configured() contract + avatar_attachment_id field)*
+
+- [ ] 07-02-PLAN.md — SettingsPage.php (top-level menu, capability gate at menu + render callback, masked-resave-safe API key, voice dropdown, instructions textarea, is_configured "not configured" banner) + Plugin.php composition-root wiring + FixtureConfigSource repair + harness masking/sanitize cases (SET-01, SET-02, SET-03, SET-05)
+
+**Wave 3** *(blocked on Wave 2 — inserts into SettingsPage.php at 07-02's marked avatar-field site)*
+
+- [ ] 07-03-PLAN.md — Avatar field + two-filter (upload_mimes + wp_check_filetype_and_ext) content validation scoped via load-<hook_suffix> to cover BOTH wp.media's async-upload.php AJAX path AND options.php save (resolves Open Question 2 / A2) + 50MB limit + Remove-avatar control + human-verify checkpoint against a live WP install (SET-04, SET-05, ASSET-01)
+
 **UI hint**: yes
 
 ### Phase 8: Frontend Bundle, Shortcode & Block
@@ -234,6 +247,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
-| 7. Admin Settings Page | 0/TBD | Not started | - |
+| 7. Admin Settings Page | 0/3 | Planning complete | - |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
 </content>

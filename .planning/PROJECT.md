@@ -33,15 +33,15 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 - ✓ New `packages/providers/generic-stt-tts` package implementing the orchestrator + interfaces — Validated in Phase 2
 - ✓ New `thonburian-stt` backend service: Python server wrapping `biodatlab/whisper-th-large-v3-combined` (Thonburian Whisper v3), simple HTTP endpoint, audio in → Thai text out — Validated in Phase 3 (BACK-01, BACK-05 load-once half; BACK-02 explicitly deferred per D-01)
 - ✓ New `jai-tts` backend service: Python server wrapping `JTS-AI/JaiTTS-F5TTS` via F5-TTS's FlowTTSPipeline, bundled default Thai reference voice, simple HTTP endpoint, text in → WAV audio out — Validated in Phase 3 (BACK-03, BACK-04, BACK-05 load-once half; BACK-05 semaphore half explicitly deferred per D-01)
+- ✓ WP REST ephemeral-token route (PHP equivalent of `src/app/api/negotiate/route.ts`) so the OpenAI key never reaches the browser — Validated in Phase 6 (`SessionController` at `POST khaveeai/v1/session`; REST-01..04). Live-verified against a real WordPress install + real OpenAI key.
+- ✓ Config-source / token-provider seam in the plugin's PHP code, structured so a future platform-API-key mode can be added without touching the JS bundle — Validated in Phase 6 (ARCH-01/02: `ConfigSourceInterface`/`WpOptionsConfigSource`, `TokenProviderInterface`/`OpenAiDirectTokenProvider`; `SessionController` depends only on the interfaces)
 
 ### Active
 
 - [ ] khavee-sdk adapter classes (e.g. ThonburianSTTProvider, JaiTTSProvider) implementing the new interfaces, talking to these two services over streaming-chunked HTTP
 - [ ] End-to-end demo: generic-stt-tts pipeline using Thonburian STT + an LLM + JaiTTS, proving STT/TTS can come from different, non-OpenAI, mixed vendors with tool-calling working
 - [ ] Documentation/examples showing how a beginner wires up a custom STT/TTS vendor and registers a tool
-- [ ] WordPress plugin (`wordpress-plugin/`): shortcode + Gutenberg block embedding `OpenAIRealtimeProvider` + VRM avatar, fully self-configured (own OpenAI key, instructions, voice, avatar upload)
-- [ ] WP REST ephemeral-token route (PHP equivalent of `src/app/api/negotiate/route.ts`) so the OpenAI key never reaches the browser
-- [ ] Config-source / token-provider seam in the plugin's PHP code, structured so a future platform-API-key mode can be added without touching the JS bundle
+- [ ] WordPress plugin (`wordpress-plugin/`): shortcode + Gutenberg block embedding `OpenAIRealtimeProvider` + VRM avatar, fully self-configured (own OpenAI key, instructions, voice, avatar upload) — PHP backend (Phase 6) done; admin settings page (Phase 7) and the JS bundle/shortcode/block (Phase 8) remain
 
 ### Out of Scope
 
@@ -87,7 +87,7 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 | Bedrock and Gemini adapters out of scope this milestone | They were illustrative of "any vendor" — Thonburian + JaiTTS are the real proof vendors; interface design alone must keep the door open | — Pending |
 | WordPress plugin targets `OpenAIRealtimeProvider`, not `generic-stt-tts` | WP embedding is a full-duplex voice chat widget use case (WebRTC), matching the existing realtime provider's shape, not the segmented STT/LLM/TTS pipeline | — Pending |
 | WordPress plugin v2.0 ships "Custom mode" only (self-configured: own OpenAI key, instructions, voice, avatar upload); "Platform mode" (API-key-driven config from `khavee-app`) is an explicit fast-follow | Custom mode has zero cross-repo dependency and can ship now; Platform mode is blocked on a new API-key-gated ephemeral-token endpoint that doesn't exist yet in `khavee-app` | — Pending |
-| Plugin's config-source and token-provider logic built as swappable PHP strategies from the start | Lets Platform mode slot in later without touching the JS bundle or rendering code | — Pending |
+| Plugin's config-source and token-provider logic built as swappable PHP strategies from the start | Lets Platform mode slot in later without touching the JS bundle or rendering code | Validated in Phase 6 — `ConfigSourceInterface`/`TokenProviderInterface`, exactly one concrete implementation each, `SessionController` depends only on the interfaces |
 
 ## Evolution
 
@@ -107,4 +107,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-21 — milestone v2.0 (WordPress Plugin, Custom Mode) started*
+*Last updated: 2026-06-23 — Phase 6 complete (PHP backend: config/token strategies + public REST contract)*

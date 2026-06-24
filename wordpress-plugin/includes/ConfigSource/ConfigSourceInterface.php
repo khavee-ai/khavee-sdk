@@ -37,4 +37,20 @@ interface ConfigSourceInterface {
 	 * @return string
 	 */
 	public function get_api_key(): string;
+
+	/**
+	 * Whether the API key has been configured (non-empty). Does NOT
+	 * verify the key is valid/working — only that one has been entered.
+	 *
+	 * Additive, backward-compatible extension of the Phase 6 contract (D-13):
+	 * existing get_runtime_config()/get_api_key() signatures are unchanged and
+	 * SessionController's usage is unaffected. Consumed by this phase's own
+	 * settings-page "not configured" status banner (D-14) and Phase 8's
+	 * frontend embed admin-only notice (SET-06 / D-12), giving both surfaces
+	 * a single source of truth instead of re-deriving "is this configured"
+	 * from get_api_key() at each call site.
+	 *
+	 * @return bool
+	 */
+	public function is_configured(): bool;
 }

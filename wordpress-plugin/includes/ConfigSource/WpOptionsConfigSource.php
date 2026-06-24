@@ -83,4 +83,17 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 
 		return (string) $settings['api_key'];
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * Composed over get_api_key() so there is exactly one place that decides
+	 * what counts as "configured" (D-12): a non-empty key. A wrong/revoked
+	 * key is NOT detected here — only emptiness — matching the project's
+	 * existing "surface real failures via the runtime REST error path, not
+	 * via client-side format heuristics" discipline.
+	 */
+	public function is_configured(): bool {
+		return '' !== $this->get_api_key();
+	}
 }

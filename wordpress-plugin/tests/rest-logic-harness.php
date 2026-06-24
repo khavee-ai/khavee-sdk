@@ -318,6 +318,16 @@ class FixtureConfigSource implements ConfigSourceInterface {
 	public function get_api_key(): string {
 		return $this->api_key;
 	}
+
+	/**
+	 * Required by ConfigSourceInterface as of Phase 7 (07-01). Mirrors
+	 * WpOptionsConfigSource's composition: a non-empty key = configured.
+	 * The harness's empty-key case (Case 7) constructs this fixture with ''
+	 * and is_configured() must agree with that, matching production.
+	 */
+	public function is_configured(): bool {
+		return '' !== $this->api_key;
+	}
 }
 
 /**

@@ -525,6 +525,37 @@ run_case(
 	}
 );
 
+// ── Case 5e2: D-05 — multi-byte (Thai) instructions within char cap honored ──
+// Regression guard: the cap MUST be measured in characters (mb_strlen), not
+// bytes (strlen). A 700-character Thai string is ~2100 UTF-8 bytes but only
+// 700 characters — within the 2000-character cap. Using byte-length here
+// would silently reject legitimate short Thai-language instructions.
+
+run_case(
+	'SessionController: multi-byte (Thai) instructions within the 2000-char cap is honored, not byte-length-rejected (D-05)',
+	function () {
+		$config_source  = new FixtureConfigSource();
+		$token_provider = new FixtureTokenProvider();
+		$controller     = build_controller( $config_source, $token_provider );
+
+		$thai_instructions = str_repeat( 'คุณคือผู้ช่วยที่เป็นมิตร', 50 ); // ~700 Thai chars, ~2100+ UTF-8 bytes.
+
+		$request = new WP_REST_Request(
+			array(
+				'sessionConfig' => array(
+					'instructions' => $thai_instructions,
+				),
+			)
+		);
+
+		$controller->create_session( $request );
+
+		$received = $token_provider->received_session_config;
+
+		return $thai_instructions === ( $received['instructions'] ?? null );
+	}
+);
+
 // ── Case 5f: D-05 — client top-level `voice` still dropped ─────────────
 
 run_case(

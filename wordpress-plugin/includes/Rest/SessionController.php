@@ -159,7 +159,7 @@ final class SessionController {
 		$voice        = in_array( $candidate_voice, self::ALLOWED_VOICES, true )
 			? $candidate_voice
 			: $runtime_config['voice'];
-		$instructions = ( '' !== $candidate_instructions && strlen( $candidate_instructions ) <= self::MAX_INSTRUCTIONS_LENGTH )
+		$instructions = ( '' !== $candidate_instructions && mb_strlen( $candidate_instructions, 'UTF-8' ) <= self::MAX_INSTRUCTIONS_LENGTH )
 			? $candidate_instructions
 			: $runtime_config['instructions'];
 

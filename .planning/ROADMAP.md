@@ -198,9 +198,9 @@ Plans:
   2. An admin can enter personality/instruction text in a textarea, select a voice from a dropdown, and upload a `.vrm` or `.glb` file via the WP Media Library — all three persist after save and reload
   3. A non-admin user (lacking `manage_options`) cannot see the settings menu item and cannot successfully render the settings page even by navigating directly to its URL
   4. Uploading a renamed non-VRM/GLB file (correct extension, wrong binary content) through the avatar picker is rejected rather than accepted into the Media Library
-  5. When the API key is unset or invalid, an admin viewing a page with the embedded avatar sees an inline notice identifying the problem, while a logged-out visitor sees a neutral placeholder instead of a broken widget or console error
+  5. When the API key is unset, the settings page shows a "not configured" status banner, and `ConfigSourceInterface` exposes an `is_configured()` contract (consumed by that banner and reusable by the Phase 8 frontend embed). *(The frontend-embed half — an admin-only inline notice and a logged-out-visitor neutral placeholder on a page with the embedded avatar — is Phase 8 scope; see Phase 8 Success Criterion 6.)*
 
-**Plans**: 3 plans
+**Plans**: 4 plans
 Plans:
 **Wave 1**
 
@@ -212,7 +212,11 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 — inserts into SettingsPage.php at 07-02's marked avatar-field site)*
 
-- [x] 07-03-PLAN.md — Avatar field + two-filter (upload_mimes + wp_check_filetype_and_ext) content validation scoped via load-<hook_suffix> to cover BOTH wp.media's async-upload.php AJAX path AND options.php save (resolves Open Question 2 / A2) + 50MB limit + Remove-avatar control + human-verify checkpoint against a live WP install (SET-04, SET-05, ASSET-01)
+- [x] 07-03-PLAN.md — Avatar field + two-filter (upload_mimes + wp_check_filetype_and_ext) content validation scoped via admin_init + Referer-check (revised from the originally planned load-<hook_suffix> after live wp-env testing falsified that approach) to cover BOTH wp.media's async-upload.php AJAX path AND options.php save (resolves Open Question 2 / A2) + 50MB limit + Remove-avatar control + human-verify checkpoint against a live WP install (SET-04, SET-05, ASSET-01)
+
+**Wave 4** *(gap closure — CR-01/CR-02 from 07-REVIEW.md/07-VERIFICATION.md + ROADMAP Criterion 5 wording)*
+
+- [ ] 07-04-PLAN.md — Close CR-01 (enforce self::VOICES allowlist on the persisted voice value) + CR-02 (add a verifiable nonce to the upload-filter activation gate, fail-closed, keeping admin_init + Referer; no load-<hook_suffix> regression) + correct ROADMAP Phase 7 Success Criterion 5 wording (SET-03, ASSET-01, SET-06)
 
 **UI hint**: yes
 
@@ -228,6 +232,7 @@ Plans:
   3. Inserting the equivalent Gutenberg block and setting its inspector controls produces the same rendered output and override behavior as the shortcode with matching attributes
   4. Opening the Gutenberg block in the editor never triggers a microphone permission prompt or a real OpenAI token request — only viewing the published front-end page does
   5. The avatar bundle's JS/CSS assets are present in the page source on a page containing the shortcode/block, and absent from the page source on a page that does not
+  6. When the API key is unset or invalid, an admin viewing a page with the embedded avatar sees an inline notice identifying the problem, while a logged-out visitor sees a neutral placeholder instead of a broken widget or console error *(the frontend-embed half of the SET-06 split; Phase 7 delivers the `is_configured()` contract + settings-page banner this builds on)*
 
 **Plans**: TBD
 **UI hint**: yes
@@ -247,6 +252,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
-| 7. Admin Settings Page | 3/3 | Complete   | 2026-06-24 |
+| 7. Admin Settings Page | 3/4 | Gap closure planned | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
-</content>

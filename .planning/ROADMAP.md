@@ -28,7 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### v2.0 WordPress Plugin (Custom Mode)
 
 - [x] **Phase 6: PHP Backend Core — Config/Token Strategies + REST Contract** - Build the `ConfigSourceInterface`/`TokenProviderInterface` strategy seam and a public, abuse-resistant REST route that mints OpenAI ephemeral tokens server-side (completed 2026-06-23)
-- [ ] **Phase 7: Admin Settings Page** - WP Settings API page for API key, instructions, voice, and VRM/GLB avatar upload, reading/writing exclusively through `ConfigSourceInterface`
+- [x] **Phase 7: Admin Settings Page** - WP Settings API page for API key, instructions, voice, and VRM/GLB avatar upload, reading/writing exclusively through `ConfigSourceInterface` (completed 2026-06-24)
 - [ ] **Phase 8: Frontend Bundle, Shortcode & Block** - Bundled React SPA embedding the existing `OpenAIRealtimeProvider` + VRM avatar, surfaced via a shared-render-path shortcode and Gutenberg block, enqueued only where used
 
 ## Phase Details
@@ -212,7 +212,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 — inserts into SettingsPage.php at 07-02's marked avatar-field site)*
 
-- [ ] 07-03-PLAN.md — Avatar field + two-filter (upload_mimes + wp_check_filetype_and_ext) content validation scoped via load-<hook_suffix> to cover BOTH wp.media's async-upload.php AJAX path AND options.php save (resolves Open Question 2 / A2) + 50MB limit + Remove-avatar control + human-verify checkpoint against a live WP install (SET-04, SET-05, ASSET-01)
+- [x] 07-03-PLAN.md — Avatar field + two-filter (upload_mimes + wp_check_filetype_and_ext) content validation scoped via load-<hook_suffix> to cover BOTH wp.media's async-upload.php AJAX path AND options.php save (resolves Open Question 2 / A2) + 50MB limit + Remove-avatar control + human-verify checkpoint against a live WP install (SET-04, SET-05, ASSET-01)
 
 **UI hint**: yes
 
@@ -247,6 +247,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
-| 7. Admin Settings Page | 2/3 | In Progress|  |
+| 7. Admin Settings Page | 3/3 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
 </content>

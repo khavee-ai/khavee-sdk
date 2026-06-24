@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "khaveeai/avatar",
+  "title": "Khavee AI Avatar",
+  "category": "widgets",
+  "description": "Embed a self-configured, voice-chat VRM avatar.",
+  "textdomain": "khaveeai",
+  "attributes": {
+    "voice": {
+      "type": "string",
+      "default": ""
+    },
+    "instructions": {
+      "type": "string",
+      "default": ""
+    },
+    "avatar": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "editorScript": "file:../../assets/editor.js"
+}

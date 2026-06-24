@@ -1,0 +1,12 @@
+{
+	"_comment": "Intentionally OUTSIDE the root pnpm-workspace.yaml (packages/*). This is NOT an SDK package and is never resolved/built by the root pnpm/esbuild toolchain — it builds the WP-admin Gutenberg editor integration only, standalone via plain `npm install && npm run build` inside wordpress-plugin/. It shares nothing with packages/wp-bundle's esbuild build by design.",
+	"name": "khaveeai-wordpress-plugin",
+	"private": true,
+	"version": "0.1.0",
+	"scripts": {
+		"build": "wp-scripts build src/editor.js --output-path=assets"
+	},
+	"devDependencies": {
+		"@wordpress/scripts": "^32.5.0"
+	}
+}

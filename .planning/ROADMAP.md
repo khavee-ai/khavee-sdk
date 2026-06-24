@@ -208,7 +208,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 — consumes the is_configured() contract + avatar_attachment_id field)*
 
-- [ ] 07-02-PLAN.md — SettingsPage.php (top-level menu, capability gate at menu + render callback, masked-resave-safe API key, voice dropdown, instructions textarea, is_configured "not configured" banner) + Plugin.php composition-root wiring + FixtureConfigSource repair + harness masking/sanitize cases (SET-01, SET-02, SET-03, SET-05)
+- [x] 07-02-PLAN.md — SettingsPage.php (top-level menu, capability gate at menu + render callback, masked-resave-safe API key, voice dropdown, instructions textarea, is_configured "not configured" banner) + Plugin.php composition-root wiring + FixtureConfigSource repair + harness masking/sanitize cases (SET-01, SET-02, SET-03, SET-05)
 
 **Wave 3** *(blocked on Wave 2 — inserts into SettingsPage.php at 07-02's marked avatar-field site)*
 
@@ -247,6 +247,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
-| 7. Admin Settings Page | 1/3 | In Progress|  |
+| 7. Admin Settings Page | 2/3 | In Progress|  |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
 </content>

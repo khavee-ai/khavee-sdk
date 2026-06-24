@@ -29,6 +29,40 @@ use Khavee\Plugin\RateLimit\RateLimiter;
 final class SessionController {
 
 	/**
+	 * Allowlisted OpenAI Realtime voices (D-05). A per-instance voice
+	 * override carried in the incoming sessionConfig is honored ONLY when
+	 * it is strictly one of these — anything else falls back to the
+	 * admin's global voice. Source of truth:
+	 * packages/core/src/types/realtime.ts voice union (mirrors the same
+	 * allowlist already enforced in Admin/SettingsPage.php::VOICES, the
+	 * CR-01/CR-01-NEW precedent for this exact validation shape).
+	 *
+	 * @var string[]
+	 */
+	private const ALLOWED_VOICES = [
+		'alloy',
+		'ash',
+		'ballad',
+		'coral',
+		'echo',
+		'sage',
+		'shimmer',
+		'verse',
+		'marin',
+		'cedar',
+	];
+
+	/**
+	 * Max length (chars) for a per-instance instructions override carried
+	 * in the incoming sessionConfig (D-05). Reduces prompt-injection blast
+	 * radius; does not content-filter within the cap (accepted residual
+	 * risk — see 08-RESEARCH.md Security Domain table).
+	 *
+	 * @var int
+	 */
+	private const MAX_INSTRUCTIONS_LENGTH = 2000;
+
+	/**
 	 * @var ConfigSourceInterface
 	 */
 	private $config_source;
@@ -85,10 +119,19 @@ final class SessionController {
 	}
 
 	/**
-	 * Enforce D-07: overwrite instructions/voice (top-level and the
-	 * nested audio.output.voice path) with the admin's configured values,
-	 * regardless of what the client sent. Per D-08, only the global admin
-	 * config is supported this phase — no per-instance override params.
+	 * Enforce D-07's jailbreak-closure while honoring EMBED-02's D-05
+	 * per-instance overrides: a candidate voice/instructions carried in
+	 * the incoming sessionConfig (the SAME fields the bundle already
+	 * sends on every request — `audio.output.voice` and `instructions`,
+	 * populated from the bundle's RealtimeConfig) is forced into the
+	 * final session config ONLY when it passes strict allowlist/cap
+	 * validation; anything else (empty, missing, or invalid) falls back
+	 * to the admin's global config, byte-for-byte the Phase 6 D-07
+	 * behavior. The candidate is validated FIRST, never branched on
+	 * "was an override requested" (Pitfall 4 / CR-01 precedent), so
+	 * there is no code path where an unvalidated value reaches
+	 * mint_session(). No distinct error/detail is ever surfaced for a
+	 * rejected override (D-09-style fail-closed silence).
 	 *
 	 * Reads get_runtime_config() and must be called BEFORE mint_session()
 	 * in create_session() below — that ordering is the trust boundary.
@@ -99,12 +142,33 @@ final class SessionController {
 	private function apply_trust_model( array $session_config ): array {
 		$runtime_config = $this->config_source->get_runtime_config();
 
-		$session_config['instructions'] = $runtime_config['instructions'];
+		// Read the candidate override values OUT of the incoming
+		// sessionConfig itself before forcing anything — there is no
+		// separate `instanceOverrides` wire field; the bundle already
+		// embeds per-instance voice/instructions here.
+		$candidate_voice        = isset( $session_config['audio']['output']['voice'] ) && is_string( $session_config['audio']['output']['voice'] )
+			? $session_config['audio']['output']['voice']
+			: '';
+		$candidate_instructions = isset( $session_config['instructions'] ) && is_string( $session_config['instructions'] )
+			? $session_config['instructions']
+			: '';
+
+		// Validate-or-fallback: validate the candidate FIRST, strict
+		// in_array (CR-01 precedent) — never trust an unvalidated value,
+		// and never branch on "was an override sent" before validating.
+		$voice        = in_array( $candidate_voice, self::ALLOWED_VOICES, true )
+			? $candidate_voice
+			: $runtime_config['voice'];
+		$instructions = ( '' !== $candidate_instructions && strlen( $candidate_instructions ) <= self::MAX_INSTRUCTIONS_LENGTH )
+			? $candidate_instructions
+			: $runtime_config['instructions'];
+
+		$session_config['instructions'] = $instructions;
 
 		// OpenAI's realtime session schema has no top-level `voice` field —
 		// voice only exists at `audio.output.voice`, and OpenAI rejects any
 		// unrecognized top-level parameter outright. Strip a client-sent
-		// top-level `voice` and always force the admin-configured voice
+		// top-level `voice` and always force the validated/fallback voice
 		// into the correct nested location, creating the audio.output
 		// structure if the client didn't send one.
 		unset( $session_config['voice'] );
@@ -115,7 +179,7 @@ final class SessionController {
 		if ( ! isset( $session_config['audio']['output'] ) || ! is_array( $session_config['audio']['output'] ) ) {
 			$session_config['audio']['output'] = array();
 		}
-		$session_config['audio']['output']['voice'] = $runtime_config['voice'];
+		$session_config['audio']['output']['voice'] = $voice;
 
 		return $session_config;
 	}
@@ -138,9 +202,11 @@ final class SessionController {
 	 *      a misconfigured key) now counts against the limiter too, instead
 	 *      of being free to retry indefinitely.
 	 *   3. API key resolution — 503 if unconfigured.
-	 *   4. Trust-model override (D-07/D-08) via apply_trust_model() above
-	 *      — admin instructions/voice always win over whatever the client
-	 *      sent, applied BEFORE mint_session() is called.
+	 *   4. Trust-model override (D-07/D-05) via apply_trust_model() above
+	 *      — a per-instance voice/instructions candidate carried in the
+	 *      client's sessionConfig is honored only when allowlist/cap-valid,
+	 *      otherwise the admin's global config wins; applied BEFORE
+	 *      mint_session() is called.
 	 *   5. Mint via the injected TokenProviderInterface — 502 generic on
 	 *      failure (D-09), 200 on success. The reservation from step 2
 	 *      already counted either way.

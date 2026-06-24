@@ -183,6 +183,10 @@ None - no external service configuration required. This plan is JS-bundle scaffo
 - D-05's server-side override validation (plan 08-03) has a real client-side override path to validate against: the bundle passes `voice`/`instructions` straight into `OpenAIRealtimeProvider`'s constructor, which embeds them in the `sessionConfig` POST body unconditionally — plan 08-03's allowlist/length-cap validation in `SessionController::apply_trust_model()` is the only thing standing between this and an unvalidated override, so that plan is load-bearing, not optional
 - No blockers identified for plans 02-04
 
+## Self-Check: PASSED
+
+All 12 created files verified present on disk; all 4 commit hashes (`344b9a6`, `b6c0d8f`, `2d050c6`, `c30eba8`) verified present in git history.
+
 ---
 *Phase: 08-frontend-bundle-shortcode-block*
 *Completed: 2026-06-24*

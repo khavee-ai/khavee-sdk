@@ -208,6 +208,63 @@ if ( ! function_exists( 'sanitize_textarea_field' ) ) {
 }
 
 /**
+ * Current staged capability map for the current_user_can() stub. Mutated
+ * between cases by direct assignment (e.g.
+ * $GLOBALS['__khaveeai_current_user_can']['manage_options'] = true). The
+ * 07-05 GET-render cases stage this to exercise the pure
+ * is_settings_page_render_allowed() predicate's capability gate without a
+ * real WP install.
+ *
+ * @var array<string,bool>
+ */
+$GLOBALS['__khaveeai_current_user_can'] = array();
+
+/**
+ * Current staged HTTP Referer value for the wp_get_referer() stub. Defaults
+ * to false (no Referer) — the 07-05 GET-render cases leave it at false,
+ * exercising the pure predicate over explicit args rather than via Referer.
+ *
+ * @var string|false
+ */
+$GLOBALS['__khaveeai_referer'] = false;
+
+if ( ! function_exists( 'current_user_can' ) ) {
+	/**
+	 * Stub for WordPress's current_user_can(). Returns the staged boolean for
+	 * the requested capability, or false when the capability has not been
+	 * explicitly staged (fail-closed — mirrors real WP's behavior for a user
+	 * who lacks the capability). The 07-05 GET-render upload_mimes widening
+	 * cases use this so the pure predicate is exercised over the same input
+	 * shape the runtime instance reader passes it.
+	 *
+	 * @param string $capability
+	 * @return bool
+	 */
+	function current_user_can( string $capability ): bool {
+		return isset( $GLOBALS['__khaveeai_current_user_can'][ $capability ] )
+			? (bool) $GLOBALS['__khaveeai_current_user_can'][ $capability ]
+			: false;
+	}
+}
+
+if ( ! function_exists( 'wp_get_referer' ) ) {
+	/**
+	 * Stub for WordPress's wp_get_referer(). Returns the staged value from
+	 * $GLOBALS['__khaveeai_referer'] (or false when unstaged). The 07-05
+	 * GET-render cases do NOT depend on Referer — the pure predicate under
+	 * test (is_settings_page_render_allowed) takes the page query var and the
+	 * capability flag as explicit args — but stubbing wp_get_referer() keeps
+	 * SettingsPage.php fully loadable in bare PHP (is_khaveeai_upload_request
+	 * calls it) and leaves a staging seam for future cases.
+	 *
+	 * @return string|false
+	 */
+	function wp_get_referer() {
+		return $GLOBALS['__khaveeai_referer'] ?? false;
+	}
+}
+
+/**
  * Test helper: stage the value returned by get_option('khaveeai_settings').
  *
  * @param mixed $value
@@ -223,8 +280,10 @@ function khaveeai_test_set_option( $value ): void {
  * @return void
  */
 function khaveeai_test_reset_state(): void {
-	$GLOBALS['__khaveeai_option_value']   = array();
-	$GLOBALS['__khaveeai_settings_errors'] = array();
+	$GLOBALS['__khaveeai_option_value']     = array();
+	$GLOBALS['__khaveeai_settings_errors']   = array();
+	$GLOBALS['__khaveeai_current_user_can']  = array();
+	$GLOBALS['__khaveeai_referer']           = false;
 }
 
 // ── Load the implementations under test by direct path (no Composer) ──
@@ -802,6 +861,63 @@ run_case(
 	'upload nonce gate: no page/Referer match even with a valid nonce -> false',
 	function () {
 		return false === SettingsPage::is_upload_request_allowed( false, 'valid-nonce' );
+	}
+);
+
+// ════════════════════════════════════════════════════════════════════
+// 07-05 cases — GET-render-time upload_mimes registration condition
+// (T-07E-01: Plupload's client-side allowlist must widen at GET render)
+// ════════════════════════════════════════════════════════════════════
+//
+// maybe_register_avatar_upload_filters() (SettingsPage.php ~293-303) gates
+// ALL THREE filter registrations behind is_khaveeai_upload_request() — a
+// nonce-gated POST condition (CR-02). But Plupload builds its client-side
+// extension allowlist from get_allowed_mime_types() ONCE at settings-page
+// GET render time (wp_plupload_default_settings), and a GET render never
+// carries the nonce (it is emitted INTO the page, not sent TO it) — so the
+// upload_mimes filter never registered on the GET, glb/vrm never reached
+// the Plupload allowlist, and every valid .glb/.vrm upload was rejected
+// client-side with "This file cannot be processed by the web server."
+// (proven live against wp-env — see .planning/debug/avatar-upload-rejected.md).
+//
+// Task 2 separates the two filters' registration conditions: upload_mimes
+// moves to a manage_options + page-match GET-render condition (so Plupload
+// sees glb/vrm at render time), while wp_check_filetype_and_ext (the
+// ASSET-01 magic-byte server-side check) STAYS nonce-gated on the POST
+// (CR-02, unchanged). These cases exercise the new pure helper that
+// encapsulates the GET-render decision:
+// is_settings_page_render_allowed( bool $can_manage_options, string $page_query_var ): bool
+//
+// (Named cases keyed by their shared name-prefix string per the plan's
+// instruction — the harness has a pre-existing duplicate 'Case 27' label
+// so case NUMBER is not a stable identifier; the name string is.)
+
+// ── Case 31: upload_mimes GET-render condition: manage_options + page match → true ──
+
+run_case(
+	'upload_mimes GET-render condition: manage_options + page match -> true (Plupload allowlist widens at render)',
+	function () {
+		return true === SettingsPage::is_settings_page_render_allowed( true, 'khaveeai-settings' );
+	}
+);
+
+// ── Case 32: upload_mimes GET-render condition: missing manage_options → false ──
+
+run_case(
+	'upload_mimes GET-render condition: missing manage_options -> false (non-admin GET never widens allowlist)',
+	function () {
+		return false === SettingsPage::is_settings_page_render_allowed( false, 'khaveeai-settings' );
+	}
+);
+
+// ── Case 33: upload_mimes GET-render condition: wrong/absent page → false ──
+
+run_case(
+	'upload_mimes GET-render condition: wrong/absent page -> false (only the settings-page GET widens)',
+	function () {
+		$empty_page       = false === SettingsPage::is_settings_page_render_allowed( true, '' );
+		$wrong_page       = false === SettingsPage::is_settings_page_render_allowed( true, 'some-other-page' );
+		return $empty_page && $wrong_page;
 	}
 );
 

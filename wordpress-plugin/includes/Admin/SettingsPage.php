@@ -20,11 +20,13 @@
  *    field's value attribute is always mask_api_key()'s output
  *    (sk-••••••<last4>), never the raw key (T-07B-03).
  *  - The avatar upload's content-validation filters (khaveeai_validate_glb_vrm_content,
- *    khaveeai_allow_glb_vrm_mimes) are registered screen-scoped via
- *    load-<hook_suffix> (Open Question 2 / Assumption A2 resolution, T-07C-01/
- *    T-07C-02/T-07C-03) — never globally — and render_avatar_field() re-asserts
- *    current_user_can('manage_options') as defense-in-depth for the upload
- *    surface specifically (T-07C-04).
+ *    khaveeai_allow_glb_vrm_mimes) are registered on admin_init, scoped to
+ *    requests that target or originate (via Referer) from this settings
+ *    screen — see maybe_register_avatar_upload_filters() for why
+ *    load-<hook_suffix> does NOT work for this (Open Question 2 / Assumption
+ *    A2 resolution, T-07C-01/T-07C-02/T-07C-03) — never globally — and
+ *    render_avatar_field() re-asserts current_user_can('manage_options') as
+ *    defense-in-depth for the upload surface specifically (T-07C-04).
  *
  * @package Khavee\Plugin\Admin
  */
@@ -176,17 +178,6 @@ final class SettingsPage {
 	private $config_source;
 
 	/**
-	 * The hook suffix add_menu_page() returns, used to screen-scope the
-	 * avatar upload content-validation filters via load-<hook_suffix>
-	 * (Open Question 2 / Assumption A2 resolution — see register_hooks()
-	 * and register_avatar_upload_filters() below). Populated by
-	 * add_menu_page() itself; empty string until that hook fires.
-	 *
-	 * @var string
-	 */
-	private $settings_page_hook = '';
-
-	/**
 	 * @param ConfigSourceInterface $config_source Shared with SessionController
 	 *                                             (Plugin.php wires the same instance).
 	 */
@@ -206,6 +197,7 @@ final class SettingsPage {
 	public function register_hooks(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_action( 'admin_init', array( $this, 'maybe_register_avatar_upload_filters' ) );
 	}
 
 	// ── Menu + settings registration ───────────────────────────────────
@@ -219,7 +211,7 @@ final class SettingsPage {
 	 * @return void
 	 */
 	public function add_menu_page(): void {
-		$hook_suffix = add_menu_page(
+		add_menu_page(
 			__( 'Khavee AI Avatar', 'khaveeai' ),
 			__( 'Khavee AI Avatar', 'khaveeai' ),
 			'manage_options', // D-02/SET-05: capability gate at registration.
@@ -227,48 +219,88 @@ final class SettingsPage {
 			array( $this, 'render_page' ),
 			'dashicons-microphone'
 		);
-
-		if ( is_string( $hook_suffix ) ) {
-			$this->settings_page_hook = $hook_suffix;
-			// Open Question 2 / A2 resolution: screen-scoped (load-<hook_suffix>)
-			// registration of the avatar upload content-validation filters. This
-			// fires ONCE per admin page-load of the khaveeai settings screen and
-			// stays registered for every AJAX request the wp.media frame on that
-			// screen triggers (including async-upload.php fired from the Upload
-			// tab — that AJAX handler inherits the parent admin screen's filter
-			// registrations for the duration of the page session), and is removed
-			// before any other admin screen renders (admin_footer, below).
-			// Narrower than global (Pitfall 4), wider than per-upload-call —
-			// matching 07-RESEARCH.md Open Question 2's recommendation. Empirically
-			// verified by the 07-03 Task 3 human checkpoint.
-			add_action( 'load-' . $hook_suffix, array( $this, 'register_avatar_upload_filters' ) );
-		}
 	}
 
 	/**
-	 * Register the two avatar upload content-validation filters
-	 * (upload_mimes, wp_check_filetype_and_ext) plus the 50MB size cap,
-	 * scoped to fire only while the khaveeai settings screen is loaded
-	 * (see add_menu_page()'s load-<hook_suffix> registration above).
-	 * Removes itself via admin_footer on the SAME screen load so the
-	 * standard Media Library "Add New" screen never inherits these filters
-	 * (Pitfall 4, T-07C-03).
+	 * Open Question 2 / A2 resolution (REVISED — see Pitfall below): scope the
+	 * avatar upload content-validation filters to the khaveeai settings
+	 * screen via `admin_init` + an HTTP Referer check, NOT `load-<hook_suffix>`.
+	 *
+	 * Pitfall discovered during the 07-03 Task 3 human checkpoint against a
+	 * live wp-env install: `load-<hook_suffix>` is fired by
+	 * `wp-admin/admin.php`'s OWN page-render lifecycle (it resolves
+	 * `$page_hook` from the `page` query var and calls
+	 * `do_action("load-{$page_hook}")`). But `wp.media`'s "Upload files" tab
+	 * does NOT submit through `admin.php?page=khaveeai-settings` — it POSTs
+	 * directly to `wp-admin/async-upload.php` or `wp-admin/admin-ajax.php`
+	 * (action=upload-attachment). Both of those scripts `require`
+	 * `wp-admin/admin.php` and fire `admin_init`, but NEITHER of them ever
+	 * resolves a `page_hook` or fires `load-{$hook_suffix}` — that action is
+	 * specific to the page-render code path inside `admin.php`'s main
+	 * dispatch, which async-upload.php/admin-ajax.php bypass entirely. The
+	 * result: the upload allowlist/magic-byte filters were NEVER registered
+	 * for the actual upload AJAX request, so WordPress's own pre-check
+	 * rejected every `.glb`/`.vrm` upload with its default "not allowed"
+	 * message — empirically confirmed live (every upload, valid or
+	 * disguised, was rejected).
+	 *
+	 * Fix: `admin_init` fires on every wp-admin-context request, INCLUDING
+	 * `admin-ajax.php` and `async-upload.php` (confirmed in WP core source).
+	 * Scope via the browser-sent `Referer` header, which always carries the
+	 * settings page's URL when `wp.media`'s frame on that page triggers the
+	 * upload (the frame is instantiated from a script tag rendered by
+	 * render_page(), so the request that POSTs the file always originates
+	 * from that page in the browser tab). Falls back to checking the `page`
+	 * query var directly for the rare case the settings page itself is being
+	 * rendered (defensive — no upload happens during a GET render, but costs
+	 * nothing to also cover it).
 	 *
 	 * @return void
 	 */
-	public function register_avatar_upload_filters(): void {
+	public function maybe_register_avatar_upload_filters(): void {
+		if ( ! $this->is_khaveeai_upload_request() ) {
+			return;
+		}
+
 		add_filter( 'upload_mimes', __NAMESPACE__ . '\\khaveeai_allow_glb_vrm_mimes' );
 		add_filter( 'wp_check_filetype_and_ext', __NAMESPACE__ . '\\khaveeai_validate_glb_vrm_content', 10, 5 );
 		add_filter( 'upload_size_limit', array( $this, 'limit_avatar_upload_size' ) );
 
-		add_action( 'admin_footer', array( $this, 'remove_avatar_upload_filters' ) );
+		add_action( 'shutdown', array( $this, 'remove_avatar_upload_filters' ) );
+	}
+
+	/**
+	 * True when the current request either renders the khaveeai settings
+	 * page directly (`page` query var) or originates from it via the
+	 * browser's Referer header (the `wp.media` Upload-tab AJAX path —
+	 * `admin-ajax.php`/`async-upload.php` — never carries the `page` query
+	 * var itself, only the Referer of the tab/page that opened the frame).
+	 *
+	 * @return bool
+	 */
+	private function is_khaveeai_upload_request(): bool {
+		if ( isset( $_GET['page'] ) && self::PAGE_SLUG === $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return true;
+		}
+
+		$referer = wp_get_referer();
+		if ( ! is_string( $referer ) || '' === $referer ) {
+			return false;
+		}
+
+		$query = (string) wp_parse_url( $referer, PHP_URL_QUERY );
+		wp_parse_str( $query, $referer_args );
+
+		return isset( $referer_args['page'] ) && self::PAGE_SLUG === $referer_args['page'];
 	}
 
 	/**
 	 * Remove the avatar upload content-validation filters at the end of the
-	 * khaveeai settings screen's page lifecycle (Pitfall 4, T-07C-03) — the
-	 * standard Media Library "Add New" screen and every other upload path on
-	 * the site must continue to reject .glb/.vrm.
+	 * request (Pitfall 4, T-07C-03) — the standard Media Library "Add New"
+	 * screen and every other upload path/request on the site must continue
+	 * to reject .glb/.vrm. Hooked onto `shutdown` (not `admin_footer`,
+	 * which never fires for the `admin-ajax.php`/`async-upload.php` AJAX
+	 * requests this filter registration now also covers).
 	 *
 	 * @return void
 	 */

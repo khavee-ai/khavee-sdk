@@ -220,7 +220,7 @@ Plans:
 
 **Wave 5** *(gap closure — UAT Test 5: every valid .glb/.vrm avatar upload rejected client-side by Plupload; root-caused in .planning/debug/avatar-upload-rejected.md)*
 
-- [ ] 07-05-PLAN.md — Separate the upload_mimes filter (widens Plupload's client-side extension allowlist; register at settings-page GET render under manage_options + page match) from the nonce-gated wp_check_filetype_and_ext magic-byte filter (ASSET-01, stays on the upload POST per CR-02/07-04); admin_init + Referer + shutdown preserved, load-<hook_suffix> not reintroduced; live wp-env human-verify checkpoint (valid upload succeeds + disguised file still rejected) (SET-04, ASSET-01)
+- [x] 07-05-PLAN.md — Separate the upload_mimes filter (widens Plupload's client-side extension allowlist; register at settings-page GET render under manage_options + page match) from the nonce-gated wp_check_filetype_and_ext magic-byte filter (ASSET-01, stays on the upload POST per CR-02/07-04); admin_init + Referer + shutdown preserved, load-<hook_suffix> not reintroduced; live wp-env human-verify checkpoint (valid upload succeeds + disguised file still rejected) (SET-04, ASSET-01)
 
 **UI hint**: yes
 
@@ -256,5 +256,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
-| 7. Admin Settings Page | 4/4 | Complete   | 2026-06-24 |
+| 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |

@@ -35,13 +35,14 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 - ✓ New `jai-tts` backend service: Python server wrapping `JTS-AI/JaiTTS-F5TTS` via F5-TTS's FlowTTSPipeline, bundled default Thai reference voice, simple HTTP endpoint, text in → WAV audio out — Validated in Phase 3 (BACK-03, BACK-04, BACK-05 load-once half; BACK-05 semaphore half explicitly deferred per D-01)
 - ✓ WP REST ephemeral-token route (PHP equivalent of `src/app/api/negotiate/route.ts`) so the OpenAI key never reaches the browser — Validated in Phase 6 (`SessionController` at `POST khaveeai/v1/session`; REST-01..04). Live-verified against a real WordPress install + real OpenAI key.
 - ✓ Config-source / token-provider seam in the plugin's PHP code, structured so a future platform-API-key mode can be added without touching the JS bundle — Validated in Phase 6 (ARCH-01/02: `ConfigSourceInterface`/`WpOptionsConfigSource`, `TokenProviderInterface`/`OpenAiDirectTokenProvider`; `SessionController` depends only on the interfaces)
+- ✓ WP Settings API admin page for API key (masked redisplay), personality/instructions, voice picker, and VRM/GLB avatar upload via Media Library, gated behind `manage_options` and reading/writing exclusively through `ConfigSourceInterface` — Validated in Phase 7 (SET-01..06, ASSET-01). Includes server-side magic-byte content validation rejecting disguised non-glTF files, and a `manage_options`+page-match GET-render condition that widens Plupload's client-side `glb`/`vrm` allowlist without weakening the nonce-gated upload-POST validation (07-05 gap closure, closing 07-UAT.md Test 5).
 
 ### Active
 
 - [ ] khavee-sdk adapter classes (e.g. ThonburianSTTProvider, JaiTTSProvider) implementing the new interfaces, talking to these two services over streaming-chunked HTTP
 - [ ] End-to-end demo: generic-stt-tts pipeline using Thonburian STT + an LLM + JaiTTS, proving STT/TTS can come from different, non-OpenAI, mixed vendors with tool-calling working
 - [ ] Documentation/examples showing how a beginner wires up a custom STT/TTS vendor and registers a tool
-- [ ] WordPress plugin (`wordpress-plugin/`): shortcode + Gutenberg block embedding `OpenAIRealtimeProvider` + VRM avatar, fully self-configured (own OpenAI key, instructions, voice, avatar upload) — PHP backend (Phase 6) done; admin settings page (Phase 7) and the JS bundle/shortcode/block (Phase 8) remain
+- [ ] WordPress plugin (`wordpress-plugin/`): shortcode + Gutenberg block embedding `OpenAIRealtimeProvider` + VRM avatar, fully self-configured (own OpenAI key, instructions, voice, avatar upload) — PHP backend (Phase 6) and admin settings page (Phase 7) done; the JS bundle/shortcode/block (Phase 8) remains
 
 ### Out of Scope
 
@@ -107,4 +108,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-23 — Phase 6 complete (PHP backend: config/token strategies + public REST contract)*
+*Last updated: 2026-06-25 — Phase 7 complete (admin settings page: API key/instructions/voice/avatar upload, gap-closed avatar-upload client-side rejection)*

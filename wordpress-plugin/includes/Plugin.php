@@ -16,6 +16,7 @@ use Khavee\Plugin\Rest\SessionController;
 use Khavee\Plugin\Render\AvatarRenderer;
 use Khavee\Plugin\Assets\AssetManager;
 use Khavee\Plugin\Shortcode\AvatarShortcode;
+use Khavee\Plugin\Block\AvatarBlock;
 
 /**
  * Constructs the concrete ConfigSource/TokenProvider/RateLimiter
@@ -54,14 +55,16 @@ final class Plugin {
 		$settings_page = new SettingsPage( $config_source );
 		$settings_page->register_hooks();
 
-		// Phase 8: shared render path. $renderer is kept available so a
-		// future Gutenberg block (plan 04) can reuse the SAME instance —
-		// shortcode and block must funnel through one AvatarRenderer
-		// (EMBED-04), never construct their own.
+		// Phase 8: shared render path. $renderer is reused by BOTH the
+		// shortcode and the block below — shortcode and block must funnel
+		// through one AvatarRenderer (EMBED-04), never construct their own.
 		$assets   = new AssetManager();
 		$renderer = new AvatarRenderer( $config_source, $assets );
 
 		$shortcode = new AvatarShortcode( $renderer );
 		$shortcode->register();
+
+		$block = new AvatarBlock( $renderer );
+		add_action( 'init', array( $block, 'register' ) );
 	}
 }

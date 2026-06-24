@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: WordPress Plugin (Custom Mode)
 status: executing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-06-24T12:08:58.735Z"
-last_activity: 2026-06-24 -- Phase 07 planning complete
+stopped_at: Phase 7 complete -- gap closure (07-04) re-verified passed
+last_updated: "2026-06-24T12:30:54.940Z"
+last_activity: 2026-06-24
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 23
-  completed_plans: 22
-  percent: 63
+  completed_plans: 23
+  percent: 75
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value (v2.0):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
-**Current focus:** Phase 07 — admin-settings-page
+**Current focus:** Phase 08 — frontend-bundle-shortcode-block
 
 ## Current Position
 
-Phase: 07 (admin-settings-page) — EXECUTING
-Plan: 1 of 3
-Status: Ready to execute
-Last activity: 2026-06-24 -- Phase 07 planning complete
+Phase: 07 (admin-settings-page) — COMPLETE
+Plan: 4 of 4
+Status: Verified (passed) — ready for Phase 08
+Last activity: 2026-06-24
 
 Progress: [██████████] 100%
 
@@ -50,11 +50,12 @@ Progress: [██████████] 100%
 | 4 | 3 | - | - |
 | 6 | 4 | - | - |
 | 06 | 4 | - | - |
+| 07 | 4 | - | - |
 
 **Recent Trend:**
 
-- Last 5 plans: 06-01, 06-02, 06-03, 06-04
-- Trend: Phase 6 (PHP backend core) complete; live verification caught 2 real wire-contract bugs the standalone harnesses missed
+- Last 5 plans: 06-04, 07-01, 07-02, 07-03, 07-04
+- Trend: Phase 7 (admin settings page) complete; gap-closure plan 07-04 closed a security-critical voice-allowlist bug (CR-01) and a defense-in-depth nonce gap (CR-02); a follow-up code review caught and fixed one more variant (CR-01-NEW — unvalidated existing-value fallback) in the same session before re-verification passed clean
 
 *Updated after each plan completion*
 
@@ -98,7 +99,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-23T12:23:17.404Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-admin-settings-page/07-CONTEXT.md
+Last session: 2026-06-24T12:30:54.940Z
+Stopped at: Phase 7 complete — gap closure (07-04) executed and re-verified passed
+Resume file: .planning/phases/07-admin-settings-page/07-VERIFICATION.md
 </content>

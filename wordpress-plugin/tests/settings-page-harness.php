@@ -139,6 +139,38 @@ if ( ! function_exists( '__' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	/**
+	 * Minimal stub for WordPress's sanitize_text_field(). The real function
+	 * strips tags, extra whitespace, and certain control characters; the
+	 * 07-04 voice-allowlist cases only need a pass-through-equivalent so
+	 * sanitize_settings() is callable in bare PHP — the allowlist check
+	 * (in_array against self::VOICES) is the load-bearing logic under test,
+	 * not this stub.
+	 *
+	 * @param string $str
+	 * @return string
+	 */
+	function sanitize_text_field( string $str ): string {
+		return trim( $str );
+	}
+}
+
+if ( ! function_exists( 'sanitize_textarea_field' ) ) {
+	/**
+	 * Minimal stub for WordPress's sanitize_textarea_field(), needed because
+	 * sanitize_settings() (called directly by the 07-04 voice-allowlist
+	 * cases) also sanitizes the 'instructions' field. Mirrors
+	 * sanitize_text_field()'s pass-through-equivalent stub above.
+	 *
+	 * @param string $str
+	 * @return string
+	 */
+	function sanitize_textarea_field( string $str ): string {
+		return trim( $str );
+	}
+}
+
 /**
  * Test helper: stage the value returned by get_option('khaveeai_settings').
  *
@@ -619,6 +651,57 @@ run_case(
 	'khaveeai_enforce_avatar_size: accepts a file size well under the 50MB limit (D-10)',
 	function () {
 		return true === SettingsPage::khaveeai_enforce_avatar_size( 1024 );
+	}
+);
+
+// ════════════════════════════════════════════════════════════════════
+// 07-04 cases — voice allowlist enforcement in sanitize_settings() (CR-01)
+// ════════════════════════════════════════════════════════════════════
+//
+// sanitize_settings() is an instance method that reads $existing_option via
+// get_option('khaveeai_settings') (stubbed above) — stage it with
+// khaveeai_test_set_option() before calling sanitize_settings(). Each case
+// omits 'api_key' from the input so sanitize_api_key()'s own branches (which
+// would otherwise call add_settings_error() against the empty-stub api_key)
+// don't interfere; assertions are scoped to the returned ['voice'] only.
+
+// ── Case 24: a valid voice (verse) persists unchanged ──
+
+run_case(
+	'voice allowlist: a valid voice (verse) persists',
+	function () {
+		khaveeai_test_reset_state();
+		khaveeai_test_set_option( array( 'voice' => 'coral' ) );
+		$page   = __khaveeai_build_settings_page();
+		$result = $page->sanitize_settings( array( 'voice' => 'verse' ) );
+		return 'verse' === $result['voice'];
+	}
+);
+
+// ── Case 25: an out-of-allowlist voice is rejected, prior voice preserved (CR-01) ──
+
+run_case(
+	'voice allowlist: an out-of-allowlist voice is rejected, prior voice preserved (CR-01)',
+	function () {
+		khaveeai_test_reset_state();
+		khaveeai_test_set_option( array( 'voice' => 'coral' ) );
+		$page   = __khaveeai_build_settings_page();
+		$result = $page->sanitize_settings( array( 'voice' => 'evil-injection' ) );
+		// NOT the injected string — the prior stored voice must be preserved.
+		return 'coral' === $result['voice'];
+	}
+);
+
+// ── Case 26: out-of-allowlist voice with no prior stored voice falls back to self::VOICES[0] (alloy) ──
+
+run_case(
+	'voice allowlist: out-of-allowlist voice with no prior stored voice falls back to self::VOICES[0] (alloy)',
+	function () {
+		khaveeai_test_reset_state();
+		khaveeai_test_set_option( array() ); // No prior voice key at all.
+		$page   = __khaveeai_build_settings_page();
+		$result = $page->sanitize_settings( array( 'voice' => 'evil-injection' ) );
+		return 'alloy' === $result['voice'];
 	}
 );
 

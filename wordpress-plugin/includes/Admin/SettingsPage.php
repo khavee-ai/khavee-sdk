@@ -429,7 +429,21 @@ final class SettingsPage {
 
 		$sanitized['api_key']      = $this->sanitize_api_key( $submitted_api_key, $existing_api_key, $remove_requested );
 		$sanitized['instructions'] = sanitize_textarea_field( $submitted_instr );
-		$sanitized['voice']        = sanitize_text_field( $submitted_voice );
+
+		// CR-01/SET-03: a submitted voice is persisted ONLY when it is one of
+		// the self::VOICES allowlist values (strict in_array, third arg true,
+		// so loose/non-string matches cannot sneak through). The <select>
+		// dropdown already constrains a well-behaved browser submission, but
+		// register_setting()'s sanitize_callback is the only real gate against
+		// a crafted options.php POST — without this check an arbitrary string
+		// would persist and later be forwarded unrevalidated into the trusted
+		// OpenAI Realtime session config by SessionController. Rejected values
+		// fall back to the existing stored voice, or self::VOICES[0] when none
+		// was stored yet — mirrors sanitize_api_key()'s D-05 convention of
+		// never overwriting with a rejected submission.
+		$sanitized['voice'] = in_array( $submitted_voice, self::VOICES, true )
+			? sanitize_text_field( $submitted_voice )
+			: ( $existing_option['voice'] ?? self::VOICES[0] );
 
 		if ( $remove_avatar_requested ) {
 			// D-06-style deliberate removal: the "Clear avatar" checkbox forces 0

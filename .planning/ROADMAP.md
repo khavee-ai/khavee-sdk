@@ -238,7 +238,18 @@ Plans:
   5. The avatar bundle's JS/CSS assets are present in the page source on a page containing the shortcode/block, and absent from the page source on a page that does not
   6. When the API key is unset or invalid, an admin viewing a page with the embedded avatar sees an inline notice identifying the problem, while a logged-out visitor sees a neutral placeholder instead of a broken widget or console error *(the frontend-embed half of the SET-06 split; Phase 7 delivers the `is_configured()` contract + settings-page banner this builds on)*
 
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1** *(three independent surfaces — packages/wp-bundle JS, PHP render core, REST override validation — zero file overlap, fully parallel)*
+
+- [ ] 08-01-PLAN.md — packages/wp-bundle esbuild IIFE: scan-and-mount entry, KhaveeProvider+VRMAvatar tree, Click-to-talk/Connecting/Error overlays, committed build/khaveeai-bundle.js + bundle-isolation smoke check (D-08/D-09/D-10, EMBED-05/PERF-01 JS half)
+- [ ] 08-02-PLAN.md — PHP render core: AvatarRenderer (shared merge + escaped mount-point JSON + D-06/D-07 not-configured branch), AssetManager (render-path conditional enqueue), AvatarShortcode, Plugin.php wiring, render-logic-harness (EMBED-01, EMBED-02, EMBED-04, PERF-01)
+- [ ] 08-03-PLAN.md — SessionController::apply_trust_model() D-05 allowlist-validated per-instance override path (voice allowlist / instructions cap / avatar attachment-existence, fail-closed) + rest-logic-harness D-05 cases (EMBED-02 security half)
+
+**Wave 2** *(blocked on 08-02 — reuses AvatarRenderer + modifies Plugin.php)*
+
+- [ ] 08-04-PLAN.md — Gutenberg block: block.json (no viewScript), AvatarBlock render_callback delegating to shared renderer, assets/editor.js (InspectorControls + ServerSideRender, zero @khaveeai/react imports), live wp-env human-verify checkpoint (EMBED-03, EMBED-05)
+
 **UI hint**: yes
 
 ## Progress
@@ -257,4 +268,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
-| 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
+| 8. Frontend Bundle, Shortcode & Block | 0/4 | Planned | - |

@@ -39,9 +39,16 @@ final class AvatarShortcode {
 
 	/**
 	 * Shortcode callback. Normalizes attributes via shortcode_atts(),
-	 * strips empty-string values (so an omitted attribute falls back to
-	 * the global default rather than overriding it with ''), then
-	 * delegates to AvatarRenderer::render().
+	 * resolves the `avatar` Media Library attachment ID to a URL (D-03 —
+	 * the shortcode attribute is an attachment ID, not a raw URL, the
+	 * same as WpOptionsConfigSource's global avatar storage), strips
+	 * empty-string values (so an omitted attribute falls back to the
+	 * global default rather than overriding it with ''), then delegates
+	 * to AvatarRenderer::render() using the SAME `avatar_url` key the
+	 * renderer's merge/fallback logic expects — this is the exact seam
+	 * EMBED-04 requires: the renderer never knows whether `avatar_url`
+	 * came from a shortcode attachment-ID resolution or an
+	 * already-resolved block attribute.
 	 *
 	 * @param array|string $atts Raw shortcode attributes as passed by WP.
 	 * @return string
@@ -57,8 +64,18 @@ final class AvatarShortcode {
 			'khaveeai_avatar'
 		);
 
-		$atts = array_filter( $atts, static fn( $v ) => '' !== $v );
+		$attachment_id = (int) $atts['avatar'];
+		$avatar_url    = $attachment_id > 0 ? wp_get_attachment_url( $attachment_id ) : '';
+		$avatar_url    = is_string( $avatar_url ) ? $avatar_url : '';
 
-		return $this->renderer->render( $atts );
+		$renderer_atts = array(
+			'voice'        => $atts['voice'],
+			'instructions' => $atts['instructions'],
+			'avatar_url'   => $avatar_url,
+		);
+
+		$renderer_atts = array_filter( $renderer_atts, static fn( $v ) => '' !== $v );
+
+		return $this->renderer->render( $renderer_atts );
 	}
 }

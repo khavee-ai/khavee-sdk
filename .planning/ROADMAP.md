@@ -216,7 +216,7 @@ Plans:
 
 **Wave 4** *(gap closure — CR-01/CR-02 from 07-REVIEW.md/07-VERIFICATION.md + ROADMAP Criterion 5 wording)*
 
-- [ ] 07-04-PLAN.md — Close CR-01 (enforce self::VOICES allowlist on the persisted voice value) + CR-02 (add a verifiable nonce to the upload-filter activation gate, fail-closed, keeping admin_init + Referer; no load-<hook_suffix> regression) + correct ROADMAP Phase 7 Success Criterion 5 wording (SET-03, ASSET-01, SET-06)
+- [x] 07-04-PLAN.md — Close CR-01 (enforce self::VOICES allowlist on the persisted voice value) + CR-02 (add a verifiable nonce to the upload-filter activation gate, fail-closed, keeping admin_init + Referer; no load-<hook_suffix> regression) + correct ROADMAP Phase 7 Success Criterion 5 wording (SET-03, ASSET-01, SET-06) (completed 2026-06-24)
 
 **UI hint**: yes
 
@@ -252,5 +252,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
-| 7. Admin Settings Page | 3/4 | Gap closure planned | 2026-06-24 |
+| 7. Admin Settings Page | 4/4 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |

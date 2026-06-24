@@ -8,8 +8,9 @@
  *
  * Per the backend-proxy assumption (CLAUDE.md Architectural Constraints):
  * this module ALWAYS constructs the provider with useProxy: true and a
- * proxyEndpoint — it never holds or passes an apiKey. voice/instructions
- * passed here flow into the provider's own sessionConfig POST body
+ * proxyEndpoint, with no secret credential field passed alongside it.
+ * voice/instructions passed here flow into the provider's own sessionConfig
+ * POST body
  * (audio.output.voice / instructions), validated server-side by the REST
  * route (D-05, plan 08-03) — this module does not add any separate
  * override-style field or make any additional network call beyond the one

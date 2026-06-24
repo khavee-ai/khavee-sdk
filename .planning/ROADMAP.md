@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 6: PHP Backend Core — Config/Token Strategies + REST Contract** - Build the `ConfigSourceInterface`/`TokenProviderInterface` strategy seam and a public, abuse-resistant REST route that mints OpenAI ephemeral tokens server-side (completed 2026-06-23)
 - [x] **Phase 7: Admin Settings Page** - WP Settings API page for API key, instructions, voice, and VRM/GLB avatar upload, reading/writing exclusively through `ConfigSourceInterface` (completed 2026-06-24)
-- [ ] **Phase 8: Frontend Bundle, Shortcode & Block** - Bundled React SPA embedding the existing `OpenAIRealtimeProvider` + VRM avatar, surfaced via a shared-render-path shortcode and Gutenberg block, enqueued only where used
+- [x] **Phase 8: Frontend Bundle, Shortcode & Block** - Bundled React SPA embedding the existing `OpenAIRealtimeProvider` + VRM avatar, surfaced via a shared-render-path shortcode and Gutenberg block, enqueued only where used (completed 2026-06-24)
 
 ## Phase Details
 
@@ -248,7 +248,7 @@ Plans:
 
 **Wave 2** *(blocked on 08-02 — reuses AvatarRenderer + modifies Plugin.php)*
 
-- [ ] 08-04-PLAN.md — Gutenberg block: block.json (no viewScript), AvatarBlock render_callback delegating to shared renderer, assets/editor.js (InspectorControls + ServerSideRender, zero @khaveeai/react imports), live wp-env human-verify checkpoint (EMBED-03, EMBED-05)
+- [x] 08-04-PLAN.md — Gutenberg block: block.json (no viewScript), AvatarBlock render_callback delegating to shared renderer, assets/editor.js (InspectorControls + ServerSideRender, zero @khaveeai/react imports), live wp-env human-verify checkpoint (EMBED-03, EMBED-05)
 
 **UI hint**: yes
 
@@ -268,4 +268,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
-| 8. Frontend Bundle, Shortcode & Block | 3/4 | In Progress|  |
+| 8. Frontend Bundle, Shortcode & Block | 4/4 | Complete   | 2026-06-24 |

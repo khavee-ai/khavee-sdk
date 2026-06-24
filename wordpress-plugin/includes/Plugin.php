@@ -13,6 +13,9 @@ use Khavee\Plugin\ConfigSource\WpOptionsConfigSource;
 use Khavee\Plugin\TokenProvider\OpenAiDirectTokenProvider;
 use Khavee\Plugin\RateLimit\RateLimiter;
 use Khavee\Plugin\Rest\SessionController;
+use Khavee\Plugin\Render\AvatarRenderer;
+use Khavee\Plugin\Assets\AssetManager;
+use Khavee\Plugin\Shortcode\AvatarShortcode;
 
 /**
  * Constructs the concrete ConfigSource/TokenProvider/RateLimiter
@@ -50,5 +53,15 @@ final class Plugin {
 		// second WpOptionsConfigSource.
 		$settings_page = new SettingsPage( $config_source );
 		$settings_page->register_hooks();
+
+		// Phase 8: shared render path. $renderer is kept available so a
+		// future Gutenberg block (plan 04) can reuse the SAME instance —
+		// shortcode and block must funnel through one AvatarRenderer
+		// (EMBED-04), never construct their own.
+		$assets   = new AssetManager();
+		$renderer = new AvatarRenderer( $config_source, $assets );
+
+		$shortcode = new AvatarShortcode( $renderer );
+		$shortcode->register();
 	}
 }

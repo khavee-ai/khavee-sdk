@@ -22,11 +22,17 @@
  *  - The avatar upload's content-validation filters (khaveeai_validate_glb_vrm_content,
  *    khaveeai_allow_glb_vrm_mimes) are registered on admin_init, scoped to
  *    requests that target or originate (via Referer) from this settings
- *    screen — see maybe_register_avatar_upload_filters() for why
- *    load-<hook_suffix> does NOT work for this (Open Question 2 / Assumption
- *    A2 resolution, T-07C-01/T-07C-02/T-07C-03) — never globally — and
- *    render_avatar_field() re-asserts current_user_can('manage_options') as
- *    defense-in-depth for the upload surface specifically (T-07C-04).
+ *    screen AND carry a verifiable plugin-issued nonce (CR-02) — see
+ *    maybe_register_avatar_upload_filters() for why load-<hook_suffix> does
+ *    NOT work for this (Open Question 2 / Assumption A2 resolution,
+ *    T-07C-01/T-07C-02/T-07C-03) — never globally — and render_avatar_field()
+ *    re-asserts current_user_can('manage_options') as defense-in-depth for
+ *    the upload surface specifically (T-07C-04). The Referer/page condition
+ *    alone is spoofable by a non-browser HTTP client or a forged Referer
+ *    header; is_khaveeai_upload_request() ANDs in a wp_verify_nonce() check
+ *    (action: khaveeai_avatar_upload) so a forged Referer alone can no
+ *    longer activate the filters — the request must also carry a nonce this
+ *    plugin's own render_avatar_field() issued (CR-02, T-07D-02).
  *
  * @package Khavee\Plugin\Admin
  */
@@ -169,6 +175,33 @@ final class SettingsPage {
 	private const MAX_AVATAR_BYTES = 52428800;
 
 	/**
+	 * Nonce action name for the avatar-upload-filter activation gate (CR-02).
+	 * Issued by render_avatar_field() via wp_create_nonce() and attached to
+	 * the wp.media frame's upload params; verified in is_khaveeai_upload_request()
+	 * via wp_verify_nonce(). Not a capability check by itself (the request is
+	 * already manage_options-gated and carries WordPress core's own upload
+	 * nonce) — this is the trust boundary for "the .glb/.vrm content-validation
+	 * filters are active", replacing the spoofable Referer-only condition.
+	 *
+	 * @var string
+	 */
+	private const AVATAR_UPLOAD_NONCE_ACTION = 'khaveeai_avatar_upload';
+
+	/**
+	 * Request field name the avatar-upload nonce travels under (CR-02):
+	 * "khaveeai_avatar_nonce". wp.media's uploader attaches this as an extra
+	 * multipart param (see render_avatar_field()'s inline JS) so it rides
+	 * along with the async-upload.php/admin-ajax.php upload POST, and
+	 * is_khaveeai_upload_request() reads it back via $_REQUEST. Referenced
+	 * everywhere as self::AVATAR_UPLOAD_NONCE_FIELD rather than the literal
+	 * string, matching this file's existing self::PAGE_SLUG/self::OPTION_NAME
+	 * single-source-of-truth convention.
+	 *
+	 * @var string
+	 */
+	private const AVATAR_UPLOAD_NONCE_FIELD = 'khaveeai_avatar_nonce';
+
+	/**
 	 * The shared ConfigSourceInterface (is_configured() + get_api_key()
 	 * consumed in sanitize/render). Constructor-injected — never construct a
 	 * concrete WpOptionsConfigSource here; Plugin.php owns that.
@@ -274,24 +307,76 @@ final class SettingsPage {
 	 * page directly (`page` query var) or originates from it via the
 	 * browser's Referer header (the `wp.media` Upload-tab AJAX path —
 	 * `admin-ajax.php`/`async-upload.php` — never carries the `page` query
-	 * var itself, only the Referer of the tab/page that opened the frame).
+	 * var itself, only the Referer of the tab/page that opened the frame)
+	 * AND a verifiable plugin-issued nonce is present on the request (CR-02).
+	 *
+	 * The Referer/page condition alone is spoofable by a non-browser HTTP
+	 * client or a forged Referer header — it is no longer the sole trust
+	 * boundary deciding whether the .glb/.vrm content-validation filters
+	 * activate. Read the nonce from $_REQUEST (wp.media's uploader attaches
+	 * it as an extra multipart param, so it travels with the actual upload
+	 * POST regardless of whether that POST hits async-upload.php or
+	 * admin-ajax.php) and fail CLOSED — same fail-closed posture as
+	 * khaveeai_validate_glb_vrm_content() — on a missing, non-string, empty,
+	 * or invalid nonce, even when the page/Referer condition is satisfied.
+	 *
+	 * The admin_init + Referer + shutdown-cleanup mechanism itself (07-03's
+	 * shipped, live-verified fix) is UNCHANGED here — only this predicate
+	 * gains the nonce AND-clause. load-<hook_suffix> is NOT reintroduced
+	 * (07-03-SUMMARY.md Deviation 2 — that mechanism never fires on
+	 * async-upload.php/admin-ajax.php, confirmed empirically).
 	 *
 	 * @return bool
 	 */
 	private function is_khaveeai_upload_request(): bool {
+		$page_or_referer_match = false;
+
 		if ( isset( $_GET['page'] ) && self::PAGE_SLUG === $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			return true;
+			$page_or_referer_match = true;
+		} else {
+			$referer = wp_get_referer();
+			if ( is_string( $referer ) && '' !== $referer ) {
+				$query = (string) wp_parse_url( $referer, PHP_URL_QUERY );
+				wp_parse_str( $query, $referer_args );
+				$page_or_referer_match = isset( $referer_args['page'] ) && self::PAGE_SLUG === $referer_args['page'];
+			}
 		}
 
-		$referer = wp_get_referer();
-		if ( ! is_string( $referer ) || '' === $referer ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified explicitly below via wp_verify_nonce(), not the WP_CLI/REST nonce convention this rule expects.
+		$nonce = $_REQUEST[ self::AVATAR_UPLOAD_NONCE_FIELD ] ?? '';
+
+		return self::is_upload_request_allowed( $page_or_referer_match, $nonce );
+	}
+
+	/**
+	 * Pure decision predicate for the avatar-upload-filter activation gate
+	 * (CR-02): true only when BOTH the page/Referer condition is satisfied
+	 * AND $nonce verifies against the AVATAR_UPLOAD_NONCE_ACTION action.
+	 *
+	 * Extracted as a public static pure function (mirrors mask_api_key()/
+	 * sanitize_avatar_attachment_id()'s static-for-testability pattern) so
+	 * the bare-PHP harness can exercise the fail-closed logic without
+	 * reading WP superglobals or constructing a SettingsPage instance.
+	 * is_khaveeai_upload_request() is the only caller that reads
+	 * $_GET/$_REQUEST/wp_get_referer() — this method is otherwise pure.
+	 *
+	 * @param bool  $page_or_referer_match Whether the existing page-query-var
+	 *                                     OR Referer condition was satisfied.
+	 * @param mixed $nonce                 The raw nonce value read from the
+	 *                                     request (any type — non-string
+	 *                                     input fails closed).
+	 * @return bool
+	 */
+	public static function is_upload_request_allowed( bool $page_or_referer_match, $nonce ): bool {
+		if ( ! $page_or_referer_match ) {
 			return false;
 		}
 
-		$query = (string) wp_parse_url( $referer, PHP_URL_QUERY );
-		wp_parse_str( $query, $referer_args );
+		if ( ! is_string( $nonce ) || '' === $nonce ) {
+			return false; // Fail closed: missing/non-string nonce never activates the filters.
+		}
 
-		return isset( $referer_args['page'] ) && self::PAGE_SLUG === $referer_args['page'];
+		return (bool) wp_verify_nonce( $nonce, self::AVATAR_UPLOAD_NONCE_ACTION );
 	}
 
 	/**
@@ -429,7 +514,21 @@ final class SettingsPage {
 
 		$sanitized['api_key']      = $this->sanitize_api_key( $submitted_api_key, $existing_api_key, $remove_requested );
 		$sanitized['instructions'] = sanitize_textarea_field( $submitted_instr );
-		$sanitized['voice']        = sanitize_text_field( $submitted_voice );
+
+		// CR-01/SET-03: a submitted voice is persisted ONLY when it is one of
+		// the self::VOICES allowlist values (strict in_array, third arg true,
+		// so loose/non-string matches cannot sneak through). The <select>
+		// dropdown already constrains a well-behaved browser submission, but
+		// register_setting()'s sanitize_callback is the only real gate against
+		// a crafted options.php POST — without this check an arbitrary string
+		// would persist and later be forwarded unrevalidated into the trusted
+		// OpenAI Realtime session config by SessionController. Rejected values
+		// fall back to the existing stored voice, or self::VOICES[0] when none
+		// was stored yet — mirrors sanitize_api_key()'s D-05 convention of
+		// never overwriting with a rejected submission.
+		$sanitized['voice'] = in_array( $submitted_voice, self::VOICES, true )
+			? sanitize_text_field( $submitted_voice )
+			: ( $existing_option['voice'] ?? self::VOICES[0] );
 
 		if ( $remove_avatar_requested ) {
 			// D-06-style deliberate removal: the "Clear avatar" checkbox forces 0
@@ -778,6 +877,14 @@ final class SettingsPage {
 		?>
 		<script type="text/javascript">
 		( function () {
+			// CR-02: the nonce — not the spoofable Referer header alone — is the
+			// trust boundary is_khaveeai_upload_request() uses to decide whether
+			// the .glb/.vrm content-validation filters activate for this upload
+			// POST. Issued server-side via wp_create_nonce() and attached to the
+			// wp.media uploader's extra multipart params so it travels with the
+			// actual async-upload.php/admin-ajax.php request.
+			var khaveeaiAvatarNonce = '<?php echo esc_js( wp_create_nonce( self::AVATAR_UPLOAD_NONCE_ACTION ) ); ?>';
+
 			function khaveeaiInitAvatarPicker() {
 				var button = document.getElementById( 'khaveeai_avatar_picker_button' );
 				if ( ! button || typeof wp === 'undefined' || ! wp.media ) {
@@ -791,6 +898,18 @@ final class SettingsPage {
 							title: '<?php echo esc_js( __( 'Choose or Upload Avatar', 'khaveeai' ) ); ?>',
 							library: { type: 'model/gltf-binary' },
 							multiple: false,
+						} );
+						// CR-02: attach the nonce to the frame's uploader so it rides
+						// along with the upload POST as an extra multipart param —
+						// wp.media's Uploader merges uploader.params into every
+						// request it sends to async-upload.php/admin-ajax.php.
+						frame.on( 'ready', function () {
+							if ( frame.uploader && frame.uploader.uploader && frame.uploader.uploader.param ) {
+								frame.uploader.uploader.param( '<?php echo esc_js( self::AVATAR_UPLOAD_NONCE_FIELD ); ?>', khaveeaiAvatarNonce );
+							} else if ( frame.uploader && frame.uploader.options && frame.uploader.options.uploader ) {
+								frame.uploader.options.uploader.params = frame.uploader.options.uploader.params || {};
+								frame.uploader.options.uploader.params['<?php echo esc_js( self::AVATAR_UPLOAD_NONCE_FIELD ); ?>'] = khaveeaiAvatarNonce;
+							}
 						} );
 						frame.on( 'select', function () {
 							var attachment = frame.state().get( 'selection' ).first().toJSON();

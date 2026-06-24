@@ -1,0 +1,23 @@
+{
+  "name": "@khaveeai/wp-bundle",
+  "version": "0.1.0",
+  "description": "Self-contained, fully-isolated IIFE bundle that mounts the Khavee voice-chat avatar into WordPress front-end pages",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@khaveeai/core": "workspace:*",
+    "@khaveeai/react": "workspace:*",
+    "@khaveeai/providers-openai-realtime": "workspace:*",
+    "@react-three/fiber": "^9.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "typescript": "^5.0.0"
+  }
+}

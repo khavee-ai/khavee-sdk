@@ -204,7 +204,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — ConfigSourceInterface.is_configured() + WpOptionsConfigSource avatar attachment-ID read resolution + bare-PHP harness (SET-06) [ALREADY WRITTEN — finalized by prior planner run]
+- [x] 07-01-PLAN.md — ConfigSourceInterface.is_configured() + WpOptionsConfigSource avatar attachment-ID read resolution + bare-PHP harness (SET-06) [ALREADY WRITTEN — finalized by prior planner run]
 
 **Wave 2** *(blocked on Wave 1 — consumes the is_configured() contract + avatar_attachment_id field)*
 
@@ -247,6 +247,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Vendor Adapters & Audio Contract | 3/3 | Complete | 2026-06-19 |
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
-| 7. Admin Settings Page | 0/3 | Planning complete | - |
+| 7. Admin Settings Page | 1/3 | In Progress|  |
 | 8. Frontend Bundle, Shortcode & Block | 0/TBD | Not started | - |
 </content>

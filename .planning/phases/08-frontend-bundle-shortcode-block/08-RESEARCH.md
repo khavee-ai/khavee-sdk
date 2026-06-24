@@ -498,17 +498,19 @@ private function apply_trust_model( array $session_config, array $instance_overr
 
 **A1 and A3 carry the most planning risk** — both are flagged as open/unverified by either this research or the project's own prior STATE.md, and both should be spot-checked with a real `wp-env` install (already recommended by milestone STACK.md) before the planner finalizes the editor-script build tooling and before assuming `viewScript` avoidance is still load-bearing.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the target WP core version's bundled React conflict with `@wordpress/scripts`'s externalization for `assets/editor.js`?**
    - What we know: D-10 already resolved this for the FRONT-END bundle (full isolation, side-steps the question entirely). The editor script is a much smaller surface (block registration + `ServerSideRender`), so even a React-version mismatch there is lower-stakes than it would be for the main SPA.
    - What's unclear: Whether `assets/editor.js` itself needs any React-version awareness at all, since `ServerSideRender` and block registration APIcalls (`@wordpress/blocks`, `@wordpress/block-editor`) are typically consumed via `@wordpress/element`'s `createElement`, not raw JSX requiring a specific React version.
    - Recommendation: Use `@wordpress/element` (not bare `react`) for `assets/editor.js`'s component code, exactly as milestone STACK.md already recommends for "admin settings screen if built as a React UI" — this sidesteps version concerns entirely since `wp-element` is whatever WP core itself ships, by definition compatible with itself.
+   - **RESOLVED:** Adopt the `@wordpress/element` recommendation. Implemented by plan 08-04, which builds `assets/editor.js` via `@wordpress/scripts` and consumes `@wordpress/element` (never bare `react`), so the editor script inherits WP-core's own React version and cannot collide with it.
 
 2. **Should the avatar silhouette placeholder (D-07) be a static image file shipped in the plugin, or an inline SVG?**
    - What we know: UI-SPEC.md leaves this to "Claude's Discretion" / implementation detail — no decorative icon library, no exotic deps.
    - What's unclear: Whether a static raster image (PNG/WebP) or inline SVG better serves the "no console error, no broken image icon if the file fails to load" requirement.
    - Recommendation: Inline SVG embedded directly in the PHP-rendered HTML (not a separate enqueued image file) — guarantees zero additional HTTP request, zero broken-image-icon failure mode, and trivially themable via `currentColor`/CSS without needing a build step.
+   - **RESOLVED:** Adopt the inline-SVG recommendation. Implemented by plan 08-02, whose `AvatarRenderer` D-07 branch returns a neutral inline-SVG silhouette directly in the rendered HTML (no separate enqueued image asset).
 
 ## Environment Availability
 

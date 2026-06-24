@@ -89,6 +89,42 @@ function __khaveeai_test_valid_attachment_id(): int {
 }
 
 /**
+ * Stub for WordPress's wp_verify_nonce(). Returns truthy ONLY for the
+ * literal known-good nonce string "valid-nonce" (regardless of $action),
+ * and falsy (0) for everything else — including non-string input, which
+ * real wp_verify_nonce() would also reject via its internal hash comparison
+ * never matching. This lets the 07-04 CR-02 nonce-gate cases exercise
+ * SettingsPage::is_upload_request_allowed()'s pure predicate logic (the
+ * fail-closed missing/invalid branches) in bare PHP without a real WP nonce
+ * implementation.
+ *
+ * @param mixed  $nonce
+ * @param string $action
+ * @return int|false
+ */
+if ( ! function_exists( 'wp_verify_nonce' ) ) {
+	function wp_verify_nonce( $nonce, string $action = '' ) {
+		return 'valid-nonce' === $nonce ? 1 : false;
+	}
+}
+
+/**
+ * Stub for WordPress's wp_create_nonce(). Not exercised by any assertion in
+ * this harness (render_avatar_field()'s JS-emission side is browser-only),
+ * but SettingsPage.php calls it inline in render_avatar_field() — stub it
+ * so the class file remains fully loadable in bare PHP without a real WP
+ * install. Returns a fixed, recognizable placeholder string.
+ *
+ * @param string $action
+ * @return string
+ */
+if ( ! function_exists( 'wp_create_nonce' ) ) {
+	function wp_create_nonce( string $action = '' ): string {
+		return 'stub-nonce-' . $action;
+	}
+}
+
+/**
  * Record of add_settings_error() calls made during a sanitize run. Reset
  * between cases by khaveeai_test_reset_state(). The sanitize_api_key
  * format-rejection path calls add_settings_error() as a side effect; the
@@ -702,6 +738,55 @@ run_case(
 		$page   = __khaveeai_build_settings_page();
 		$result = $page->sanitize_settings( array( 'voice' => 'evil-injection' ) );
 		return 'alloy' === $result['voice'];
+	}
+);
+
+// ════════════════════════════════════════════════════════════════════
+// 07-04 cases — avatar-upload-filter activation nonce gate (CR-02)
+// ════════════════════════════════════════════════════════════════════
+//
+// is_khaveeai_upload_request() is private (reads $_GET/$_REQUEST/
+// wp_get_referer() — WP superglobals/functions this harness cannot
+// meaningfully simulate end-to-end), so these cases exercise the public
+// static pure helper it delegates to: is_upload_request_allowed(
+// bool $page_or_referer_match, $nonce ): bool. The wp_verify_nonce() stub
+// above only accepts the literal "valid-nonce" string.
+
+// ── Case 27: page/Referer match AND valid nonce → true ──
+
+run_case(
+	'upload nonce gate: page/Referer match AND valid nonce -> true',
+	function () {
+		return true === SettingsPage::is_upload_request_allowed( true, 'valid-nonce' );
+	}
+);
+
+// ── Case 28: page/Referer match BUT missing nonce → false (fail-closed, CR-02) ──
+
+run_case(
+	'upload nonce gate: page/Referer match BUT missing nonce -> false (fail-closed, CR-02)',
+	function () {
+		$empty_string_case = false === SettingsPage::is_upload_request_allowed( true, '' );
+		$null_case         = false === SettingsPage::is_upload_request_allowed( true, null );
+		return $empty_string_case && $null_case;
+	}
+);
+
+// ── Case 29: page/Referer match BUT invalid nonce → false (fail-closed, CR-02) ──
+
+run_case(
+	'upload nonce gate: page/Referer match BUT invalid nonce -> false (fail-closed, CR-02)',
+	function () {
+		return false === SettingsPage::is_upload_request_allowed( true, 'forged-nonce' );
+	}
+);
+
+// ── Case 30: no page/Referer match even with a valid nonce → false ──
+
+run_case(
+	'upload nonce gate: no page/Referer match even with a valid nonce -> false',
+	function () {
+		return false === SettingsPage::is_upload_request_allowed( false, 'valid-nonce' );
 	}
 );
 

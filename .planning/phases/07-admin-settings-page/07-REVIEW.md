@@ -1,133 +1,109 @@
 ---
 phase: 07-admin-settings-page
-reviewed: 2026-06-24T00:00:00Z
+reviewed: 2026-06-25T00:00:00Z
 depth: standard
-files_reviewed: 2
+files_reviewed: 6
 files_reviewed_list:
+  - wordpress-plugin/includes/ConfigSource/ConfigSourceInterface.php
+  - wordpress-plugin/includes/ConfigSource/WpOptionsConfigSource.php
   - wordpress-plugin/includes/Admin/SettingsPage.php
+  - wordpress-plugin/includes/Plugin.php
   - wordpress-plugin/tests/settings-page-harness.php
+  - wordpress-plugin/tests/rest-logic-harness.php
 findings:
   critical: 0
   warning: 3
-  info: 2
-  total: 5
-status: critical_resolved
+  info: 3
+  total: 6
+status: issues_found
 ---
 
-**Post-review fix applied (same session):** CR-01-NEW was fixed immediately after this review — `$existing_option['voice']` is now re-validated against `self::VOICES` before being used as the rejection-branch fallback, so a poisoned/out-of-band stored value is normalized to `self::VOICES[0]` instead of being durably re-persisted. A new harness case (Case 27, CR-01-NEW) stages a poisoned existing value and asserts the fix. The 1 Critical finding below is resolved; the 3 Warnings and 2 Info items remain open as non-blocking follow-ups (see WR-01/WR-02/WR-03, IN-01/IN-02).
+# Phase 07: Code Review Report (Plan 07-05 — GET-render/POST upload_mimes split)
 
-# Phase 07: Code Review Report (Gap-Closure Delta — Plan 07-04)
-
-**Reviewed:** 2026-06-24T00:00:00Z
+**Reviewed:** 2026-06-25T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 2
+**Files Reviewed:** 6
 **Status:** issues_found
 
 ## Summary
 
-This is a re-review scoped to the 07-04 gap-closure delta only: `wordpress-plugin/includes/Admin/SettingsPage.php` and `wordpress-plugin/tests/settings-page-harness.php`, as changed by commits `f7c12e0` (CR-01 fix) and `653f59c` (CR-02 fix). The prior phase-level review (`07-REVIEW.md`, now superseded by this file) found two Critical issues:
+This review supersedes the prior `07-REVIEW.md` (which was scoped to the 07-04 delta and whose CR-01-NEW finding is confirmed fixed — see "Verification of prior findings" below) and covers the full file set for plan 07-05: the GET-render/POST split of `maybe_register_avatar_upload_filters()` plus the surrounding ConfigSource/Plugin composition-root files and both test harnesses.
 
-- **CR-01** — `voice` persisted via `sanitize_text_field()` only, never checked against the `self::VOICES` allowlist.
-- **CR-02** — `is_khaveeai_upload_request()` gated upload-filter activation on `$_GET['page']`/`wp_get_referer()` alone, both spoofable.
+Both harnesses were executed directly: `php wordpress-plugin/tests/settings-page-harness.php` (37/37 cases pass) and `php wordpress-plugin/tests/rest-logic-harness.php` (12/12 cases pass).
 
-**Verification performed (not taken on faith):** re-read the actual diffs (`git show f7c12e0`, `git show 653f59c`), re-ran `php -l` and the full harness directly (34/34 cases pass, confirmed live), traced `sanitize_settings()` and `is_upload_request_allowed()` line-by-line, and exercised edge cases (array/int/`"0"` nonce values, `(bool)` cast on WP's `1`/`2`/`false` nonce-verify return) interactively against the real class.
+**Core security boundary verdict: the nonce-gated POST-path server-side magic-byte validation (CR-02/ASSET-01) is genuinely intact after the GET-render split.** Traced the control flow for the three relevant scenarios:
+- **Plain GET render of the settings page** — `is_khaveeai_upload_request()`'s nonce check structurally fails (the nonce is emitted INTO the page via `wp_create_nonce()`, never present as an inbound value on the GET that renders it), so the magic-byte filter (`wp_check_filetype_and_ext`) never registers on a GET. Only the new `upload_mimes`-only branch fires for this request.
+- **The actual upload POST** to `async-upload.php`/`admin-ajax.php` — `$_GET['page']` is never set on these endpoints (confirmed by the file's own comments and by WP core's request shape for those scripts), so the GET-render branch does not re-fire there; only the nonce-gated POST branch can register the magic-byte filter for this request.
+- **A request satisfying both conditions** (e.g., a hypothetical GET to `admin.php?page=khaveeai-settings` that also happened to carry a valid nonce as a query param) — both branches would fire, but this is harmless: the GET-render branch only widens the client-side extension allowlist, which by the architecture's own stated invariant does not bypass server-side validation.
+- `khaveeai_validate_glb_vrm_content()` ignores its `$mimes` parameter entirely and unconditionally overwrites `$data['ext']`/`$data['type']` based on the magic-byte check alone — so the fact that `upload_mimes` is no longer widened *during the POST itself* (a behavior change from 07-04, where both filters fired together on the POST) does not weaken server-side validation, because the filter callback gets the last word on the return value regardless of what WP core's internal `wp_check_filetype()` pre-computed against the now-narrower `$mimes` list.
 
-**Verdict on the two closed findings:**
-- **CR-02 is correctly and completely fixed.** `is_upload_request_allowed()` is a genuinely pure, well-tested fail-closed predicate; the AND-gate with a real `wp_verify_nonce()` call closes the spoofable-Referer-alone gap, and as a side effect now also closes the prior review's secondary CR-02 concern about the standard Media Library "Add New" screen incidentally getting the glb/vrm filters re-activated by a stale Referer (a forged/stale Referer alone is no longer sufficient — a valid plugin-issued nonce is also required). The `load-<hook_suffix>` regression risk is verifiably absent (no `add_action( 'load-' ...)` registration in the file). Harness cases at lines 755–791 genuinely exercise the fail-closed branches (missing/invalid/no-match), and all pass against the live code, not mocked-away.
-- **CR-01 is fixed for the case the harness tests (a fresh injection attempt against an already-clean stored value) but is incomplete for already-poisoned existing data** — see CR-01-NEW below. This is a regression-class gap introduced by the fix's own fallback design, not a re-opening of the original CR-01.
+Both `shutdown` cleanup branches register the same `[$this, 'remove_avatar_upload_filters']` callback (same object instance, same method) — WordPress's `WP_Hook` de-duplicates identical object-method callback registrations at the same priority by callback identity, so calling `add_action('shutdown', ...)` from both branches within a single request does not create two registrations or cause a double-removal error. This part of the design is sound.
 
-## Critical Issues
+Three WARNING-level and three INFO-level findings remain, primarily around scoping precision in the new `is_khaveeai_settings_page_render()` predicate, integration-test coverage gaps for the split itself, and pre-existing test/documentation quality issues that 07-05 did not introduce but also did not clean up.
 
-### CR-01-NEW: Voice-allowlist fallback re-persists and durably perpetuates an already-invalid stored `voice` value without ever re-validating it
+## Verification of prior findings (07-04 delta review)
 
-**File:** `wordpress-plugin/includes/Admin/SettingsPage.php:529-531`
-**Issue:**
-```php
-$sanitized['voice'] = in_array( $submitted_voice, self::VOICES, true )
-    ? sanitize_text_field( $submitted_voice )
-    : ( $existing_option['voice'] ?? self::VOICES[0] );
-```
-The allowlist check only gates a *newly submitted* value. The rejection branch falls back to `$existing_option['voice']` **without itself validating that value against `self::VOICES`**. Concretely:
+The previous `07-REVIEW.md` flagged **CR-01-NEW** (poisoned existing `voice` value re-persisted without re-validation). Re-read `sanitize_settings()` at `SettingsPage.php:634-636` directly:
 
-1. The exact CR-01 threat this fix was meant to close — a crafted `options.php` POST persisting an arbitrary string — was possible on every commit prior to `f7c12e0`. Any site that received such a crafted POST *before* this fix was deployed now has `wp_options.khaveeai_settings['voice']` permanently set to that arbitrary attacker string.
-2. After this fix ships, that poisoned value is **never cleaned up**. On the very next legitimate save where the admin does not touch the voice dropdown (or any save where `$input['voice']` is absent/empty/not a recognized value for any reason), `$submitted_voice` fails the `in_array()` check, and the code falls back to `$existing_option['voice'] ?? self::VOICES[0]` — which re-persists the still-poisoned value verbatim, because `$existing_option['voice']` itself was never re-checked.
-3. The same applies to any out-of-band write path (WP-CLI `wp option update`, a SQL import, a multisite network clone, a future REST endpoint, or simply restoring a backup taken before this fix) that places a non-allowlisted string into `voice` — the sanitize callback has no path that ever forces a known-bad stored value back to a safe default. It only blocks the *next new* bad submission; it does not quarantine bad data already present.
-4. `WpOptionsConfigSource::get_runtime_config()` reads this option key directly and returns it unchanged as `voice` to `SessionController`, which forwards it unrevalidated into the trusted OpenAI Realtime session config — exactly the data-flow CR-01 was about. The fix narrows the entry point but leaves a standing exit for any value that got in before the narrowing (or via any non-form write path), with no remediation.
-
-This is exactly the kind of thing the task brief told you not to do: accept "tests pass" as evidence of completeness. All three new harness cases (lines 706-742) stage either a clean `'coral'` or an empty `array()` as the pre-existing option — none of them stage an already-invalid existing voice (e.g. `khaveeai_test_set_option(['voice' => 'evil-injection'])` then assert the *output* is also not `'evil-injection'`). That specific case was never exercised, and it fails today.
-
-**Verified interactively:**
-```php
-$page = new SettingsPage(/* stub */);
-khaveeai_test_set_option(['voice' => 'evil-injection']); // simulates pre-existing poisoned data
-$result = $page->sanitize_settings([]); // admin saves the form without touching voice
-// $result['voice'] === 'evil-injection'  <-- still poisoned, re-persisted, forwarded downstream
-```
-
-**Fix:** Validate `$existing_option['voice']` too, not just the freshly submitted value, so a stale/poisoned/out-of-band value is normalized to a safe default the first time `sanitize_settings()` runs after the fix ships:
 ```php
 $existing_voice = isset( $existing_option['voice'] ) && in_array( $existing_option['voice'], self::VOICES, true )
-    ? $existing_option['voice']
-    : self::VOICES[0];
-
-$sanitized['voice'] = in_array( $submitted_voice, self::VOICES, true )
-    ? sanitize_text_field( $submitted_voice )
-    : $existing_voice;
+	? $existing_option['voice']
+	: self::VOICES[0];
 ```
-Add a harness case staging an out-of-allowlist *existing* voice and asserting the output normalizes to `self::VOICES[0]` (or some other documented safe default) rather than re-persisting the poisoned value.
+
+This confirms the fix described in the prior review's suggested remediation is present in the code as shipped, and harness case 27 ("an already-poisoned existing voice ... is normalized to self::VOICES[0], never re-persisted (CR-01-NEW)") at `settings-page-harness.php:806-816` exercises it and passes. **CR-01-NEW is confirmed fixed.** WR-01/WR-02/WR-03 and IN-01/IN-02 from that prior review were not re-verified line-by-line in this pass (out of this plan's stated scope) but no regression affecting them was observed in the current diff.
 
 ## Warnings
 
-### WR-01: wp.media `frame.uploader` may not exist yet at the `'ready'` event, silently no-oping the CR-02 nonce attachment for real uploads
+### WR-01: GET-render widening condition checks only `$_GET['page']`, not `is_admin()`/`$pagenow`
 
-**File:** `wordpress-plugin/includes/Admin/SettingsPage.php:906-913`
-**Issue:**
-```js
-frame.on( 'ready', function () {
-    if ( frame.uploader && frame.uploader.uploader && frame.uploader.uploader.param ) {
-        frame.uploader.uploader.param( '...', khaveeaiAvatarNonce );
-    } else if ( frame.uploader && frame.uploader.options && frame.uploader.options.uploader ) {
-        ...
-    }
-} );
-```
-`frame.uploader` (wp.media's `media.view.UploaderWindow` sub-view) is not guaranteed to be instantiated by the time the frame's `'ready'` event fires — in several wp.media internal implementations it is lazily created when the "Upload Files" tab's content view first renders, which can happen after `'ready'`. If neither `if`/`else if` branch matches at the time this callback runs, the code **silently does nothing** — no error, no fallback, no second attempt — and the nonce is never attached to the uploader's params. The actual upload POST would then arrive at `async-upload.php`/`admin-ajax.php` without `khaveeai_avatar_nonce`, `is_khaveeai_upload_request()` would fail closed (correctly, per CR-02's own design), and the `.glb`/`.vrm` filters would never activate for that upload — meaning every real-world upload attempt through this picker silently fails with WordPress's default "not allowed" file-type rejection, reproducing the exact symptom 07-03's live checkpoint already found and fixed once for a different root cause (the `load-<hook_suffix>` timing bug). This code path is entirely untested by the bare-PHP harness (browser-only) and was not verified live for this specific gap-closure plan (no new human-verify checkpoint was run — confirmed via the plan's own threat model section noting "the full wp.media param round-trip is browser-only" and not gated on a fresh live check).
-**Fix:** Bind the nonce attachment to an event that is documented to fire after the uploader view exists — e.g. `frame.uploader.on('ready', ...)` (the uploader sub-view's own ready event, if exposed) or `frame.on('uploader:ready', ...)` if available in the WP version this plugin targets — or attach the param eagerly via the frame's constructor options (`uploader: { params: { khaveeai_avatar_nonce: ... } }`) so it does not depend on event-ordering at all. At minimum, re-run the 07-03-style live wp-env checkpoint specifically for an actual file upload (not just a magic-byte unit assertion) before treating CR-02 as closed in practice, since the bare-PHP harness cannot prove this JS path works.
-
-### WR-02: `wp_verify_nonce()` test stub ignores the `$action` parameter entirely, so the harness cannot detect a wrong-action-constant regression
-
-**File:** `wordpress-plugin/tests/settings-page-harness.php:105-109`
-**Issue:**
+**File:** `wordpress-plugin/includes/Admin/SettingsPage.php:420-425`
+**Issue:** `is_khaveeai_settings_page_render()` (and the pure predicate it delegates to, `is_settings_page_render_allowed()`) gates solely on `current_user_can('manage_options')` AND `$_GET['page'] === self::PAGE_SLUG`. It does not verify that the request actually hit `wp-admin/admin.php` (e.g. via `$GLOBALS['pagenow']` or `is_admin()` plus `'admin.php' === $pagenow`). Because `admin_init` fires on every wp-admin-context request — including `admin-ajax.php` — any admin-context request that happens to carry the exact query string `page=khaveeai-settings` (e.g. `admin-ajax.php?action=heartbeat&page=khaveeai-settings`) also satisfies this condition and widens the global `upload_mimes` filter for that request's lifetime, even though no settings-page render is actually occurring. Impact is bounded — still `manage_options`-gated, and widening `upload_mimes` alone cannot bypass the magic-byte validation per the architecture's own stated invariant — but the predicate is named and documented as "settings page render" while its actual check is weaker than that, which could mislead a future maintainer reasoning about exactly when this filter is active.
+**Fix:**
 ```php
-function wp_verify_nonce( $nonce, string $action = '' ) {
-    return 'valid-nonce' === $nonce ? 1 : false;
+private function is_khaveeai_settings_page_render(): bool {
+	$can_manage_options = current_user_can( 'manage_options' );
+	$page_query_var     = isset( $_GET['page'] ) ? (string) $_GET['page'] : '';
+	$is_admin_php       = isset( $GLOBALS['pagenow'] ) && 'admin.php' === $GLOBALS['pagenow'];
+
+	return $is_admin_php && self::is_settings_page_render_allowed( $can_manage_options, $page_query_var );
 }
 ```
-The stub's return value depends only on `$nonce`, never on `$action`. If a future edit accidentally passed the wrong action string to `wp_verify_nonce()` in `is_upload_request_allowed()` (e.g. a typo'd constant, or accidentally calling it with `''` instead of `self::AVATAR_UPLOAD_NONCE_ACTION`), all 4 nonce-gate harness cases would still pass, because the stub cannot distinguish "right nonce, right action" from "right nonce, any action (or no action)." This means the test suite does not actually prove the action string is wired through correctly — it only proves *some* string reaches `wp_verify_nonce()`'s first parameter. The current implementation is correct (verified by direct source read: `wp_verify_nonce( $nonce, self::AVATAR_UPLOAD_NONCE_ACTION )` at line 379), but the test's blast-radius for catching a future regression here is smaller than the test names imply.
-**Fix:** Make the stub action-aware, e.g. `return ( 'valid-nonce' === $nonce && SettingsPage::AVATAR_UPLOAD_NONCE_ACTION === $action ) ? 1 : false;` (would require exposing the constant, or hardcoding the expected literal `'khaveeai_avatar_upload'` in the stub) so a wrong-action regression actually fails a case.
 
-### WR-03: `sanitize_text_field()` is applied to the voice value only after it has already passed the strict allowlist check, making the call dead weight that could mask a future allowlist-content bug
+### WR-02: No integration-level test for `maybe_register_avatar_upload_filters()` itself — only its constituent pure predicates are exercised
 
-**File:** `wordpress-plugin/includes/Admin/SettingsPage.php:529-531`
-**Issue:** Once `in_array( $submitted_voice, self::VOICES, true )` is true, `$submitted_voice` is already byte-for-byte one of the 10 known-safe literal strings in `self::VOICES` (none of which contain tags, whitespace, or anything `sanitize_text_field()` would alter). Wrapping it in `sanitize_text_field()` afterward is a no-op for every value that can actually reach that branch — it cannot do anything `in_array(..., true)` hasn't already guaranteed. This isn't a bug today, but it is slightly misleading: a future maintainer skimming the line might assume `sanitize_text_field()` is doing meaningful sanitization work here (as it does for `instructions`), when in this branch it is structurally unreachable code dressed up as defense-in-depth. If `self::VOICES` itself were ever populated with a value that `sanitize_text_field()` would alter (it currently is not), this line would silently change the persisted value to something that no longer round-trips identically through the `<select>`'s `selected()` comparison in `render_voice_field()`.
-**Fix:** Either drop the redundant `sanitize_text_field()` call in the accept branch (the allowlist membership check is the only validation that matters here) or add a one-line comment acknowledging it is intentionally redundant defense-in-depth with no expected effect, so it isn't mistaken for load-bearing logic.
+**File:** `wordpress-plugin/tests/settings-page-harness.php:895-922`
+**Issue:** The 07-05 cases (31-33) exercise only the pure `is_settings_page_render_allowed()` predicate in isolation. There is no harness case that exercises `maybe_register_avatar_upload_filters()` end-to-end to assert: (a) under a GET-render condition, `upload_mimes` gets registered and a `shutdown` cleanup is scheduled WITHOUT `wp_check_filetype_and_ext`/`upload_size_limit` also being registered; (b) under a POST-upload condition, `wp_check_filetype_and_ext`/`upload_size_limit` get registered WITHOUT `upload_mimes` being re-registered; (c) `remove_avatar_upload_filters()` actually removes whichever filters were added for that request. The actual integration point this plan was about — the *split* of the two branches and the asymmetry between what each one registers — is therefore untested at the level that matters; only the underlying pure predicates are. A regression that accidentally re-coupled the two branches (e.g. someone "simplifying" the method back to one `if`) would not be caught by the existing 37 cases, all of which still pass against the pure predicates regardless of how `maybe_register_avatar_upload_filters()` itself wires them together.
+**Fix:** Add `add_filter`/`remove_filter`/`add_action` recording stubs (mirroring the existing `add_settings_error` stub pattern already in the harness) that push `[$hook, $callback_id]` tuples into a global array, then add cases that call `maybe_register_avatar_upload_filters()` directly under staged `$_GET`/`$_REQUEST`/`current_user_can` conditions and assert on which filter tags ended up registered.
+
+### WR-03: `$_REQUEST` (not `$_POST`) is used to read the avatar-upload nonce, accepting it via GET query string as well as POST body
+
+**File:** `wordpress-plugin/includes/Admin/SettingsPage.php:380`
+**Issue:** `$_REQUEST[ self::AVATAR_UPLOAD_NONCE_FIELD ]` is sourced from `$_REQUEST`, which PHP populates from GET, POST, and COOKIE data combined. The file's own documentation (lines 350-353) states the nonce "rides along with the actual upload POST," implying `$_POST` is the intended transport — but as written, a crafted GET request such as `async-upload.php?khaveeai_avatar_nonce=<valid-nonce>&page=khaveeai-settings` would also satisfy this read. This is low-severity (obtaining a valid nonce already requires being authenticated as an admin or successfully CSRF-stealing the page-embedded value, and `async-upload.php`/`admin-ajax.php` only process actual uploaded files regardless of how the nonce field arrived) but is a precision gap between the documented trust model ("the upload POST") and the actual code (`$_REQUEST`, which is broader than POST).
+**Fix:** Read from `$_POST[ self::AVATAR_UPLOAD_NONCE_FIELD ] ?? ''` instead of `$_REQUEST[...]`, matching the documented intent that the nonce travels as a multipart POST param attached by wp.media's uploader (line 1011-1021).
 
 ## Info
 
-### IN-01: Voice-allowlist harness cases all stage clean/empty pre-existing option state — no case exercises a poisoned-existing-value scenario
+### IN-01: Duplicate "Case 27" label across two unrelated test groups (pre-existing, acknowledged but not fixed by 07-05)
 
-**File:** `wordpress-plugin/tests/settings-page-harness.php:704-742`
-**Issue:** Cases 24-26 stage `['voice' => 'coral']` (valid) or `[]` (absent) as the pre-existing option before calling `sanitize_settings()`. None stages an already-invalid existing voice (e.g. `['voice' => 'evil-injection']`) to assert what the *output* should be in that case. This is the direct test-coverage counterpart of CR-01-NEW above — the gap in the implementation and the gap in the test suite are the same gap, which is exactly why CR-01-NEW went unnoticed by the harness despite 34/34 cases passing.
-**Fix:** Add a case staging a poisoned existing voice and asserting the fix's intended remediation behavior (see CR-01-NEW's suggested fix) once that behavior is decided and implemented.
+**File:** `wordpress-plugin/tests/settings-page-harness.php:803, 829`
+**Issue:** Two separate `run_case()` invocations are both preceded by a `// ── Case 27` comment header — one for the "already-poisoned existing voice" CR-01-NEW case, another for the "page/Referer match AND valid nonce" CR-02 case. The harness's own comment at line 893 acknowledges this directly ("the harness has a pre-existing duplicate 'Case 27' label so case NUMBER is not a stable identifier — the name string is"), but the duplication was carried forward unfixed into 07-05, which added three more cases (31-33) immediately after the second "Case 27" without renumbering anything. This makes any future bug report or review comment that references "Case 27" by number ambiguous.
+**Fix:** Renumber the comment headers sequentially (the CR-02 nonce-gate group should start at Case 28, not re-use 27), or drop numeric case labels from the comments entirely in favor of the descriptive name strings the code already treats as canonical.
 
-### IN-02: SUMMARY's "literal-string grep count to 2" claim for `khaveeai_avatar_nonce` is technically true but achieved via a doc-comment, not a second functional reference
+### IN-02: Misleading "duplicated exit block" comment mid-file in the test harness
 
-**File:** `wordpress-plugin/includes/Admin/SettingsPage.php:192,196`
-**Issue:** 07-04-SUMMARY.md's Deviation 2(b) states the literal string `khaveeai_avatar_nonce` was made to appear twice in the file "to satisfy the letter of the acceptance criterion." Confirmed: both occurrences are inside the `AVATAR_UPLOAD_NONCE_FIELD` constant's own doc-comment (lines 192 and 196), not at the two functional use sites (JS emission at lines 908/911, gate-read at line 346), which all correctly reference `self::AVATAR_UPLOAD_NONCE_FIELD` instead of the literal. This is not a defect — the constant-based design is actually the better pattern, consistent with the file's `self::PAGE_SLUG`/`self::OPTION_NAME` convention — but a future `grep -c "khaveeai_avatar_nonce"` check intended as a "is the field name wired through both ends" smoke test will pass even if one of the two functional use sites were deleted, because the count is satisfied entirely by comment prose. Documentation-quality note only.
-**Fix:** None required; flagging only so a future verifier doesn't mistake the doc-comment occurrences for functional wiring evidence.
+**File:** `wordpress-plugin/tests/settings-page-harness.php:449-456`
+**Issue:** This comment block claims "this block is duplicated at the true end of the file ... this early copy is kept only as a marker and never reached" — but there is no actual second `exit()`/`if ($failures > 0)` statement at this location; it is only a `// ── Exit ──` section-divider comment followed immediately by more `run_case()` calls (the 07-02 cases), not by any control-flow statement. The comment describes a hazard ("never reached if the cases below fatal/exit first") that does not correspond to real code at this location, which could mislead a future maintainer into believing there is dead/duplicated control flow here when there is none.
+**Fix:** Remove this comment block (the real exit logic at the bottom of the file is self-explanatory) or rewrite it to accurately describe that this is a structural section divider only, with no control-flow implication.
+
+### IN-03: `library: { type: 'model/gltf-binary' }` in the wp.media frame config affects Library browsing only, not the Upload tab this plan's fix targets
+
+**File:** `wordpress-plugin/includes/Admin/SettingsPage.php:1006-1010`
+**Issue:** `wp.media({ library: { type: 'model/gltf-binary' } })` restricts the *Media Library browse* query (existing attachments) to that MIME type, but has no effect on the Plupload "Upload files" tab's client-side extension filtering — that is controlled exclusively by the PHP-side `upload_mimes` filter, i.e. the exact mechanism this plan's GET-render branch fixes. Given `model/gltf-binary` is the shared MIME for both `.glb` and `.vrm` (per the file's own header comment at line 59), this `library.type` value also does not discriminate between the two formats it nominally scopes. Not a bug — just worth a clarifying comment so a future maintainer doesn't believe this line duplicates or supersedes the `upload_mimes` widening this plan introduced.
+**Fix:** Add an inline comment: `// NOTE: library.type only filters the Media Library "browse existing" tab; it does NOT affect Plupload's upload-time extension allowlist (that's upload_mimes — see maybe_register_avatar_upload_filters()).`
 
 ---
 
-_Reviewed: 2026-06-24T00:00:00Z_
+_Reviewed: 2026-06-25T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_

@@ -735,40 +735,52 @@ final class SettingsPage {
 			esc_html__( 'Accepts .glb or .vrm files only (binary glTF). Max size 50MB. Content is validated server-side beyond the file extension.', 'khaveeai' ) .
 			'</p>';
 
-		// D-01: wp_enqueue_media() is already called in render_page(); the
-		// wp.media frame is restricted to library type 'model/gltf-binary'
-		// (D-09 client-side reinforcement — server-side validation via
-		// khaveeai_validate_glb_vrm_content() is the real enforcement).
+		// D-01: wp_enqueue_media() is already called in render_page(), but
+		// WordPress prints the enqueued wp.media JS bundle (media-editor.js,
+		// media-views.js, etc.) in the admin FOOTER, which loads AFTER this
+		// inline script (printed mid-form, in the page body). Binding the
+		// click listener immediately would silently no-op because `wp.media`
+		// is still undefined at that point — defer to DOMContentLoaded (with
+		// an already-fired fallback) so the listener attaches only once the
+		// footer scripts have had a chance to load.
 		?>
 		<script type="text/javascript">
 		( function () {
-			var button = document.getElementById( 'khaveeai_avatar_picker_button' );
-			if ( ! button || typeof wp === 'undefined' || ! wp.media ) {
-				return;
-			}
-			var frame = null;
-			button.addEventListener( 'click', function ( event ) {
-				event.preventDefault();
-				if ( null === frame ) {
-					frame = wp.media( {
-						title: '<?php echo esc_js( __( 'Choose or Upload Avatar', 'khaveeai' ) ); ?>',
-						library: { type: 'model/gltf-binary' },
-						multiple: false,
-					} );
-					frame.on( 'select', function () {
-						var attachment = frame.state().get( 'selection' ).first().toJSON();
-						var hidden = document.getElementById( 'khaveeai_avatar_attachment_id' );
-						var current = document.getElementById( 'khaveeai_avatar_current' );
-						if ( hidden ) {
-							hidden.value = attachment.id;
-						}
-						if ( current ) {
-							current.textContent = attachment.filename || attachment.title || '';
-						}
-					} );
+			function khaveeaiInitAvatarPicker() {
+				var button = document.getElementById( 'khaveeai_avatar_picker_button' );
+				if ( ! button || typeof wp === 'undefined' || ! wp.media ) {
+					return;
 				}
-				frame.open();
-			} );
+				var frame = null;
+				button.addEventListener( 'click', function ( event ) {
+					event.preventDefault();
+					if ( null === frame ) {
+						frame = wp.media( {
+							title: '<?php echo esc_js( __( 'Choose or Upload Avatar', 'khaveeai' ) ); ?>',
+							library: { type: 'model/gltf-binary' },
+							multiple: false,
+						} );
+						frame.on( 'select', function () {
+							var attachment = frame.state().get( 'selection' ).first().toJSON();
+							var hidden = document.getElementById( 'khaveeai_avatar_attachment_id' );
+							var current = document.getElementById( 'khaveeai_avatar_current' );
+							if ( hidden ) {
+								hidden.value = attachment.id;
+							}
+							if ( current ) {
+								current.textContent = attachment.filename || attachment.title || '';
+							}
+						} );
+					}
+					frame.open();
+				} );
+			}
+
+			if ( 'loading' === document.readyState ) {
+				document.addEventListener( 'DOMContentLoaded', khaveeaiInitAvatarPicker );
+			} else {
+				khaveeaiInitAvatarPicker();
+			}
 		} )();
 		</script>
 		<?php

@@ -125,3 +125,14 @@ None - no external service configuration required.
 ---
 *Phase: 08-frontend-bundle-shortcode-block*
 *Completed: 2026-06-24*
+
+## Self-Check: PASSED
+
+- FOUND: wordpress-plugin/includes/Rest/SessionController.php
+- FOUND: wordpress-plugin/tests/rest-logic-harness.php
+- FOUND: .planning/phases/08-frontend-bundle-shortcode-block/08-03-SUMMARY.md
+- FOUND: commit 67b4b41 (Task 1 - feat)
+- FOUND: commit 55c7fb1 (Task 2 - test)
+- FOUND: commit e87e9ec (docs - SUMMARY.md)
+- VERIFIED: `php -l wordpress-plugin/includes/Rest/SessionController.php` clean
+- VERIFIED: `php wordpress-plugin/tests/rest-logic-harness.php` exits 0, 17/17 cases PASSED

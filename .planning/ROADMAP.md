@@ -200,7 +200,7 @@ Plans:
   4. Uploading a renamed non-VRM/GLB file (correct extension, wrong binary content) through the avatar picker is rejected rather than accepted into the Media Library
   5. When the API key is unset, the settings page shows a "not configured" status banner, and `ConfigSourceInterface` exposes an `is_configured()` contract (consumed by that banner and reusable by the Phase 8 frontend embed). *(The frontend-embed half — an admin-only inline notice and a logged-out-visitor neutral placeholder on a page with the embedded avatar — is Phase 8 scope; see Phase 8 Success Criterion 6.)*
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 Plans:
 **Wave 1**
 
@@ -217,6 +217,10 @@ Plans:
 **Wave 4** *(gap closure — CR-01/CR-02 from 07-REVIEW.md/07-VERIFICATION.md + ROADMAP Criterion 5 wording)*
 
 - [x] 07-04-PLAN.md — Close CR-01 (enforce self::VOICES allowlist on the persisted voice value) + CR-02 (add a verifiable nonce to the upload-filter activation gate, fail-closed, keeping admin_init + Referer; no load-<hook_suffix> regression) + correct ROADMAP Phase 7 Success Criterion 5 wording (SET-03, ASSET-01, SET-06) (completed 2026-06-24)
+
+**Wave 5** *(gap closure — UAT Test 5: every valid .glb/.vrm avatar upload rejected client-side by Plupload; root-caused in .planning/debug/avatar-upload-rejected.md)*
+
+- [ ] 07-05-PLAN.md — Separate the upload_mimes filter (widens Plupload's client-side extension allowlist; register at settings-page GET render under manage_options + page match) from the nonce-gated wp_check_filetype_and_ext magic-byte filter (ASSET-01, stays on the upload POST per CR-02/07-04); admin_init + Referer + shutdown preserved, load-<hook_suffix> not reintroduced; live wp-env human-verify checkpoint (valid upload succeeds + disguised file still rejected) (SET-04, ASSET-01)
 
 **UI hint**: yes
 

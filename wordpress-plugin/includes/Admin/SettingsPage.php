@@ -255,47 +255,81 @@ final class SettingsPage {
 	}
 
 	/**
-	 * Open Question 2 / A2 resolution (REVISED — see Pitfall below): scope the
-	 * avatar upload content-validation filters to the khaveeai settings
-	 * screen via `admin_init` + an HTTP Referer check, NOT `load-<hook_suffix>`.
+	 * Register the avatar-upload filters under their CORRECT request-lifecycle
+	 * conditions. 07-05 separates the two filters that 07-03/07-04 had ANDed
+	 * behind a single gate, because they have DISTINCT lifecycle needs:
 	 *
-	 * Pitfall discovered during the 07-03 Task 3 human checkpoint against a
-	 * live wp-env install: `load-<hook_suffix>` is fired by
-	 * `wp-admin/admin.php`'s OWN page-render lifecycle (it resolves
-	 * `$page_hook` from the `page` query var and calls
-	 * `do_action("load-{$page_hook}")`). But `wp.media`'s "Upload files" tab
-	 * does NOT submit through `admin.php?page=khaveeai-settings` — it POSTs
-	 * directly to `wp-admin/async-upload.php` or `wp-admin/admin-ajax.php`
-	 * (action=upload-attachment). Both of those scripts `require`
-	 * `wp-admin/admin.php` and fire `admin_init`, but NEITHER of them ever
-	 * resolves a `page_hook` or fires `load-{$hook_suffix}` — that action is
-	 * specific to the page-render code path inside `admin.php`'s main
-	 * dispatch, which async-upload.php/admin-ajax.php bypass entirely. The
-	 * result: the upload allowlist/magic-byte filters were NEVER registered
-	 * for the actual upload AJAX request, so WordPress's own pre-check
-	 * rejected every `.glb`/`.vrm` upload with its default "not allowed"
-	 * message — empirically confirmed live (every upload, valid or
-	 * disguised, was rejected).
+	 *  1. upload_mimes (T-07E-01, GET-render branch): widens Plupload's
+	 *     CLIENT-SIDE extension allowlist. Plupload builds that list from
+	 *     get_allowed_mime_types() ONCE at settings-page GET render time
+	 *     (wp_plupload_default_settings(), WP core wp-includes/media.php),
+	 *     so this filter MUST be active during the GET render for glb/vrm to
+	 *     appear in the list. Gated on manage_options + page-match ONLY
+	 *     (is_khaveeai_settings_page_render() / is_settings_page_render_allowed())
+	 *     — widening upload_mimes does NOT bypass server-side content
+	 *     validation, so a capability+page condition suffices here.
 	 *
-	 * Fix: `admin_init` fires on every wp-admin-context request, INCLUDING
-	 * `admin-ajax.php` and `async-upload.php` (confirmed in WP core source).
-	 * Scope via the browser-sent `Referer` header, which always carries the
-	 * settings page's URL when `wp.media`'s frame on that page triggers the
-	 * upload (the frame is instantiated from a script tag rendered by
-	 * render_page(), so the request that POSTs the file always originates
-	 * from that page in the browser tab). Falls back to checking the `page`
-	 * query var directly for the rare case the settings page itself is being
-	 * rendered (defensive — no upload happens during a GET render, but costs
-	 * nothing to also cover it).
+	 *  2. wp_check_filetype_and_ext (ASSET-01 magic-byte, POST branch) +
+	 *     upload_size_limit: the server-side content validation and size cap.
+	 *     STAY nonce-gated on the upload POST via is_khaveeai_upload_request()
+	 *     (CR-02, 07-04 — UNCHANGED). A disguised file (correct extension,
+	 *     wrong bytes) now passes Plupload client-side but is rejected
+	 *     SERVER-SIDE here (T-07E-02).
+	 *
+	 * BOTH branches schedule their OWN shutdown cleanup via
+	 * remove_avatar_upload_filters() so neither filter set leaks past the
+	 * request — the standard Media Library "Add New" screen and every other
+	 * upload path must continue to reject glb/vrm (T-07C-03/T-07E-03).
+	 *
+	 * History: 07-03 resolved Open Question 2 / A2 by replacing the
+	 * empirically-falsified load-<hook_suffix> mechanism with admin_init +
+	 * an HTTP Referer check (load-<hook_suffix> never fires on
+	 * async-upload.php/admin-ajax.php — confirmed live in the 07-03 Task 3
+	 * checkpoint). 07-04 hardened that with a nonce AND-clause (CR-02).
+	 * 07-05 keeps admin_init + Referer + nonce + shutdown-cleanup intact
+	 * for the POST branch and adds the GET-render branch for upload_mimes;
+	 * load-<hook_suffix> is NOT reintroduced (07-03-SUMMARY.md Deviation 2).
 	 *
 	 * @return void
 	 */
 	public function maybe_register_avatar_upload_filters(): void {
+		// ── GET-render branch (T-07E-01): widen Plupload's CLIENT-SIDE
+		// extension allowlist at the moment wp_plupload_default_settings()
+		// builds _wpPluploadSettings from get_allowed_mime_types() during the
+		// settings-page GET render. Without this branch, Plupload rejects
+		// every .glb/.vrm selection client-side with "This file cannot be
+		// processed by the web server." BEFORE any upload POST fires — see
+		// .planning/debug/avatar-upload-rejected.md for the live wp-env proof.
+		//
+		// This branch registers ONLY upload_mimes. It does NOT register the
+		// magic-byte wp_check_filetype_and_ext filter — that filter stays
+		// nonce-gated on the POST branch below (CR-02/ASSET-01, unchanged):
+		// widening Plupload's client-side extension list does NOT bypass the
+		// server-side content validation, because the nonce-gated
+		// khaveeai_validate_glb_vrm_content() still rejects a disguised file
+		// (correct extension, wrong bytes) when the upload POST arrives. This
+		// is the clean separation the diagnosis prescribes (T-07E-02).
+		//
+		// The widening itself is capability-gated (manage_options AND
+		// page-match) and schedules its OWN shutdown cleanup so the global
+		// upload_mimes list does not leak glb/vrm to any other screen/
+		// lifecycle (T-07E-03 — the standard Media Library "Add New" screen
+		// and every other upload path must continue to reject glb/vrm).
+		if ( $this->is_khaveeai_settings_page_render() ) {
+			add_filter( 'upload_mimes', __NAMESPACE__ . '\\khaveeai_allow_glb_vrm_mimes' );
+			add_action( 'shutdown', array( $this, 'remove_avatar_upload_filters' ) );
+		}
+
+		// ── POST branch (CR-02, UNCHANGED from 07-04): the nonce-gated
+		// server-side ASSET-01 content validation. Activates ONLY on the
+		// actual upload POST (async-upload.php/admin-ajax.php) when the
+		// plugin-issued nonce verifies — a forged Referer alone can no longer
+		// activate these filters. load-<hook_suffix> is NOT reintroduced
+		// (07-03-SUMMARY.md Deviation 2 — empirically falsified live).
 		if ( ! $this->is_khaveeai_upload_request() ) {
 			return;
 		}
 
-		add_filter( 'upload_mimes', __NAMESPACE__ . '\\khaveeai_allow_glb_vrm_mimes' );
 		add_filter( 'wp_check_filetype_and_ext', __NAMESPACE__ . '\\khaveeai_validate_glb_vrm_content', 10, 5 );
 		add_filter( 'upload_size_limit', array( $this, 'limit_avatar_upload_size' ) );
 
@@ -346,6 +380,72 @@ final class SettingsPage {
 		$nonce = $_REQUEST[ self::AVATAR_UPLOAD_NONCE_FIELD ] ?? '';
 
 		return self::is_upload_request_allowed( $page_or_referer_match, $nonce );
+	}
+
+	/**
+	 * Runtime reader for the GET-render upload_mimes widening condition
+	 * (T-07E-01): true when the current user has manage_options AND the
+	 * `page` query var is this settings page's slug. Delegates the actual
+	 * decision to the pure is_settings_page_render_allowed() helper so the
+	 * bare-PHP harness can exercise the fail-closed capability/page logic
+	 * without reading WP superglobals or constructing a SettingsPage instance
+	 * — mirrors 07-04's is_upload_request_allowed() extraction pattern.
+	 *
+	 * Why this is a SEPARATE condition from is_khaveeai_upload_request()
+	 * (CR-02, unchanged): Plupload (wp.media's client-side uploader) builds
+	 * its extension allowlist from get_allowed_mime_types() ONCE at
+	 * settings-page GET render time (wp_plupload_default_settings(), WP core
+	 * wp-includes/media.php). For glb/vrm to appear in that list, the
+	 * upload_mimes filter must be active DURING the GET render. But a GET
+	 * render never carries the khaveeai_avatar_nonce (the nonce is emitted
+	 * INTO the page via wp_create_nonce(), not sent TO the page as a request
+	 * parameter) — so is_khaveeai_upload_request() (which requires the nonce)
+	 * structurally returns false on every GET render, the upload_mimes filter
+	 * never registered, and Plupload rejected every .glb/.vrm client-side
+	 * with "This file cannot be processed by the web server." before any
+	 * upload POST fired. Proven live against wp-env — see
+	 * .planning/debug/avatar-upload-rejected.md.
+	 *
+	 * Security: this widening is SAFE because upload_mimes does NOT bypass
+	 * wp_check_filetype_and_ext. A disguised file (correct extension, wrong
+	 * bytes) now passes Plupload client-side but is rejected SERVER-SIDE by
+	 * the nonce-gated khaveeai_validate_glb_vrm_content() on the upload POST
+	 * (CR-02/ASSET-01, unchanged). The capability gate (manage_options)
+	 * matches the menu/render_page() gate — only admins ever reach this GET
+	 * render — and the page-match check ensures the widening does not apply
+	 * to any other admin screen. (KHAVEEAI-UAT-5, T-07E-01/T-07E-02/T-07E-03)
+	 *
+	 * @return bool
+	 */
+	private function is_khaveeai_settings_page_render(): bool {
+		$can_manage_options = current_user_can( 'manage_options' );
+		$page_query_var     = isset( $_GET['page'] ) ? (string) $_GET['page'] : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- this is a render-condition read, not a nonce check; the nonce gate is the separate is_khaveeai_upload_request() branch for the POST.
+
+		return self::is_settings_page_render_allowed( $can_manage_options, $page_query_var );
+	}
+
+	/**
+	 * Pure decision predicate for the GET-render upload_mimes widening
+	 * (T-07E-01): true ONLY when $can_manage_options is true AND
+	 * $page_query_var equals self::PAGE_SLUG.
+	 *
+	 * Extracted as a public static pure function (mirrors mask_api_key()/
+	 * sanitize_avatar_attachment_id()/is_upload_request_allowed()'s
+	 * static-for-testability pattern) so the bare-PHP harness can exercise
+	 * the fail-closed capability/page logic without WP superglobals.
+	 * is_khaveeai_settings_page_render() is the only caller that reads
+	 * current_user_can()/$_GET — this method is otherwise pure.
+	 *
+	 * @param bool   $can_manage_options Whether current_user_can('manage_options') passed.
+	 * @param string $page_query_var     The raw `page` query var (empty when absent).
+	 * @return bool
+	 */
+	public static function is_settings_page_render_allowed( bool $can_manage_options, string $page_query_var ): bool {
+		if ( ! $can_manage_options ) {
+			return false; // Non-admin GET never widens the Plupload allowlist.
+		}
+
+		return self::PAGE_SLUG === $page_query_var;
 	}
 
 	/**

@@ -242,9 +242,9 @@ Plans:
 Plans:
 **Wave 1** *(three independent surfaces — packages/wp-bundle JS, PHP render core, REST override validation — zero file overlap, fully parallel)*
 
-- [ ] 08-01-PLAN.md — packages/wp-bundle esbuild IIFE: scan-and-mount entry, KhaveeProvider+VRMAvatar tree, Click-to-talk/Connecting/Error overlays, committed build/khaveeai-bundle.js + bundle-isolation smoke check (D-08/D-09/D-10, EMBED-05/PERF-01 JS half)
-- [ ] 08-02-PLAN.md — PHP render core: AvatarRenderer (shared merge + escaped mount-point JSON + D-06/D-07 not-configured branch), AssetManager (render-path conditional enqueue), AvatarShortcode, Plugin.php wiring, render-logic-harness (EMBED-01, EMBED-02, EMBED-04, PERF-01)
-- [ ] 08-03-PLAN.md — SessionController::apply_trust_model() D-05 allowlist-validated per-instance override path (voice allowlist / instructions cap / avatar attachment-existence, fail-closed) + rest-logic-harness D-05 cases (EMBED-02 security half)
+- [x] 08-01-PLAN.md — packages/wp-bundle esbuild IIFE: scan-and-mount entry, KhaveeProvider+VRMAvatar tree, Click-to-talk/Connecting/Error overlays, committed build/khaveeai-bundle.js + bundle-isolation smoke check (D-08/D-09/D-10, EMBED-05/PERF-01 JS half)
+- [x] 08-02-PLAN.md — PHP render core: AvatarRenderer (shared merge + escaped mount-point JSON + D-06/D-07 not-configured branch), AssetManager (render-path conditional enqueue), AvatarShortcode, Plugin.php wiring, render-logic-harness (EMBED-01, EMBED-02, EMBED-04, PERF-01)
+- [x] 08-03-PLAN.md — SessionController::apply_trust_model() D-05 allowlist-validated per-instance override path (voice allowlist / instructions cap / avatar attachment-existence, fail-closed) + rest-logic-harness D-05 cases (EMBED-02 security half)
 
 **Wave 2** *(blocked on 08-02 — reuses AvatarRenderer + modifies Plugin.php)*
 
@@ -268,4 +268,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
-| 8. Frontend Bundle, Shortcode & Block | 0/4 | Planned | - |
+| 8. Frontend Bundle, Shortcode & Block | 3/4 | In Progress|  |

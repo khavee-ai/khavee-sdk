@@ -465,7 +465,164 @@ run_case(
 	}
 );
 
-// ── Exit (live — runs after ALL cases, including 07-02's) ─────────────
+// ════════════════════════════════════════════════════════════════════
+// 07-03 cases — magic-byte content validation, MIME allowlist,
+// avatar_attachment_id sanitize/remove, 50MB enforcement
+// (SET-04/SET-05/ASSET-01, D-09/D-10/D-11)
+// ════════════════════════════════════════════════════════════════════
+//
+// khaveeai_validate_glb_vrm_content() and khaveeai_allow_glb_vrm_mimes()
+// are free-standing namespaced functions (filter callbacks registered via
+// add_filter with a string callable per 07-RESEARCH.md Pattern 1) — NOT
+// class methods. They do not exist yet at the start of this task; the
+// require above (SettingsPage.php) loads fine because the class itself
+// already exists from 07-02, but these new functions are RED until Task 2
+// adds them to SettingsPage.php (same file, free-standing functions defined
+// alongside the class). sanitize_avatar_attachment_id() and
+// khaveeai_enforce_avatar_size() are public static methods on SettingsPage,
+// mirroring 07-02's mask_api_key() static-method testability decision.
+
+/**
+ * Write a temp fixture file with the given binary content and return its
+ * path. Caller is responsible for unlink()ing it (the cases below do not
+ * bother — sys_get_temp_dir() entries are harmless/ephemeral for a CI run).
+ *
+ * @param string $content
+ * @return string Absolute path to the temp file.
+ */
+function __khaveeai_write_fixture( string $content ): string {
+	$path = tempnam( sys_get_temp_dir(), 'khaveeai_fixture_' );
+	file_put_contents( $path, $content );
+	return $path;
+}
+
+// ── Case 14: khaveeai_validate_glb_vrm_content passthrough for non-glb/vrm extensions ──
+
+run_case(
+	'khaveeai_validate_glb_vrm_content: passes through unchanged for a non-glb/vrm extension',
+	function () {
+		$data = array( 'ext' => 'png', 'type' => 'image/png' );
+		$file = __khaveeai_write_fixture( 'irrelevant binary content' );
+		$result = \Khavee\Plugin\Admin\khaveeai_validate_glb_vrm_content( $data, $file, 'photo.png', array(), 'image/png' );
+		return $data === $result;
+	}
+);
+
+// ── Case 15: khaveeai_validate_glb_vrm_content accepts a valid glTF-magic .glb file ──
+
+run_case(
+	'khaveeai_validate_glb_vrm_content: VALID glTF magic bytes + .glb filename -> ext=glb, type=model/gltf-binary',
+	function () {
+		$file   = __khaveeai_write_fixture( "glTF" . random_bytes( 8 ) );
+		$result = \Khavee\Plugin\Admin\khaveeai_validate_glb_vrm_content( array(), $file, 'avatar.glb', array(), 'application/octet-stream' );
+		return 'glb' === $result['ext'] && 'model/gltf-binary' === $result['type'];
+	}
+);
+
+// ── Case 16: khaveeai_validate_glb_vrm_content accepts a valid glTF-magic .vrm file ──
+
+run_case(
+	'khaveeai_validate_glb_vrm_content: VALID glTF magic bytes + .vrm filename -> ext=vrm, type=model/gltf-binary',
+	function () {
+		$file   = __khaveeai_write_fixture( "glTF" . random_bytes( 8 ) );
+		$result = \Khavee\Plugin\Admin\khaveeai_validate_glb_vrm_content( array(), $file, 'avatar.vrm', array(), 'application/octet-stream' );
+		return 'vrm' === $result['ext'] && 'model/gltf-binary' === $result['type'];
+	}
+);
+
+// ── Case 17: khaveeai_validate_glb_vrm_content rejects a malicious file renamed to .glb (ASSET-01, T-07C-01) ──
+
+run_case(
+	'khaveeai_validate_glb_vrm_content: MALICIOUS renamed file (no glTF magic) -> ext=false, type=false (ASSET-01)',
+	function () {
+		$file   = __khaveeai_write_fixture( '<?php evil' );
+		$result = \Khavee\Plugin\Admin\khaveeai_validate_glb_vrm_content( array(), $file, 'evil.glb', array(), 'application/octet-stream' );
+		return false === $result['ext'] && false === $result['type'];
+	}
+);
+
+// ── Case 18: khaveeai_validate_glb_vrm_content fails closed on an unreadable file ──
+
+run_case(
+	'khaveeai_validate_glb_vrm_content: UNREADABLE file (fopen fails) -> ext=false, type=false (fail-closed, not fail-open)',
+	function () {
+		// A path that cannot exist/open — under a nonexistent directory.
+		$nonexistent = sys_get_temp_dir() . '/khaveeai_nonexistent_dir_' . uniqid() . '/unreadable.glb';
+		$result = \Khavee\Plugin\Admin\khaveeai_validate_glb_vrm_content( array(), $nonexistent, 'unreadable.glb', array(), 'application/octet-stream' );
+		return false === $result['ext'] && false === $result['type'];
+	}
+);
+
+// ── Case 19: khaveeai_allow_glb_vrm_mimes preserves existing mimes and adds both extensions with the IANA MIME ──
+
+run_case(
+	'khaveeai_allow_glb_vrm_mimes: preserves existing mimes, adds glb+vrm -> model/gltf-binary (IANA type)',
+	function () {
+		$result = \Khavee\Plugin\Admin\khaveeai_allow_glb_vrm_mimes( array( 'png' => 'image/png' ) );
+		return isset( $result['png'] ) && 'image/png' === $result['png']
+			&& isset( $result['glb'] ) && 'model/gltf-binary' === $result['glb']
+			&& isset( $result['vrm'] ) && 'model/gltf-binary' === $result['vrm'];
+	}
+);
+
+// ── Case 20: sanitize_avatar_attachment_id accepts a positive-int-string submission ──
+
+run_case(
+	'sanitize_avatar_attachment_id: a positive int string "123" returns 123',
+	function () {
+		return 123 === SettingsPage::sanitize_avatar_attachment_id( '123', 0 );
+	}
+);
+
+// ── Case 21: sanitize_avatar_attachment_id treats "0"/empty as deliberate removal ──
+
+run_case(
+	'sanitize_avatar_attachment_id: "0" returns 0 (removal)',
+	function () {
+		return 0 === SettingsPage::sanitize_avatar_attachment_id( '0', 999 );
+	}
+);
+
+run_case(
+	'sanitize_avatar_attachment_id: empty string returns 0 (removal)',
+	function () {
+		return 0 === SettingsPage::sanitize_avatar_attachment_id( '', 999 );
+	}
+);
+
+// ── Case 22: sanitize_avatar_attachment_id never overwrites existing with non-numeric garbage (T-07C-06) ──
+
+run_case(
+	'sanitize_avatar_attachment_id: non-numeric garbage returns existing unchanged (T-07C-06)',
+	function () {
+		return 555 === SettingsPage::sanitize_avatar_attachment_id( 'not-a-number', 555 );
+	}
+);
+
+// ── Case 23: khaveeai_enforce_avatar_size rejects > 50MB, accepts <= 50MB (D-10) ──
+
+run_case(
+	'khaveeai_enforce_avatar_size: rejects a file size greater than 52428800 bytes (50MB, D-10)',
+	function () {
+		return false === SettingsPage::khaveeai_enforce_avatar_size( 52428801 );
+	}
+);
+
+run_case(
+	'khaveeai_enforce_avatar_size: accepts a file size of exactly 52428800 bytes (50MB boundary, D-10)',
+	function () {
+		return true === SettingsPage::khaveeai_enforce_avatar_size( 52428800 );
+	}
+);
+
+run_case(
+	'khaveeai_enforce_avatar_size: accepts a file size well under the 50MB limit (D-10)',
+	function () {
+		return true === SettingsPage::khaveeai_enforce_avatar_size( 1024 );
+	}
+);
+
+// ── Exit (live — runs after ALL cases, including 07-02's and 07-03's) ──
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} case(s) FAILED.\n";

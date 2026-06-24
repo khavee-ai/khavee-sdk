@@ -1,9 +1,9 @@
 ---
-status: partial
+status: diagnosed
 phase: 07-admin-settings-page
 source: [07-01-SUMMARY.md, 07-02-SUMMARY.md, 07-03-SUMMARY.md, 07-04-SUMMARY.md]
 started: 2026-06-24T12:47:17Z
-updated: 2026-06-24T13:05:00Z
+updated: 2026-06-24T13:20:00Z
 ---
 
 ## Current Test
@@ -84,6 +84,13 @@ blocked: 1
   reason: "User reported: cannot upload glb/vrm file. it said This file cannot be processed by the web server."
   severity: major
   test: 5
-  artifacts: []
-  missing: []
+  root_cause: "Plupload (wp.media's client-side uploader) builds its file-extension filter from get_allowed_mime_types() ONCE at settings-page GET render time. The plugin's khaveeai_allow_glb_vrm_mimes (upload_mimes filter, which adds glb/vrm) is gated behind is_khaveeai_upload_request(), which requires the khaveeai_avatar_nonce in the request. A GET render never carries that nonce (it is emitted INTO the page, not sent TO it), so the gate returns false on the GET, upload_mimes never registers, get_allowed_mime_types() returns defaults without glb/vrm, and Plupload rejects every .glb/.vrm client-side (plupload.FILE_EXTENSION_ERROR, localized as 'This file cannot be processed by the web server.') before any upload POST ever fires. The file never reaches the server, so neither the nonce-timing (WR-01) nor the magic-byte validator is the operative cause."
+  artifacts:
+    - path: "wordpress-plugin/includes/Admin/SettingsPage.php"
+      issue: "maybe_register_avatar_upload_filters() (lines 293-303) gates ALL filter registration — including the upload_mimes allowlist widening — behind is_khaveeai_upload_request()/is_upload_request_allowed() (lines 331-349, 370-380). This correctly gates the server-side wp_check_filetype_and_ext magic-byte filter to the POST, but INCORRECTLY also gates the upload_mimes filter that Plupload needs widened at GET-render time."
+  missing:
+    - "Register khaveeai_allow_glb_vrm_mimes (upload_mimes filter) at settings-page GET render time under a safe condition (current_user_can('manage_options') AND page match), so Plupload's client-side extension allowlist includes glb/vrm."
+    - "KEEP the nonce-gated is_khaveeai_upload_request() activation for the wp_check_filetype_and_ext magic-byte filter (the real server-side content-validation defense, ASSET-01) — it must stay scoped to the upload POST."
+    - "A fix targeting only WR-01 (nonce-attachment JS timing, e.g. frame constructor uploader.params) would NOT resolve the symptom — Plupload still rejects client-side before any POST. The two filters must be separated by their lifecycle need."
+  debug_session: .planning/debug/avatar-upload-rejected.md
 ```

@@ -167,6 +167,7 @@ require __DIR__ . '/../includes/ConfigSource/WpOptionsConfigSource.php';
 // cases below RED until Task 2 creates the class — the intended TDD ordering.
 require __DIR__ . '/../includes/Admin/SettingsPage.php';
 
+use Khavee\Plugin\ConfigSource\ConfigSourceInterface;
 use Khavee\Plugin\ConfigSource\WpOptionsConfigSource;
 use Khavee\Plugin\Admin\SettingsPage;
 

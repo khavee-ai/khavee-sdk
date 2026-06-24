@@ -523,12 +523,21 @@ final class SettingsPage {
 		// a crafted options.php POST — without this check an arbitrary string
 		// would persist and later be forwarded unrevalidated into the trusted
 		// OpenAI Realtime session config by SessionController. Rejected values
-		// fall back to the existing stored voice, or self::VOICES[0] when none
-		// was stored yet — mirrors sanitize_api_key()'s D-05 convention of
-		// never overwriting with a rejected submission.
+		// fall back to the existing stored voice — mirrors sanitize_api_key()'s
+		// D-05 convention of never overwriting with a rejected submission.
+		//
+		// The fallback itself is re-validated against the same allowlist
+		// (CR-01-NEW): an existing option value can be non-allowlisted if it
+		// was written before this check existed, or via an out-of-band path
+		// (WP-CLI, SQL import, backup restore). Falling back to an unvalidated
+		// existing value would durably re-persist that poisoned data forever.
+		$existing_voice = isset( $existing_option['voice'] ) && in_array( $existing_option['voice'], self::VOICES, true )
+			? $existing_option['voice']
+			: self::VOICES[0];
+
 		$sanitized['voice'] = in_array( $submitted_voice, self::VOICES, true )
 			? sanitize_text_field( $submitted_voice )
-			: ( $existing_option['voice'] ?? self::VOICES[0] );
+			: $existing_voice;
 
 		if ( $remove_avatar_requested ) {
 			// D-06-style deliberate removal: the "Clear avatar" checkbox forces 0

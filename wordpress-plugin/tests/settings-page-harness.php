@@ -741,6 +741,21 @@ run_case(
 	}
 );
 
+// ── Case 27: an already-poisoned existing voice is normalized to self::VOICES[0]
+// rather than re-persisted, even on a submission that doesn't touch voice (CR-01-NEW) ──
+
+run_case(
+	'voice allowlist: an already-poisoned existing voice (pre-dating the allowlist check, or written out-of-band) is normalized to self::VOICES[0], never re-persisted (CR-01-NEW)',
+	function () {
+		khaveeai_test_reset_state();
+		// Simulates data written before this check existed, or via WP-CLI/SQL import.
+		khaveeai_test_set_option( array( 'voice' => 'evil-injection' ) );
+		$page   = __khaveeai_build_settings_page();
+		$result = $page->sanitize_settings( array() ); // Submission omits voice entirely.
+		return 'alloy' === $result['voice'];
+	}
+);
+
 // ════════════════════════════════════════════════════════════════════
 // 07-04 cases — avatar-upload-filter activation nonce gate (CR-02)
 // ════════════════════════════════════════════════════════════════════

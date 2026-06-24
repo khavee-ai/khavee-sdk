@@ -41,6 +41,15 @@ if ( ! file_exists( $khaveeai_autoloader ) ) {
 
 require $khaveeai_autoloader;
 
+// Constants AssetManager (Phase 8) depends on to enqueue the front-end
+// bundle relative to this file and bust the cache on version bumps.
+if ( ! defined( 'KHAVEEAI_PLUGIN_FILE' ) ) {
+	define( 'KHAVEEAI_PLUGIN_FILE', __FILE__ );
+}
+if ( ! defined( 'KHAVEEAI_VERSION' ) ) {
+	define( 'KHAVEEAI_VERSION', '0.1.0' );
+}
+
 // Boot the composition root on plugins_loaded — after the autoload
 // require above, so the SessionController instance it constructs is
 // ready before WordPress fires rest_api_init.

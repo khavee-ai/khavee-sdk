@@ -89,6 +89,57 @@ function __khaveeai_test_valid_attachment_id(): int {
 }
 
 /**
+ * Record of add_settings_error() calls made during a sanitize run. Reset
+ * between cases by khaveeai_test_reset_state(). The sanitize_api_key
+ * format-rejection path calls add_settings_error() as a side effect; the
+ * cases below assert only on the return value (D-08's add_settings_error is
+ * a presentation side-channel, stubbed here so the logic under test can be
+ * exercised without a real WP install).
+ *
+ * @var array<int,array{setting:string,code:string,message:string}>
+ */
+$GLOBALS['__khaveeai_settings_errors'] = array();
+
+if ( ! function_exists( 'add_settings_error' ) ) {
+	/**
+	 * Stub for WordPress's add_settings_error(). Records the call so a case
+	 * CAN assert it fired if desired; the primary assertion surface for the
+	 * sanitize_api_key cases is the return value, not this side effect.
+	 *
+	 * @param string $setting
+	 * @param string $code
+	 * @param string $message
+	 * @param string $type
+	 * @return void
+	 */
+	function add_settings_error( string $setting, string $code, string $message, string $type = 'error' ): void {
+		$GLOBALS['__khaveeai_settings_errors'][] = array(
+			'setting' => $setting,
+			'code'    => $code,
+			'message' => $message,
+			'type'    => $type,
+		);
+	}
+}
+
+if ( ! function_exists( '__' ) ) {
+	/**
+	 * Stub for WordPress's translation function. Returns the text unchanged
+	 * — the harness has no translations to load, and the logic under test
+	 * cares only about the raw string, not its localization. Mirrors the
+	 * "stub only what the logic under test actually calls" convention from
+	 * rest-logic-harness.php.
+	 *
+	 * @param string $text
+	 * @param string $domain
+	 * @return string
+	 */
+	function __( string $text, string $domain = 'default' ): string {
+		return $text;
+	}
+}
+
+/**
  * Test helper: stage the value returned by get_option('khaveeai_settings').
  *
  * @param mixed $value
@@ -104,15 +155,21 @@ function khaveeai_test_set_option( $value ): void {
  * @return void
  */
 function khaveeai_test_reset_state(): void {
-	$GLOBALS['__khaveeai_option_value'] = array();
+	$GLOBALS['__khaveeai_option_value']   = array();
+	$GLOBALS['__khaveeai_settings_errors'] = array();
 }
 
 // ── Load the implementations under test by direct path (no Composer) ──
 
 require __DIR__ . '/../includes/ConfigSource/ConfigSourceInterface.php';
 require __DIR__ . '/../includes/ConfigSource/WpOptionsConfigSource.php';
+// SettingsPage is added by 07-02 Task 2. Its absence makes the mask/sanitize
+// cases below RED until Task 2 creates the class — the intended TDD ordering.
+require __DIR__ . '/../includes/Admin/SettingsPage.php';
 
+use Khavee\Plugin\ConfigSource\ConfigSourceInterface;
 use Khavee\Plugin\ConfigSource\WpOptionsConfigSource;
+use Khavee\Plugin\Admin\SettingsPage;
 
 // ── Test harness plumbing ──────────────────────────────────────────────
 //
@@ -263,6 +320,152 @@ run_case(
 );
 
 // ── Exit ─────────────────────────────────────────────────────────────
+
+// NOTE: the exit block intentionally sits AFTER every run_case() invocation
+// (including the 07-02 mask/sanitize cases below). Do not move it earlier.
+// (Currently this block is duplicated at the true end of the file after the
+// 07-02 cases; the duplicate below is the live one. This early copy is kept
+// only as a marker and never reached if the cases below fatal/exit first.)
+
+// ════════════════════════════════════════════════════════════════════
+// mask_api_key + sanitize_api_key cases (07-02 — D-05/D-06/D-07/D-08)
+// ════════════════════════════════════════════════════════════════════
+//
+// These cases are added by 07-02 Task 1 (RED). They require SettingsPage.php,
+// which Task 2 creates — so the harness fatals on the require above until
+// Task 2 lands, turning these cases RED. That is the intended TDD ordering
+// (the plan's <action> explicitly states this).
+//
+// sanitize_api_key takes ($submitted, $existing, $remove_requested) as plain
+// parameters (per 07-02 Task 2's <action>: "signature chosen for pure-function
+// testability ... takes existing + remove flag as parameters rather than
+// resolving internally"). This mirrors OpenAiDirectTokenProvider::mint_session's
+// $api_key-parameter pattern (07-PATTERNS.md) and lets the cases assert on
+// masking/sanitize logic WITHOUT constructing a ConfigSourceInterface-backed
+// SettingsPage — the harness only needs the class to be loadable.
+
+/**
+ * Tiny ConfigSourceInterface fixture for constructing a SettingsPage instance.
+ * The mask/sanitize logic under test does not read through it (sanitize_api_key
+ * takes $existing as a parameter), so a minimal stub suffices.
+ */
+final class __KhaveeaiHarnessStubConfig implements ConfigSourceInterface {
+	public function get_runtime_config(): array {
+		return array( 'instructions' => '', 'voice' => '', 'avatar_url' => '', 'model' => '' );
+	}
+	public function get_api_key(): string {
+		return '';
+	}
+	public function is_configured(): bool {
+		return false;
+	}
+}
+
+/**
+ * Build a SettingsPage whose sanitize_api_key instance method can be called.
+ * mask_api_key is static, so the mask cases call it directly on the class.
+ *
+ * @return SettingsPage
+ */
+function __khaveeai_build_settings_page() {
+	return new SettingsPage( new __KhaveeaiHarnessStubConfig() );
+}
+
+// ── Case 7: mask_api_key produces exactly 'sk-••••••<last4>' (D-07) ──
+
+run_case(
+	'mask_api_key: returns exactly sk-••••••1234 for sk-abcdefgh1234 (D-07 format)',
+	function () {
+		return 'sk-••••••1234' === SettingsPage::mask_api_key( 'sk-abcdefgh1234' );
+	}
+);
+
+// ── Case 8: mask_api_key returns '' for empty input (never leaks a bare mask) ──
+
+run_case(
+	'mask_api_key: returns empty string for empty input (never a bare sk-•••••• mask)',
+	function () {
+		return '' === SettingsPage::mask_api_key( '' );
+	}
+);
+
+// ── Case 9: sanitize_api_key preserves existing key when submitted equals the mask (D-05) ──
+
+run_case(
+	'sanitize_api_key: submitted value === mask(existing) returns existing unchanged (D-05 placeholder-preservation)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'sk-prod-live-key-9999';
+		$masked   = SettingsPage::mask_api_key( $existing );
+		return $existing === $page->sanitize_api_key( $masked, $existing, false );
+	}
+);
+
+// ── Case 10: sanitize_api_key returns a fresh sk- key trimmed when it is not the mask ──
+
+run_case(
+	'sanitize_api_key: a fresh sk- key (not equal to the mask) is returned trimmed',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'sk-old-key-aaaa';
+		// A genuinely new key with surrounding whitespace — must come back trimmed.
+		return 'sk-newkey1234' === $page->sanitize_api_key( '  sk-newkey1234  ', $existing, false );
+	}
+);
+
+// ── Case 11: sanitize_api_key rejects a non-sk- value, returns existing, and records a settings error (D-08) ──
+
+run_case(
+	'sanitize_api_key: a non-sk- value returns existing AND registers a settings error (D-08)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'sk-keep-this-one-1234';
+		$result   = $page->sanitize_api_key( 'notsk-prefixed', $existing, false );
+		// Return value must be the existing key (no overwrite with the bad value).
+		$return_ok = $existing === $result;
+		// And a settings error must have been registered (D-08 surfaces inline).
+		$error_fired = ! empty( $GLOBALS['__khaveeai_settings_errors'] );
+		return $return_ok && $error_fired;
+	}
+);
+
+// ── Case 12: sanitize_api_key does NOT treat an emptied field as deletion (D-06) ──
+//
+// An empty submission that is NOT the mask of an empty existing key must
+// return the existing key unchanged. Deletion is a separate, deliberate
+// remove_key control (D-06) — never inferred from an emptied field.
+
+run_case(
+	'sanitize_api_key: an emptied field is NOT a deletion signal — returns existing unchanged (D-06)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'sk-do-not-wipe-0000';
+		// An empty/whitespace-only submission, with the remove flag OFF, and an
+		// existing key that is NOT empty (so '' is not its own mask). Must keep
+		// the existing key, not clear it.
+		return $existing === $page->sanitize_api_key( '', $existing, false );
+	}
+);
+
+// ── Case 13: sanitize_api_key clears the key ONLY when the remove_key flag is set (D-06) ──
+
+run_case(
+	'sanitize_api_key: returns empty string only when remove_requested is true (D-06 deliberate removal)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'sk-clear-me-5555';
+		// With the remove flag ON, the result is '' regardless of the submitted
+		// field value — the checkbox is the deletion signal, not the field.
+		return '' === $page->sanitize_api_key( SettingsPage::mask_api_key( $existing ), $existing, true );
+	}
+);
+
+// ── Exit (live — runs after ALL cases, including 07-02's) ─────────────
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} case(s) FAILED.\n";

@@ -274,7 +274,22 @@ Plans:
   4. The avatar exhibits talking animation (SDK lip-sync via `@khaveeai/react`) on the published page while speaking, and the motion is demonstrable in the editor preview without audio (e.g. a "preview talking" toggle)
   5. All new visual/chat config flows through the existing `data-khaveeai-config` JSON contract via the existing global-default + per-block-override merge — no new transport, no `khavee-app` backend dependency (Custom mode only)
 
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1** *(STUDIO-05 foundation — every other plan depends on the config keys flowing end-to-end)*
+
+- [ ] 09-01-PLAN.md — STUDIO-05 config-transport extension end-to-end (14 new block.json attrs + PHP merge + public_safe allowlist + WpOptionsConfigSource defaults + bundle config.ts types/camera-presets/resolveSceneDefaults + build.mjs second entry + safety grep assertion)
+
+**Wave 2** *(blocked on 09-01 — three parallel surfaces, zero file overlap)*
+
+- [ ] 09-02-PLAN.md — STUDIO-01 inspector: 7 PanelBody panels (Layout/Background/Lighting/Avatar/Camera/Voice & Behavior/Chat Box) with locked knob set + mutual-exclusivity rules + debounced setAttributes + preview-talking local state + data-khaveeai-preview-config JSON emission
+- [ ] 09-03-PLAN.md — STUDIO-02 safe preview bundle entry (src/preview.ts + mountPreview.tsx with MutationObserver config-sync + PreviewScene.tsx config-driven 3D VRM + usePreviewTalking viseme cycler) — structurally excludes @khaveeai/providers-openai-realtime
+- [ ] 09-04-PLAN.md — STUDIO-03 ChatBox component (dependency-free, consumes useRealtime for transcript/sendMessage; Enter sends/Shift+Enter newline; auto-scroll pinned-to-bottom; plain-text-only bubbles for XSS safety) + ChatBox CSS (light/dark theme)
+
+**Wave 3** *(integration + live UAT — blocked on 09-01/09-02/09-03/09-04/09-05)*
+
+- [ ] 09-05-PLAN.md — STUDIO-03/04 published-page wiring: mount.tsx AvatarScene becomes config-driven (preset camera, lighting, scale, offset, bg color/image/transparent) + ChatBox mounted inside KhaveeProvider when chatShow + automatic lip-sync reuse verification (NO new lip-sync code)
+- [ ] 09-06-PLAN.md — STUDIO-02 integration + live UAT: register preview bundle for editor-only enqueue (enqueue_block_editor_assets) in Plugin.php + blocking human-verify checkpoint running the 8-step RESEARCH UAT script (with STUDIO-02 safety as Step 3 critical check)
 
 **UI hint**: yes
 

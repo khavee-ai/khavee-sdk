@@ -288,7 +288,7 @@ Plans:
 
 **Wave 3** *(integration + live UAT — blocked on 09-01/09-02/09-03/09-04/09-05)*
 
-- [ ] 09-05-PLAN.md — STUDIO-03/04 published-page wiring: mount.tsx AvatarScene becomes config-driven (preset camera, lighting, scale, offset, bg color/image/transparent) + ChatBox mounted inside KhaveeProvider when chatShow + automatic lip-sync reuse verification (NO new lip-sync code)
+- [x] 09-05-PLAN.md — STUDIO-03/04 published-page wiring: mount.tsx AvatarScene becomes config-driven (preset camera, lighting, scale, offset, bg color/image/transparent) + ChatBox mounted inside KhaveeProvider when chatShow + automatic lip-sync reuse verification (NO new lip-sync code)
 - [ ] 09-06-PLAN.md — STUDIO-02 integration + live UAT: register preview bundle for editor-only enqueue (enqueue_block_editor_assets) in Plugin.php + blocking human-verify checkpoint running the 8-step RESEARCH UAT script (with STUDIO-02 safety as Step 3 critical check)
 
 **UI hint**: yes
@@ -310,4 +310,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
-| 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 4/6 | In Progress|  |
+| 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |

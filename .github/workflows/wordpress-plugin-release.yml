@@ -5,6 +5,11 @@ on:
     tags:
       - 'wordpress-plugin-v*'
 
+# Default GITHUB_TOKEN is read-only for contents; softprops/action-gh-release
+# needs write access to create the release and upload the zip asset.
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest

@@ -65,3 +65,241 @@
   line-height: 1.5;
   color: #ffffff;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * ChatBox chrome (STUDIO-03, Plan 09-04)
+ * Color tokens (UI-SPEC §Color):
+ *   accent  #2271b1  — user bubble bg + send button (matches Phase-8 CTA button)
+ *   light card bg    rgba(255,255,255,0.92)
+ *   dark  card bg    rgba(30,30,30,0.92)
+ * Spacing tokens (UI-SPEC §Spacing):
+ *   xs=4px  sm=8px  md=16px  lg=24px  touch-target=44px
+ * Typography tokens (UI-SPEC §Typography):
+ *   body   14px/400/1.5
+ *   label  16px/600/1.2
+ *   font-family: inherit on every text-bearing rule (no @font-face)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Card ───────────────────────────────────────────────────────────────────── */
+
+.khaveeai-chat {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 24px; /* lg */
+  border-radius: 4px; /* matches Phase-8 overlay chrome */
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .khaveeai-chat {
+    background: rgba(30, 30, 30, 0.92);
+    color: #f0f0f0;
+  }
+}
+
+/* ── Placement modifiers ─────────────────────────────────────────────────────
+ * Plan 09-05 (mount.tsx) chooses the layout; these modifiers give it the hooks.
+ * --beside: fixed-width flex-column sibling of the avatar canvas.
+ * --below:  full-width panel below the canvas.
+ */
+
+.khaveeai-chat--beside {
+  width: 320px;
+  min-height: 400px;
+}
+
+.khaveeai-chat--below {
+  width: 100%;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.khaveeai-chat__header {
+  padding: 0 0 16px 0; /* md bottom gap before body */
+  font-family: inherit;
+  font-size: 16px; /* label token */
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ── Transcript (scrollable bubble list) ─────────────────────────────────── */
+
+.khaveeai-chat__transcript {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* sm */
+  margin-bottom: 16px; /* md — gap before input row */
+}
+
+/* ── Bubbles ─────────────────────────────────────────────────────────────────
+ * Common shape, then role-specific alignment + colour.
+ */
+
+.khaveeai-chat__bubble {
+  padding: 16px; /* md — inner bubble padding */
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px; /* body token */
+  font-weight: 400;
+  line-height: 1.5;
+  word-break: break-word;
+  max-width: 80%;
+}
+
+/* User: right-aligned, accent bg (UI-SPEC §Color) */
+.khaveeai-chat__bubble--user {
+  align-self: flex-end;
+  background: #2271b1;
+  color: #ffffff;
+}
+
+/* Assistant: left-aligned, neutral translucent bg (UI-SPEC §Color) */
+.khaveeai-chat__bubble--assistant {
+  align-self: flex-start;
+  background: rgba(0, 0, 0, 0.05); /* subtle tint over card bg in light mode */
+  color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  .khaveeai-chat__bubble--assistant {
+    background: rgba(30, 30, 30, 0.92);
+    color: #f0f0f0;
+  }
+}
+
+/* System messages: left-aligned, muted style (uncommonly shown) */
+.khaveeai-chat__bubble--system {
+  align-self: flex-start;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+}
+
+/* ── Input row ───────────────────────────────────────────────────────────────── */
+
+.khaveeai-chat__input-row {
+  display: flex;
+  gap: 4px; /* xs */
+  align-items: flex-end;
+}
+
+/* ── Textarea ────────────────────────────────────────────────────────────────── */
+
+.khaveeai-chat__input {
+  flex: 1;
+  resize: none;
+  min-height: 44px; /* touch-target floor */
+  padding: 8px 12px; /* sm vertical, slightly more horizontal */
+  font-family: inherit;
+  font-size: 14px; /* body token */
+  font-weight: 400;
+  line-height: 1.5;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  box-sizing: border-box;
+}
+
+.khaveeai-chat__input:focus {
+  outline: 2px solid #2271b1;
+  outline-offset: 1px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .khaveeai-chat__input {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #f0f0f0;
+  }
+
+  .khaveeai-chat__input:focus {
+    outline-color: #2271b1;
+  }
+}
+
+/* ── Send button ─────────────────────────────────────────────────────────────── */
+
+.khaveeai-chat__send {
+  min-height: 44px; /* touch-target floor */
+  min-width: 44px;
+  background: #2271b1; /* accent — matches Phase-8 CTA button */
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+
+.khaveeai-chat__send:hover {
+  background: #135e96; /* slightly darker accent on hover */
+}
+
+.khaveeai-chat__send:focus-visible {
+  outline: 2px solid #2271b1;
+  outline-offset: 2px;
+}
+
+/* ── Disconnected state ──────────────────────────────────────────────────────── */
+
+.khaveeai-chat__disconnected {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px; /* md */
+  font-family: inherit;
+  font-size: 14px; /* body token */
+  font-weight: 400;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .khaveeai-chat__disconnected {
+    color: rgba(255, 255, 255, 0.55);
+  }
+}
+
+/* ── Empty connected state ───────────────────────────────────────────────────── */
+
+.khaveeai-chat__empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px; /* md */
+  text-align: center;
+  font-family: inherit;
+}
+
+.khaveeai-chat__empty-heading {
+  font-family: inherit;
+  font-size: 16px; /* label token */
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 8px 0; /* sm bottom gap */
+}
+
+.khaveeai-chat__empty-body {
+  font-family: inherit;
+  font-size: 14px; /* body token */
+  font-weight: 400;
+  line-height: 1.5;
+  margin: 0;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  .khaveeai-chat__empty-body {
+    color: rgba(255, 255, 255, 0.55);
+  }
+}

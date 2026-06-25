@@ -37,18 +37,12 @@ export class JaiTTSAdapter implements TTSProvider {
     }
   ): Promise<void> {
     try {
-      // Compose 60s timeout with caller-supplied signal
-      const timeout = AbortSignal.timeout(60000);
-      const signal = opts.signal
-        ? AbortSignal.any([timeout, opts.signal].filter(Boolean))
-        : timeout;
-
       // POST text to jai-tts
       const response = await fetch(`${this.baseUrl}/synthesize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
-        signal,
+        signal: opts.signal,
       });
 
       if (!response.ok) {

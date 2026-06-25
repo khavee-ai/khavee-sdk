@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 Phase: 08 (frontend-bundle-shortcode-block) — EXECUTING
 Plan: 1 of 5
 Status: Executing Phase 08
-Last activity: 2026-06-25 -- Phase 08 execution started
+Last activity: 2026-06-25 - Completed quick task 260625-sqp: Wire up self-hosted auto-updates for wordpress-plugin via GitHub Releases
 
 Progress: [██████████] 100%
 
@@ -89,6 +89,12 @@ None yet.
 - Phase 7: VRM/GLB Media Library upload needs `upload_mimes` allow-listing AND binary magic-byte validation together — allow-list alone is a known disguised-file-upload vector
 - Phase 8: WordPress core's currently-bundled React version was not verified during research — affects the bundle-isolation-vs-externalization decision; check Gutenberg/WP core changelog before finalizing build config
 - Phase 8: Gutenberg block's `edit()` must use a separate `editorScript`/`viewScript` split — naively mounting the live SPA in the editor fires real mic prompts and OpenAI token mints on every admin keystroke
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260625-sqp | Wire up self-hosted auto-updates for wordpress-plugin via GitHub Releases (Plugin Update Checker + tag-triggered release workflow) | 2026-06-25 | d287f49 | [260625-sqp-wire-up-self-hosted-auto-updates-for-wor](./quick/260625-sqp-wire-up-self-hosted-auto-updates-for-wor/) |
 
 ## Deferred Items
 

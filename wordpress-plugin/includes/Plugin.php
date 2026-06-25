@@ -83,5 +83,54 @@ final class Plugin {
 
 		$block = new AvatarBlock( $renderer );
 		add_action( 'init', array( $block, 'register' ) );
+
+		// Phase 9: enqueue the preview bundle (khaveeai-preview.js) in the
+		// block editor only — never on published pages (Pitfall 5).
+		add_action( 'enqueue_block_editor_assets', array( __CLASS__, 'enqueue_preview_bundle' ) );
+	}
+
+	/**
+	 * Enqueue the safe-preview IIFE (built by esbuild from
+	 * packages/wp-bundle/src/preview.ts) for the Gutenberg block editor only.
+	 *
+	 * Why enqueue_block_editor_assets and NOT the front-end enqueue hook:
+	 *   WordPress core fires enqueue_block_editor_assets exclusively inside the
+	 *   block editor context. Hooking into the front-end enqueue hook instead
+	 *   would load the 400KB+ preview bundle on every published page that contains
+	 *   the block — a site-wide performance regression and a violation of the
+	 *   PERF-01 / Pitfall 5 constraint. The view bundle (khaveeai-bundle.js) stays
+	 *   on the Phase-8 AssetManager::enqueue() path called from
+	 *   AvatarRenderer::render() and is untouched by this method.
+	 *
+	 * Why the dependency array is empty (D-10 full isolation):
+	 *   The preview bundle is an IIFE that bundles its own copy of React 19 and
+	 *   React Three Fiber. It must NOT be wired to wp-element (WP's copy of
+	 *   React 18) or any other WordPress script handle — a version mismatch would
+	 *   silently break the 3D canvas.
+	 *
+	 * STUDIO-02 safety:
+	 *   The preview bundle's import graph structurally excludes
+	 *   OpenAIRealtimeProvider (no getUserMedia, no /wp-json/khaveeai/v1/session
+	 *   call). The build-time grep assertion in packages/wp-bundle/build.mjs
+	 *   enforces this at build time; the Phase-9 UAT Step 3 confirms it
+	 *   behaviourally in a live browser.
+	 *
+	 * @return void
+	 */
+	public static function enqueue_preview_bundle(): void {
+		if ( wp_script_is( 'khaveeai-preview', 'enqueued' ) ) {
+			return; // Idempotent — safe if called more than once.
+		}
+
+		$preview_path = plugin_dir_path( KHAVEEAI_PLUGIN_FILE ) . 'build/khaveeai-preview.js';
+		$version      = file_exists( $preview_path ) ? (string) filemtime( $preview_path ) : KHAVEEAI_VERSION;
+
+		wp_enqueue_script(
+			'khaveeai-preview',
+			plugins_url( 'build/khaveeai-preview.js', KHAVEEAI_PLUGIN_FILE ),
+			array(), // Deliberately empty — D-10 full isolation; bundle owns its own React.
+			$version,
+			array( 'in_footer' => false ) // Load in <head>/<body>, not footer, so mount is prompt.
+		);
 	}
 }

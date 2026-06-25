@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v1.0 Generic Voice Pipeline** - Phases 1-5 (Phase 5 in progress)
-- 🚧 **v2.0 WordPress Plugin (Custom Mode)** - Phases 6-8 (Phase 6 complete)
+- ✅ **v2.0 WordPress Plugin (Custom Mode)** - Phases 6-8 (complete)
+- 🚧 **v2.1 Block Studio (Visual Config, Chat & Lip-Sync)** - Phase 9 (planning)
 
 ## Phases
 
@@ -30,6 +31,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: PHP Backend Core — Config/Token Strategies + REST Contract** - Build the `ConfigSourceInterface`/`TokenProviderInterface` strategy seam and a public, abuse-resistant REST route that mints OpenAI ephemeral tokens server-side (completed 2026-06-23)
 - [x] **Phase 7: Admin Settings Page** - WP Settings API page for API key, instructions, voice, and VRM/GLB avatar upload, reading/writing exclusively through `ConfigSourceInterface` (completed 2026-06-24)
 - [x] **Phase 8: Frontend Bundle, Shortcode & Block** - Bundled React SPA embedding the existing `OpenAIRealtimeProvider` + VRM avatar, surfaced via a shared-render-path shortcode and Gutenberg block, enqueued only where used (completed 2026-06-24)
+
+### v2.1 Block Studio (Visual Config, Chat & Lip-Sync)
+
+- [ ] **Phase 9: Block Studio — Visual Config, Live Preview, Chat & Lip-Sync** - Expand the Gutenberg block with Tier-1 visual/layout config knobs, a safe live 3D editor preview (no mic/token), an integrated ChatBox, and SDK-driven talking (lip-sync) animation
 
 ## Phase Details
 
@@ -256,10 +261,27 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 9: Block Studio — Visual Config, Live Preview, Chat & Lip-Sync
+
+**Goal**: A site owner can style the embedded avatar entirely from the Gutenberg block inspector (size, background, lighting, avatar scale/position, camera preset), see those changes reflected in a live 3D editor preview, and the block ships with an integrated text ChatBox and SDK-driven talking (lip-sync) animation on the published page
+**Depends on**: Phase 8 (existing block, bundle, AvatarRenderer/ConfigSource plumbing, conditional-enqueue render path)
+**Requirements**: STUDIO-01, STUDIO-02, STUDIO-03, STUDIO-04, STUDIO-05
+**Success Criteria** (what must be TRUE):
+
+  1. The block inspector exposes Tier-1 visual/layout controls — container width/height (+ full-width toggle), background color/image, transparent-background overlay toggle, lighting intensity, avatar scale + X/Y offset, and camera preset dropdown (Front/Left Angle/Right Angle/Wide), plus the existing voice/instructions — organized into collapsible panels, each overriding the admin default for that instance only
+  2. The block editor renders a live 3D VRM preview with all visual config applied and WYSIWYG-reactive as the author edits, and it NEVER requests microphone access or mints an OpenAI token while editing (extends Phase 8's EMBED-05 from a static placeholder to a true live preview)
+  3. A configurable ChatBox (show/hide toggle + placement relative to the avatar) is visible in the editor preview and is fully functional (transcript + text input) on the published page
+  4. The avatar exhibits talking animation (SDK lip-sync via `@khaveeai/react`) on the published page while speaking, and the motion is demonstrable in the editor preview without audio (e.g. a "preview talking" toggle)
+  5. All new visual/chat config flows through the existing `data-khaveeai-config` JSON contract via the existing global-default + per-block-override merge — no new transport, no `khavee-app` backend dependency (Custom mode only)
+
+**Plans**: TBD
+
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 (Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other. Phase 8's frontend bundle work can start once Phase 6's REST contract shape is fixed, in parallel with Phase 7, per v2.0 research.)
 
@@ -273,3 +295,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
+| 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 0/TBD | Not started | - |

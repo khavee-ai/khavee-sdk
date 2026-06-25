@@ -8,9 +8,17 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 
 A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage.
 
-## Current Milestone: v2.0 WordPress Plugin (Custom Mode)
+## Current Milestone: v2.1 Block Studio (Visual Config, Chat & Lip-Sync)
 
-**Goal:** Ship a khaveeai WordPress plugin that embeds a voice-chat VRM avatar on any WordPress site, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
+> ✅ v2.0 "WordPress Plugin (Custom Mode)" is complete (Phases 6–8). Its record lives in the "Validated" requirements below.
+
+**Goal:** Turn the embedded Khavee avatar into a fully styleable, previewable Gutenberg block: a site owner sets size, background, lighting, avatar position/scale, and camera from the block inspector with a live 3D editor preview, and the block ships an integrated text ChatBox plus SDK-driven talking (lip-sync) animation — all self-hosted (Custom mode), no `khavee-app` dependency.
+
+**Target features:**
+- Tier-1 visual/layout config controls in the block inspector (per-instance, overriding admin defaults), organized into collapsible panels
+- A safe live 3D editor preview (real VRM + idle animation, config-reactive) that never touches the mic or mints OpenAI tokens
+- An integrated, configurable ChatBox (show/hide + placement), visible in the editor and functional on the published page
+- SDK-driven talking (lip-sync) animation on the published page, with a no-audio motion preview in the editor
 
 **Target features:**
 - `[khaveeai_avatar]` shortcode and a Gutenberg block, both sharing one JS bundle and config shape
@@ -40,6 +48,7 @@ A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calli
 
 ### Active
 
+- [ ] **v2.1 Phase 9 — Block Studio**: visual/layout config controls (size, background, lighting, avatar scale/offset, camera preset), safe live 3D editor preview, integrated ChatBox, and SDK lip-sync talking animation — UI design contract in progress (`/gsd:ui-phase 9`); requirements STUDIO-01..05
 - [ ] khavee-sdk adapter classes (e.g. ThonburianSTTProvider, JaiTTSProvider) implementing the new interfaces, talking to these two services over streaming-chunked HTTP — belongs to the earlier generic-pipeline scope (Phase 5), not v2.0; left "Not started" when v2.0 was prioritized ahead of it
 - [ ] End-to-end demo: generic-stt-tts pipeline using Thonburian STT + an LLM + JaiTTS, proving STT/TTS can come from different, non-OpenAI, mixed vendors with tool-calling working — same Phase 5 scope, still pending
 - [ ] Documentation/examples showing how a beginner wires up a custom STT/TTS vendor and registers a tool — same Phase 5 scope, still pending
@@ -112,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-25 — Phase 8 complete (frontend bundle, shortcode, Gutenberg block). All four v2.0 "WordPress Plugin (Custom Mode)" target features are now done. Note: Phase 5 (End-to-End Mixed-Vendor Demo & Documentation) remains "Not started" — it belongs to the earlier generic-pipeline scope, not v2.0, and was left pending when v2.0 was prioritized ahead of it.*
+*Last updated: 2026-06-25 — v2.0 "WordPress Plugin (Custom Mode)" complete (Phases 6–8). Starting v2.1 "Block Studio" (Phase 9): visual config controls + live editor preview + ChatBox + lip-sync. Note: Phase 5 (End-to-End Mixed-Vendor Demo & Documentation) remains "Not started" — it belongs to the earlier generic-pipeline scope, left pending when v2.0 was prioritized ahead of it.*

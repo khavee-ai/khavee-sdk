@@ -61,6 +61,16 @@ Deferred to future release. Tracked but not in current roadmap.
 - **MULTI-03**: Usage/conversation analytics dashboard inside the plugin
 - **MULTI-04**: Multi-tab settings UI (revisit once field count grows, e.g. when Platform mode adds a distinct mode-selection tab)
 
+## v2.1 Requirements
+
+### Block Studio (Visual Config, Live Preview, Chat & Lip-Sync)
+
+- [ ] **STUDIO-01**: Site owner can set container width/height (+ full-width toggle), background (color or Media-Library image, with a transparent-background overlay mode), lighting intensity, avatar scale + X/Y offset, and camera preset (Front/Left Angle/Right Angle/Wide) from the block inspector — each overriding the admin default for that instance only, organized into collapsible panels
+- [ ] **STUDIO-02**: The block editor renders a live 3D VRM preview with all visual config applied, WYSIWYG-reactive as the author edits, and never requests microphone access or mints an OpenAI token while editing (a true live preview, extending Phase 8's static placeholder per EMBED-05)
+- [ ] **STUDIO-03**: A configurable ChatBox (show/hide toggle + placement relative to the avatar) is visible in the editor preview and is fully functional (transcript + text input) on the published page
+- [ ] **STUDIO-04**: The avatar exhibits SDK-driven talking (lip-sync) animation on the published page while speaking, and the motion is demonstrable in the editor preview without audio
+- [ ] **STUDIO-05**: All new visual/chat config flows through the existing `data-khaveeai-config` JSON contract via the existing global-default + per-block-override merge — no new transport and no `khavee-app` backend dependency (Custom mode only)
+
 ## Out of Scope
 
 Explicitly excluded. Documented to prevent scope creep.
@@ -101,6 +111,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REST-04 | Phase 6 | Complete |
 | ASSET-01 | Phase 7 | Pending |
 | PERF-01 | Phase 8 | Complete |
+| STUDIO-01 | Phase 9 | Pending |
+| STUDIO-02 | Phase 9 | Pending |
+| STUDIO-03 | Phase 9 | Pending |
+| STUDIO-04 | Phase 9 | Pending |
+| STUDIO-05 | Phase 9 | Pending |
 | ARCH-01 | Phase 6 | Complete |
 | ARCH-02 | Phase 6 | Complete |
 

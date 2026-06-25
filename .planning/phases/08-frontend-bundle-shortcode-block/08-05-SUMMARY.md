@@ -115,6 +115,18 @@ None - no external service configuration required. This is a pure code-level fix
 - The remaining verification from the plan — live UAT Test 1 re-run against the wp-env Docker instance (clicking "Click to talk" mints a session and connects without `{"error":"session_unavailable"}`, and `debug.log` stops accruing new `HTTP 400` mint failures) — requires a live browser + wp-env environment outside this worktree's automated scope. This is the orchestrator's/user's responsibility to re-run as the final UAT confirmation; the code-level root cause is fixed and proven via the live curl reproduction already documented in `.planning/debug/session-unavailable-error.md` (identical payload minus `temperature` returned HTTP 200 with a valid ephemeral token).
 - No changes were made to `OpenAiDirectTokenProvider.php`, `SessionController.php`, the `RealtimeConfig` type, or any `openai-stt-tts` file, per the plan's explicit constraints.
 
+## Self-Check: PASSED
+
+- FOUND: packages/providers/openai-realtime/vitest.config.ts
+- FOUND: packages/providers/openai-realtime/postcss.config.mjs
+- FOUND: packages/providers/openai-realtime/src/__tests__/OpenAIRealtimeProvider.proxy.test.ts
+- FOUND: .planning/phases/08-frontend-bundle-shortcode-block/08-05-SUMMARY.md
+- FOUND commit: 5c84f40 (test)
+- FOUND commit: 3a522de (fix)
+- FOUND commit: 84a5d25 (docs/summary)
+- Verified `buildProxySessionConfig` exists in OpenAIRealtimeProvider.ts and is called from connect()
+- Verified `pnpm exec vitest run` passes (4/4) and `pnpm exec tsc --noEmit` is clean
+
 ---
 *Phase: 08-frontend-bundle-shortcode-block*
 *Completed: 2026-06-25*

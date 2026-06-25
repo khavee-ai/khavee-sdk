@@ -137,60 +137,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       const usingProxy = Boolean(this.config.useProxy && proxyEndpoint);
 
       if (usingProxy && proxyEndpoint) {
-        const sessionConfig: any = {
-          type: "realtime" as const,
-          model: this.config.model || "gpt-realtime-1.5",
-          instructions:
-            this.config.instructions || "You are a helpful AI assistant.",
-          temperature: this.config.temperature ?? 0.8,
-          output_modalities: ["audio"] as const,
-          audio: {
-            input: {
-              transcription: {
-                model: "gpt-4o-transcribe",
-                language: this.config.language || "en",
-              },
-            },
-            output: {
-              format: {
-                type: "audio/pcm" as const,
-                rate: 24000 as const,
-              },
-              voice: this.config.voice || "alloy",
-              speed: this.config.speed || 1.0,
-            },
-          },
-        };
-
-        // If tools are configured locally, include their function descriptions
-        // in the sessionConfig so the proxy/OpenAI session can register them.
-        if (this.config.tools && this.config.tools.length > 0) {
-          const tools = this.config.tools.map((tool) => {
-            const properties: any = {};
-            const requiredFields: string[] = [];
-
-            Object.entries(tool.parameters).forEach(
-              ([key, param]: [string, any]) => {
-                const { required, ...paramSchema } = param;
-                properties[key] = paramSchema;
-                if (required === true) requiredFields.push(key);
-              },
-            );
-
-            return {
-              type: "function",
-              name: tool.name,
-              description: tool.description,
-              parameters: {
-                type: "object",
-                properties,
-                required: requiredFields,
-              },
-            };
-          });
-
-          sessionConfig.tools = tools;
-        }
+        const sessionConfig = this.buildProxySessionConfig();
 
         const tokenRes = await fetch(proxyEndpoint, {
           method: "POST",
@@ -374,6 +321,72 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
    */
   getSessionId(): string | null {
     return this.sessionId;
+  }
+
+  /**
+   * Build the sessionConfig object POSTed to the proxy endpoint when
+   * useProxy+proxyEndpoint are set. Extracted from connect() so it can be
+   * exercised directly by a regression test (see Task 1 of 08-05).
+   */
+  private buildProxySessionConfig(): any {
+    const sessionConfig: any = {
+      type: "realtime" as const,
+      model: this.config.model || "gpt-realtime-1.5",
+      instructions:
+        this.config.instructions || "You are a helpful AI assistant.",
+      // (gap 08-05) OpenAI's /v1/realtime/client_secrets schema rejects
+      // session-level temperature — confirmed via live 400
+      // "Unknown parameter: session.temperature".
+      output_modalities: ["audio"] as const,
+      audio: {
+        input: {
+          transcription: {
+            model: "gpt-4o-transcribe",
+            language: this.config.language || "en",
+          },
+        },
+        output: {
+          format: {
+            type: "audio/pcm" as const,
+            rate: 24000 as const,
+          },
+          voice: this.config.voice || "alloy",
+          speed: this.config.speed || 1.0,
+        },
+      },
+    };
+
+    // If tools are configured locally, include their function descriptions
+    // in the sessionConfig so the proxy/OpenAI session can register them.
+    if (this.config.tools && this.config.tools.length > 0) {
+      const tools = this.config.tools.map((tool) => {
+        const properties: any = {};
+        const requiredFields: string[] = [];
+
+        Object.entries(tool.parameters).forEach(
+          ([key, param]: [string, any]) => {
+            const { required, ...paramSchema } = param;
+            properties[key] = paramSchema;
+            if (required === true) requiredFields.push(key);
+          },
+        );
+
+        return {
+          type: "function",
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: "object",
+            properties,
+            required: requiredFields,
+          },
+        };
+      });
+
+      sessionConfig.tools = tools;
+    }
+
+    return sessionConfig;
   }
 
   /**

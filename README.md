@@ -1,762 +1,140 @@
-# 🎭 Khavee AI - VRM Avatar SDK
+# Khavee SDK
 
-**Transform VRM 3D avatars into interactive AI characters with expressions, animations, and voice.**
+A TypeScript toolkit for building voice-driven 3D avatars (VRM or GLB) in React, with a vendor-neutral voice pipeline: **VAD → Speech-to-Text → LLM → Text-to-Speech**, each stage independently swappable.
 
-Build immersive AI experiences with realistic 3D avatars that can talk, express emotions, and respond intelligently to users.
+You can either drop in a single pre-built, OpenAI-only `RealtimeProvider`, or compose your own pipeline from any mix of vendors — including non-OpenAI STT/TTS services — using the same React components either way.
 
-[![NPM Version](https://img.shields.io/npm/v/@khaveeai/react)](https://www.npmjs.com/package/@khaveeai/react)
-[![License](https://img.shields.io/npm/l/@khaveeai/react)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue)](https://www.typescriptlang.org/)
+This repo is a pnpm monorepo containing the SDK packages plus a Next.js demo app you can run locally to see everything working.
 
----
+## Packages
 
-## ✨ Features
+| Package | What it is |
+|---|---|
+| [`@khaveeai/core`](packages/core) | Shared TypeScript interfaces every other package implements. No React, no UI. Start here to understand the contracts. |
+| [`@khaveeai/react`](packages/react) | `KhaveeProvider`, `VRMAvatar`, `GLBAvatar`, `useRealtime()` — renders and animates the avatar, automatically, from whatever `RealtimeProvider` you give it. |
+| [`@khaveeai/providers-generic-stt-tts`](packages/providers/generic-stt-tts) | **The flagship "swap any vendor" package.** `GenericPipelineProvider` composes a VAD + STT + LLM + TTS adapter — mix OpenAI with non-OpenAI vendors freely. |
+| [`@khaveeai/providers-openai-realtime`](packages/providers/openai-realtime) | Full-duplex WebRTC connection directly to OpenAI's Realtime API. One continuous session — no separate STT/LLM/TTS stages, OpenAI-only by design. |
+| [`@khaveeai/providers-openai-stt-tts`](packages/providers/openai-stt-tts) | Turn-based VAD→STT→Chat→TTS pipeline, hardcoded to OpenAI. The OpenAI-only precursor to `generic-stt-tts` — kept as-is for existing consumers. |
+| [`@khaveeai/providers-mock`](packages/providers/mock) | `MockLLM`/`MockTTS` — canned responses for offline testing. Implements an older, separate interface; doesn't plug into the avatar pipeline directly (see its README). |
+| [`@khaveeai/providers-pgvector`](packages/providers/pgvector) | Vector-store provider backed by Postgres + pgvector, for RAG. |
+| [`@khaveeai/providers-rag`](packages/providers/rag) | Composes a vector store + an LLM into retrieval-augmented generation, exposes a tool-calling-ready `createRAGTool()`. |
+| [`@khaveeai/wp-bundle`](packages/wp-bundle) | Internal-only. Bundles the avatar for embedding in WordPress. You don't need this unless you're working on the WordPress plugin. |
 
-- 🎤 **Real-time Voice Chat** - OpenAI Realtime API with WebRTC (no backend needed)
-- 👄 **Automatic Lip Sync** - MFCC-based phoneme detection syncs with AI speech
-- 💬 **Talking Animations** - Auto-plays gestures during AI conversations
-- 🎨 **Facial Expressions** - Control 30+ VRM expressions with smooth transitions
-- 💃 **Body Animations** - Load FBX/GLB animations or full GLB models via simple URLs
-- 🔍 **RAG Support** - Built-in vector search with Qdrant for knowledge bases
-- 👁️ **Natural Blinking** - Randomized blinking for lifelike avatars
-- 🛠️ **Function Calling** - OpenAI tools for custom functions and RAG
-- 🎯 **Simple API** - URL-based animations, no complex setup
-- 📦 **Provider System** - Plug-and-play OpenAI Realtime, Mock, or custom providers
-- 🎭 **Auto-Remapping** - Mixamo animations work out of the box
-- 💪 **TypeScript** - Full type safety and IntelliSense support
-- ⚡ **React Three Fiber** - Built on the industry-standard 3D React framework
+Each package's own README has the full API reference, config options, and gotchas — this file is the map and the fastest path to a working "hello world."
 
----
+## Install
 
-## 📦 Installation
-
-### Required Dependencies
-
-First, install the core 3D rendering libraries:
+This is a pnpm workspace.
 
 ```bash
-npm install three @react-three/fiber @react-three/drei
-# or
-pnpm add three @react-three/fiber @react-three/drei
-# or
-yarn add three @react-three/fiber @react-three/drei
+git clone <this repo>
+cd khavee-sdk
+pnpm install
+pnpm run build:packages   # builds packages/core, packages/react, packages/providers/*
 ```
 
-### Install Khavee AI SDK
+If you're consuming the SDK from a separate app (not this monorepo), install only what you need:
 
 ```bash
-npm install @khaveeai/react @khaveeai/core
-# or
-pnpm add @khaveeai/react @khaveeai/core
-# or
-yarn add @khaveeai/react @khaveeai/core
+npm install @khaveeai/core @khaveeai/react three @react-three/fiber @react-three/drei
+# plus whichever provider package(s) you're using, e.g.:
+npm install @khaveeai/providers-generic-stt-tts
 ```
 
-### Optional: Provider Packages
+`@khaveeai/react` renders 3D with `three`/`@react-three/fiber`/`@react-three/drei` — these are peer dependencies you provide yourself.
 
-```bash
-# For OpenAI Realtime API (voice chat + lip sync)
-npm install @khaveeai/providers-openai-realtime
+## Two ways to build a voice pipeline
 
-# For RAG (Retrieval-Augmented Generation)
-npm install @khaveeai/providers-rag
+**1. A single pre-built provider** — fastest to start, locked to OpenAI:
 
-# For development/testing (no API keys needed)
-npm install @khaveeai/providers-mock
-```
+- `OpenAIRealtimeProvider` (`@khaveeai/providers-openai-realtime`) — full-duplex WebRTC, lowest latency, no separate pipeline stages.
+- `OpenAISTTTTSProvider` (`@khaveeai/providers-openai-stt-tts`) — turn-based, also OpenAI-only.
 
-### Peer Dependencies
+**2. Compose your own pipeline** — use this if you want anything other than 100% OpenAI:
 
-The SDK requires these peer dependencies (most React projects already have them):
+- `GenericPipelineProvider` (`@khaveeai/providers-generic-stt-tts`) takes a `{ vad, stt, llm, tts }` config, where each one is any class implementing the matching interface from `@khaveeai/core` (`VADProvider` / `STTProvider` / `LLMProvider` / `TTSProvider`). Ready-made OpenAI-backed adapters ship in the same package, but you can write your own adapter for any vendor — see [`packages/providers/generic-stt-tts/README.md`](packages/providers/generic-stt-tts/README.md) for the exact interface shapes and a from-scratch adapter example.
 
-```json
-{
-  "react": "^18.0.0 || ^19.0.0",
-  "react-dom": "^18.0.0 || ^19.0.0",
-  "three": "^0.160.0"
-}
-```
+Both approaches implement the same `RealtimeProvider` interface, so `@khaveeai/react`'s components and hooks work identically either way — you can switch pipelines later without touching your UI code.
 
----
-
-## 🚀 Quick Start
-
-### Basic VRM Avatar
+## Quick start
 
 ```tsx
 import { Canvas } from '@react-three/fiber';
-import { KhaveeProvider, VRMAvatar } from '@khaveeai/react';
-
-export default function App() {
-  return (
-    <KhaveeProvider>
-      <Canvas>
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} />
-        
-        <VRMAvatar 
-          src="/models/character.vrm"
-          position={[0, -1, 0]}
-        />
-      </Canvas>
-    </KhaveeProvider>
-  );
-}
-```
-
-### With Animations
-
-```tsx
-const animations = {
-  idle: '/animations/idle.fbx',        // Auto-plays on load (FBX)
-  walk: '/animations/walk.glb',        // GLB with animation
-  dance: '/animations/dance.fbx',
-  talking: '/animations/talking.glb',  // Played during AI speech (GLB)
-  gesture1: '/animations/gesture.fbx'  // Also played during speech
-};
-
-function App() {
-  return (
-    <KhaveeProvider>
-      <Canvas>
-        <VRMAvatar 
-          src="/models/character.vrm"
-          animations={animations}
-          enableBlinking={true}              // Natural blinking
-          enableTalkingAnimations={true}     // Gestures during speech
-        />
-      </Canvas>
-    </KhaveeProvider>
-  );
-}
-```
-
-**Note:** Animations with 'talk', 'gesture', or 'speak' in the name are automatically played randomly when the AI is speaking.
-
-### GLB Models with Embedded Animations
-
-For GLB files that contain both model AND animations in one file:
-
-```tsx
-import { GLBAvatar, useAnimations } from '@khaveeai/react';
-
-function Controls() {
-  const { animate, availableAnimations } = useAnimations();
-  
-  return (
-    <div>
-      <h3>Animations ({availableAnimations.length})</h3>
-      {availableAnimations.map(name => (
-        <button key={name} onClick={() => animate(name)}>
-          {name}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function App() {
-  return (
-    <KhaveeProvider>
-      <Canvas>
-        <GLBAvatar 
-          src="/models/dragon.glb"
-          autoPlayAnimation="idle"
-          position={[0, 0, 0]}
-        />
-      </Canvas>
-      <Controls />
-    </KhaveeProvider>
-  );
-}
-```
-
-### With OpenAI Realtime (Voice Chat + Lip Sync)
-
-```tsx
-"use client";
 import { KhaveeProvider, VRMAvatar, useRealtime } from '@khaveeai/react';
 import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
-import { Canvas } from '@react-three/fiber';
-import { useMemo } from 'react';
 
-function ChatInterface() {
-  const { 
-    isConnected, 
-    connect, 
-    disconnect, 
-    sendMessage,
-    conversation,
-    chatStatus 
-  } = useRealtime();
+const provider = new OpenAIRealtimeProvider({
+  useProxy: true,
+  proxyEndpoint: '/api/negotiate', // your backend route, holds the real API key
+  voice: 'shimmer',
+  instructions: 'You are a friendly AI assistant.',
+});
 
+function Chat() {
+  const { connect, disconnect, isConnected, conversation, sendMessage } = useRealtime();
   return (
     <div>
-      {!isConnected ? (
-        <button onClick={connect}>🎤 Start Voice Chat</button>
-      ) : (
-        <div>
-          <div>Status: {chatStatus}</div>
-          <button onClick={() => sendMessage('Hello!')}>Say Hello</button>
-          <button onClick={disconnect}>Disconnect</button>
-          
-          {/* Conversation history */}
-          {conversation.map((msg, i) => (
-            <div key={i}>{msg.role}: {msg.text}</div>
-          ))}
-        </div>
-      )}
+      <button onClick={isConnected ? disconnect : connect}>
+        {isConnected ? 'Disconnect' : 'Connect'}
+      </button>
+      {conversation.map((m) => <p key={m.id}>{m.role}: {m.text}</p>)}
     </div>
   );
 }
 
 export default function App() {
-  // Memoize provider to prevent recreation
-  const realtime = useMemo(() => 
-    new OpenAIRealtimeProvider({
-      apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-      voice: 'coral',
-      instructions: 'You are a helpful AI assistant.',
-    }), []
-  );
-
   return (
-    <KhaveeProvider config={{ realtime }}>  
-      <Canvas>
-        {/* Lip sync happens automatically! */}
-        <VRMAvatar src="/models/character.vrm" />
+    <KhaveeProvider config={{ realtime: provider }}>
+      <Canvas camera={{ position: [0, 1.5, 3] }}>
+        <ambientLight intensity={0.5} />
+        <VRMAvatar src="/models/your-avatar.vrm" />
       </Canvas>
-      <ChatInterface />
+      <Chat />
     </KhaveeProvider>
   );
 }
 ```
 
-**✨ Automatic Features:**
-- Lip sync with MFCC phoneme detection
-- Talking animations during speech
-- Natural blinking
-- WebRTC connection (no backend needed)
+`VRMAvatar` automatically lip-syncs, blinks, and plays talking animations while the AI speaks — none of that is wired up manually. Swap `provider` for a `GenericPipelineProvider` and this code doesn't change.
 
----
+Never embed a real API key directly in browser code (`apiKey` config fields exist for local dev only) — route through a backend proxy endpoint that holds the secret server-side, as shown above.
 
-## 🎨 Control Expressions
+## See a real cross-vendor pipeline running
 
-```tsx
-import { useVRMExpressions } from '@khaveeai/react';
+`src/app/generic-demo/page.tsx` in this repo is a complete working example that mixes vendors in one pipeline: OpenAI for VAD and the LLM, plus two custom HTTP adapters — `ThonburianSTTAdapter` (a local Thai Whisper STT service) and `JaiTTSAdapter` (a local Thai voice-cloning TTS service) — both implementing the plain `STTProvider`/`TTSProvider` interfaces from `@khaveeai/core` in well under 100 lines each. See `src/app/generic-demo/README.md` for how to run the two local backend services and try it yourself.
 
-function ExpressionControls() {
-  const { setExpression, resetExpressions, setMultipleExpressions } = useVRMExpressions();
+## Avatar rendering: VRM vs GLB
 
-  return (
-    <div>
-      {/* Single expression */}
-      <button onClick={() => setExpression('happy', 1)}>
-        😊 Happy
-      </button>
-      
-      {/* Partial intensity */}
-      <button onClick={() => setExpression('happy', 0.5)}>
-        🙂 Slightly Happy
-      </button>
-      
-      {/* Multiple expressions */}
-      <button onClick={() => setMultipleExpressions({
-        happy: 0.8,
-        surprised: 0.4
-      })}>
-        😲 Excited
-      </button>
-      
-      {/* Reset all */}
-      <button onClick={() => resetExpressions()}>
-        😐 Neutral
-      </button>
-    </div>
-  );
-}
-```
+- `VRMAvatar` (`.vrm` files) — drives standard VRM mouth blendshapes (`aa`/`ih`/`ou`/`ee`/`oh`) directly from phoneme detection on the TTS audio, for real lip-sync.
+- `GLBAvatar` (`.glb`/`.gltf` files) — most GLB exports don't have standard mouth blendshapes, so instead it switches between animation clips named with `talk`/`gesture`/`speak` while the AI is speaking. Different mechanism, same automatic behavior.
 
----
+Both live in `@khaveeai/react` — see its README for full props and the `useRealtime()`/`useVRMExpressions()` hooks.
 
-## 💃 Play Animations
+## Tool-calling (function calling)
 
-```tsx
-import { useVRMAnimations } from '@khaveeai/react';
+Tools are plain JavaScript objects — no schema library required:
 
-function AnimationControls() {
-  const { animate, stopAnimation, currentAnimation } = useVRMAnimations();
-
-  return (
-    <div>
-      <button onClick={() => animate('walk')}>
-        🚶 Walk
-      </button>
-      <button onClick={() => animate('dance')}>
-        💃 Dance
-      </button>
-      <button onClick={() => animate('idle')}>
-        🧍 Idle
-      </button>
-      <button onClick={() => stopAnimation()}>
-        ⏹️ Stop
-      </button>
-      
-      <p>Current: {currentAnimation || 'none'}</p>
-    </div>
-  );
-}
-```
-
----
-
-## 🗂️ Project Structure
-
-```
-your-project/
-├── public/
-│   ├── models/
-│   │   └── character.vrm          # Your VRM model
-│   └── animations/
-│       ├── idle.fbx               # Mixamo animations
-│       ├── walk.fbx
-│       └── dance.fbx
-├── src/
-│   ├── app/
-│   │   └── page.tsx               # Your main component
-│   └── ...
-└── package.json
-```
-
----
-
-## 📚 API Reference
-
-### Components
-
-#### `<KhaveeProvider>`
-
-Root provider that manages VRM state and optional LLM/TTS configuration.
-
-```tsx
-<KhaveeProvider config={config}>
-  {children}
-</KhaveeProvider>
-```
-
-**Props:**
-- `config?` - Optional LLM/TTS provider configuration
-- `children` - React children
-
-#### `<VRMAvatar>`
-
-Renders a VRM 3D character with animations and expressions.
-
-```tsx
-<VRMAvatar
-  src="/models/character.vrm"
-  animations={animations}
-  position={[0, -1, 0]}
-  rotation={[0, Math.PI, 0]}
-  scale={[1, 1, 1]}
-  enableBlinking={true}
-  enableTalkingAnimations={true}
-/>
-```
-
-**Props:**
-- `src` - URL to VRM model file (required)
-- `animations?` - Animation configuration (URLs to FBX or GLB files)
-- `position?` - 3D position `[x, y, z]` (default: `[0, 0, 0]`)
-- `rotation?` - 3D rotation `[x, y, z]` (default: `[0, Math.PI, 0]`)
-- `scale?` - 3D scale `[x, y, z]` (default: `[1, 1, 1]`)
-- `enableBlinking?` - Enable natural blinking (default: `true`)
-- `enableTalkingAnimations?` - Enable gestures during AI speech (default: `true`)
-
----
-
-### Hooks
-
-#### `useVRMExpressions()`
-
-Control facial expressions with smooth transitions.
-
-```tsx
-const { 
-  expressions,           // Current expression values
-  setExpression,         // Set single expression
-  resetExpressions,      // Reset all to neutral
-  setMultipleExpressions // Set multiple at once
-} = useVRMExpressions();
-```
-
-**Example:**
-```tsx
-setExpression('happy', 1);              // Full happiness
-setExpression('happy', 0.5);            // Partial
-setMultipleExpressions({                // Multiple
-  happy: 0.8,
-  surprised: 0.3
-});
-resetExpressions();                     // Reset all
-```
-
-#### `useVRMAnimations()`
-
-Play and control body animations.
-
-```tsx
-const { 
-  animate,              // Play animation by name
-  stopAnimation,        // Stop all animations
-  currentAnimation      // Currently playing animation name
-} = useVRMAnimations();
-```
-
-**Example:**
-```tsx
-animate('walk');       // Play walk animation
-animate('dance');      // Play dance animation
-stopAnimation();       // Stop all
-```
-
-#### `useRealtime()`
-
-Real-time voice chat with OpenAI Realtime API.
-
-```tsx
-const { 
-  isConnected,
-  connect,
-  disconnect,
-  sendMessage,
-  conversation,
-  chatStatus,
-  currentPhoneme,  // Current phoneme for lip sync
-  interrupt        // Interrupt AI speech
-} = useRealtime();
-
-// Usage
-await connect();              // Start voice chat
-await sendMessage('Hello!');  // Send text message
-interrupt();                   // Stop AI from speaking
-await disconnect();            // End session
-```
-
-**Chat Status Values:**
-- `stopped` - Not connected
-- `ready` - Connected, waiting
-- `listening` - User is speaking
-- `thinking` - AI is processing
-- `speaking` - AI is responding
-
-#### `useAudioLipSync()`
-
-Analyze audio files for lip sync (separate from realtime).
-
-```tsx
-const { 
-  analyzeLipSync, 
-  stopLipSync, 
-  isAnalyzing,
-  currentPhoneme 
-} = useAudioLipSync();
-
-// Usage
-await analyzeLipSync('/audio/speech.wav', {
-  sensitivity: 0.8,
-  intensityMultiplier: 3.0
+```ts
+provider.registerFunction({
+  name: 'get_weather',
+  description: 'Get current weather for a city',
+  parameters: { city: { type: 'string', required: true } },
+  execute: async ({ city }) => ({ success: true, message: `Sunny in ${city}` }),
 });
 ```
 
-#### `useVRM()`
+This works the same way across `OpenAIRealtimeProvider`, `OpenAISTTTTSProvider`, and `GenericPipelineProvider`.
 
-Access the raw VRM instance for advanced use cases.
+## Known issues
 
-```tsx
-const vrm = useVRM();
+- **`@khaveeai/providers-openai-realtime`'s proxy contract.** The provider's `connect()` expects a proxy endpoint that returns an ephemeral session token; the example negotiate route in this repo (`src/app/api/negotiate/route.ts`) predates that contract and returns a different shape. If you copy the demo route as-is, verify it against the provider's actual `connect()` implementation first.
 
-if (vrm) {
-  console.log('VRM loaded:', vrm.meta.name);
-}
+## Development
+
+```bash
+pnpm install
+pnpm run dev            # Next.js demo app at localhost:3000
+pnpm run dev:packages   # watch-build all SDK packages
+pnpm run build:packages
+pnpm run lint
 ```
-
-#### `useKhavee()`
-
-Access all SDK functionality at once.
-
-```tsx
-const { 
-  vrm,
-  setExpression,
-  animate,
-  // ... all functions
-} = useKhavee();
-```
-
----
-
-## 🎯 Common Patterns
-
-### Real-time Voice Chat with Expressions
-
-```tsx
-function VoiceChat() {
-  const { isConnected, connect, chatStatus } = useRealtime();
-  const { setExpression } = useVRMExpressions();
-
-  // Set expressions based on chat status
-  useEffect(() => {
-    if (chatStatus === 'listening') {
-      setExpression('surprised', 0.3);
-    } else if (chatStatus === 'thinking') {
-      setExpression('neutral', 1);
-    } else if (chatStatus === 'speaking') {
-      setExpression('happy', 0.7);
-    }
-  }, [chatStatus]);
-
-  return (
-    <button onClick={connect} disabled={isConnected}>
-      🎤 Start Voice Chat
-    </button>
-  );
-}
-```
-
-### Animation + Expression Combo
-
-```tsx
-function DanceWithJoy() {
-  const { animate } = useVRMAnimations();
-  const { setExpression } = useVRMExpressions();
-
-  const danceHappily = () => {
-    animate('dance');
-    setExpression('happy', 1);
-  };
-
-  return <button onClick={danceHappily}>Dance!</button>;
-}
-```
-
-### Text Input with Voice Response
-
-```tsx
-function TextChat() {
-  const { sendMessage, conversation, chatStatus } = useRealtime();
-  const [input, setInput] = useState('');
-
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    await sendMessage(input);
-    setInput('');
-  };
-
-  return (
-    <div>
-      <div className="messages">
-        {conversation.map((msg, i) => (
-          <div key={i}>
-            <strong>{msg.role}:</strong> {msg.text}
-          </div>
-        ))}
-      </div>
-      
-      <input 
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-        disabled={chatStatus === 'speaking'}
-      />
-      <button onClick={handleSend}>Send</button>
-    </div>
-  );
-}
-```
-
----
-
-## 🔌 Providers
-
-### OpenAI Realtime Provider (Recommended)
-
-Real-time voice chat with automatic lip sync:
-
-```tsx
-import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
-import { useMemo } from 'react';
-
-function App() {
-  const realtime = useMemo(() => 
-    new OpenAIRealtimeProvider({
-      apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-      voice: 'coral',  // or: alloy, echo, sage, shimmer
-      instructions: 'You are a helpful AI assistant.',
-      temperature: 0.8,
-      tools: []  // Optional: Add RAG or custom functions
-    }), []
-  );
-
-  return (
-    <KhaveeProvider config={{ realtime }}>  
-      {/* Your app */}
-    </KhaveeProvider>
-  );
-}
-```
-
-### RAG Provider
-
-Add knowledge base search to your AI:
-
-```tsx
-// app/lib/rag.ts (server-side)
-"use server";
-import { RAGProvider } from '@khaveeai/providers-rag';
-
-export async function searchKnowledgeBase(query: string) {
-  const rag = new RAGProvider({
-    qdrantUrl: process.env.QDRANT_URL!,
-    qdrantApiKey: process.env.QDRANT_API_KEY,
-    collectionName: process.env.QDRANT_COLLECTION!,
-    openaiApiKey: process.env.OPENAI_API_KEY!,
-  });
-  return await rag.search(query);
-}
-
-// app/page.tsx (client-side)
-"use client";
-const realtime = new OpenAIRealtimeProvider({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  tools: [
-    {
-      name: 'search_knowledge_base',
-      description: 'Search the knowledge base',
-      parameters: {
-        query: { type: 'string', description: 'Search query', required: true }
-      },
-      execute: async (args) => await searchKnowledgeBase(args.query)
-    }
-  ]
-});
-```
-
-### Mock Provider (Development)
-
-Perfect for testing without API keys:
-
-```tsx
-import { MockLLM, MockTTS } from '@khaveeai/providers-mock';
-
-const config = {
-  llm: new MockLLM(),
-  tts: new MockTTS(),
-};
-
-<KhaveeProvider config={config}>
-  {/* Test your UI without API costs */}
-</KhaveeProvider>
-```
-
----
-
-## 🎨 Where to Get Assets
-
-### VRM Models
-- [VRoid Hub](https://hub.vroid.com/) - Free VRM characters
-- [VRoid Studio](https://vroid.com/en/studio) - Create your own
-- [Booth.pm](https://booth.pm/) - Buy premium models
-
-### Mixamo Animations
-1. Go to [Mixamo](https://www.mixamo.com/)
-2. Select any animation
-3. Download as **FBX** format
-4. No skeleton, just animation
-5. Use the URL in your `animations` config
-
-**Recommended Animations:**
-- Idle → Breathing Idle
-- Walk → Walking
-- Dance → Hip Hop Dancing, Swing Dancing
-- Talk → Talking with Hands
-- Wave → Waving
-
----
-
-## 🛠️ Troubleshooting
-
-### VRM not rendering?
-
-**Check these:**
-1. ✅ VRM file is valid (test in [VRoid Hub](https://hub.vroid.com/))
-2. ✅ Wrapped in `<Canvas>` from `@react-three/fiber`
-3. ✅ Wrapped in `<KhaveeProvider>`
-4. ✅ Lights added to scene (`<ambientLight>`, `<directionalLight>`)
-
-### Animations not playing?
-
-**Check these:**
-1. ✅ FBX files are from Mixamo
-2. ✅ Downloaded as **FBX** (not BVH)
-3. ✅ "Without Skin" option selected
-4. ✅ URLs are correct and accessible
-5. ✅ Animation name matches config key
-
-### Expressions not working?
-
-**Check these:**
-1. ✅ VRM model has expression support
-2. ✅ Expression names are correct (check VRM in VRoid Hub)
-3. ✅ Values between 0 and 1
-4. ✅ Called inside component wrapped by `<KhaveeProvider>`
-
-### LLM/Voice not working?
-
-**Check these:**
-1. ✅ Provider configured in `<KhaveeProvider config={...}>`
-2. ✅ API keys are valid
-
----
-
-## 📖 Full Documentation
-
-- [API Reference](./docs/API_REFERENCE.md) - Complete API docs
-- [Examples](./src/app/khavee-example/) - Working examples
-- [Function Documentation](./COMPLETE_FUNCTION_DOCS.md) - All functions documented
-- [IntelliSense Guide](./INTELLISENSE_PREVIEW.md) - IDE integration guide
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
-
----
-
-## 📄 License
-
-MIT © [Khavee AI](https://github.com/SolveServeSolution/khaveeai-sdk)
-
----
-
-## 🌟 Examples
-
-Check out our [example app](./src/app/khavee-example/) to see:
-- ✅ Expression controls
-- ✅ Animation panel
-- ✅ LLM chat integration
-- ✅ Voice synthesis
-- ✅ Combined interactions
-
----
-
-## 💬 Support
-
-- 📧 Email: support@khaveeai.com
-- 💬 Discord: [Join our community](https://discord.gg/khaveeai)
-- 🐛 Issues: [GitHub Issues](https://github.com/SolveServeSolution/khaveeai-sdk/issues)
-
----
-
-**Built with ❤️ by the Khavee AI Team**

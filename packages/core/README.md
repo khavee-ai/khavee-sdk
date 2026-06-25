@@ -1,219 +1,164 @@
 # @khaveeai/core
 
-[![npm version](https://badge.fury.io/js/%40khaveeai%2Fcore.svg)](https://badge.fury.io/js/%40khaveeai%2Fcore)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/@khaveeai/core.svg)](https://www.npmjs.com/package/@khaveeai/core)
+[![license](https://img.shields.io/npm/l/@khaveeai/core.svg)](../../LICENSE)
 
-Core types, interfaces, and utilities for the KhaveeAI SDK. This package provides the foundational TypeScript definitions used across all KhaveeAI packages.
+The shared TypeScript types package for the Khavee SDK. **No React, no UI, no vendor-specific code** — just the interfaces every voice-pipeline piece (VAD, STT, LLM, TTS) must follow, so any vendor can be swapped in without changing your app code.
 
-## Installation
+Think of it as a set of contracts: a TypeScript `interface` listing the methods a class must have. As long as a provider implements the right interface, the rest of the SDK doesn't care which vendor is behind it.
+
+## Install
 
 ```bash
 npm install @khaveeai/core
 ```
 
-## Features
+## Contents
 
-- 📝 **TypeScript Types** - Complete type definitions for all SDK features
-- 🎭 **Provider Interfaces** - Standard interfaces for LLM, TTS, and Realtime providers
-- 🎬 **Animation Types** - Type-safe animation configuration
-- 💬 **Conversation Types** - Structured conversation and message types
-- 🔊 **Audio Types** - Phoneme, mouth state, and lip sync types
+- [The four pipeline-stage interfaces](#the-four-pipeline-stage-interfaces)
+- [RealtimeProvider](#realtimeprovider)
+- [Tool-calling](#tool-calling)
+- [KhaveeClient](#khaveeclient)
+- [Notes](#notes)
 
-## API Reference
+## The four pipeline-stage interfaces
 
-### Core Types
+Defined in `src/types/pipeline.ts`. Split a voice pipeline into independently swappable stages: **listen → transcribe → reply → speak.**
 
-#### Audio & Lip Sync
+| Interface | Job | Key method |
+|---|---|---|
+| `VADProvider` | Detect speech start/stop, hand back recorded audio | `connect()` / `pause()` / `resume()` |
+| `STTProvider` | Transcribe an audio blob to text | `transcribe(audio, opts?)` |
+| `LLMProvider` | Get a completion, optionally with tool calls | `complete({ messages, tools?, signal? })` |
+| `TTSProvider` | Synthesize and play speech | `speak(text, opts)` |
 
 ```typescript
-import type { 
-  PhonemeData,
-  MouthState,
-  AudioProvider 
-} from '@khaveeai/core';
-
-// Detected phoneme from audio analysis
-interface PhonemeData {
-  phoneme: 'aa' | 'ee' | 'ih' | 'ou' | 'oh' | 'sil'; // Detected sound
-  intensity: number;        // 0-1 strength
-  timestamp: number;        // Detection time
-  duration: number;         // Phoneme duration (ms)
+interface VADProvider extends Provider {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  isListening(): boolean;
+  onSpeechStart?: () => void;
+  onUtteranceReady?: (wav: Blob) => void;
+  onError?: (error: Error) => void;
 }
 
-// VRM mouth shape state
-interface MouthState {
-  aa: number;  // Open mouth (0-1)
-  ih: number;  // Smile (0-1)
-  ou: number;  // Pucker (0-1)
-  ee: number;  // Half open (0-1)
-  oh: number;  // Round (0-1)
+interface STTProvider extends Provider {
+  readonly supportsStreaming: boolean;
+  readonly supportsRejection: boolean;
+  transcribe(audio: Blob, opts?: { language?: string }): Promise<STTResult>;
+}
+
+interface LLMProvider extends Provider {
+  readonly supportsToolCalling: boolean;
+  readonly supportsStreaming: boolean;
+  complete(args: {
+    messages: Array<{ role: string; content: string }>;
+    tools?: Tool[];
+    signal?: AbortSignal;
+  }): Promise<LLMCompletionResult>;
+}
+
+interface TTSProvider extends Provider {
+  readonly supportsStreaming: boolean;
+  speak(
+    text: string,
+    opts: {
+      audioContext: AudioContext;
+      onAudioData?: (analyser: AnalyserNode, audioContext: AudioContext) => void;
+      voice?: string;
+      speed?: number;
+      signal?: AbortSignal;
+    }
+  ): Promise<void>;
 }
 ```
 
-#### Conversation
+**Capability flags** (`supportsStreaming`, `supportsRejection`, `supportsToolCalling`) let you check what a provider can do *without* calling it:
 
 ```typescript
-import type { 
-  Conversation,
-  ChatStatus 
-} from '@khaveeai/core';
-
-// Message in conversation history
-interface Conversation {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  text: string;
-  timestamp: string;
-  isFinal: boolean;
-  status: 'speaking' | 'final' | 'thinking';
-}
-
-// Current chat state
-type ChatStatus = 'stopped' | 'ready' | 'listening' | 'thinking' | 'speaking';
-```
-
-#### Realtime Provider
-
-```typescript
-import type { 
-  RealtimeProvider,
-  RealtimeTool,
-  RealtimeConfig 
-} from '@khaveeai/core';
-
-// Configuration for realtime voice providers
-interface RealtimeConfig {
-  apiKey: string;
-  model?: string;
-  voice?: string;
-  instructions?: string;
-  temperature?: number;
-  tools?: RealtimeTool[];
-  language?: string;
-  turnServers?: RTCIceServer[];
-}
-
-// Custom function/tool for AI
-interface RealtimeTool {
-  name: string;
-  description: string;
-  parameters: Record<string, any>;
-  execute: (args: any) => Promise<any>;
+if (sttProvider.supportsRejection) {
+  // safe to check result.rejected after transcribe()
 }
 ```
 
-#### Provider Interfaces
+Only OpenAI-backed implementations ship today (`@khaveeai/providers-openai-stt-tts` and friends). The interfaces are designed to support Anthropic/Gemini/Bedrock adapters later without a redesign — but no such adapter exists in this repo yet.
+
+## RealtimeProvider
+
+`RealtimeProvider` (`src/types/realtime.ts`) is the one interface `@khaveeai/react`'s `KhaveeProvider`/`useRealtime` actually depend on. Any class implementing it — `OpenAIRealtimeProvider`, `OpenAISTTTTSProvider`, `GenericPipelineProvider` — is a drop-in replacement for any other.
 
 ```typescript
-import type { 
-  LLMProvider,
-  TTSProvider,
-  VoiceProvider 
-} from '@khaveeai/core';
+interface RealtimeProvider extends RealtimeEvents {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  sendMessage(text: string): Promise<void>;
+  interrupt(): void;
+  registerFunction(tool: RealtimeTool): void;
 
-// Base provider interfaces for extensibility
-interface LLMProvider {
-  generateResponse(prompt: string): Promise<string>;
-}
+  isConnected: boolean;
+  chatStatus: ChatStatus; // 'ready' | 'speaking' | 'listening' | 'thinking' | 'stopped' | 'starting'
+  conversation: Conversation[];
+  currentVolume: number;
 
-interface TTSProvider {
-  synthesize(text: string): Promise<AudioBuffer>;
-}
-
-interface VoiceProvider {
-  startListening(): void;
-  stopListening(): void;
+  getAudioAnalyser(): { analyser: AnalyserNode; audioContext: AudioContext } | null;
+  toggleMicrophone(): boolean;
+  enableMicrophone(): void;
+  disableMicrophone(): void;
+  isMicrophoneEnabled(): boolean;
 }
 ```
 
-### Animation Types
+`RealtimeEvents`, the base it extends, is a set of optional callbacks: `onConnect`, `onDisconnect`, `onError`, `onMessage`, `onConversationUpdate`, `onChatStatusChange`, `onAudioStart`/`onAudioEnd`, `onVolumeChange`, `onMouthStateChange`, `onPhonemeDetected`, `onToolCall`, `onUsageReport`.
+
+It's intentionally a bigger interface than the four stages above — it's what the React layer needs from whatever provider is active (connection lifecycle + messaging + mic control + audio analysis in one contract). The four stage interfaces are the lower-level pieces a `RealtimeProvider` can be composed from internally.
+
+## Tool-calling
+
+The LLM can call functions in your app ("look up this order"). Tools in `src/types/tools.ts` are **plain JavaScript objects** — no Zod, no schema library.
 
 ```typescript
-import type { AnimationConfig } from '@khaveeai/core';
-
-// Animation configuration for VRM avatars
-type AnimationConfig = Record<string, string>;
-
-// Example usage
-const animations: AnimationConfig = {
-  idle: '/animations/idle.fbx',
-  walk: '/animations/walk.fbx',
-  talking: '/animations/talking.fbx'
+const getWeather: Tool = {
+  name: "get_weather",
+  description: "Get the current weather for a city",
+  parameters: {
+    type: "object",
+    properties: { city: { type: "string", description: "City name" } },
+    required: ["city"],
+  },
+  execute: async (args) => ({ success: true, message: `It's sunny in ${args.city}` }),
 };
 ```
 
-## Usage
-
-This package is typically used indirectly through other KhaveeAI packages, but you can import types directly:
+`ToolExecutor` dispatches by name and never throws — a missing tool or a thrown `execute()` both come back as `{ success: false, message }`:
 
 ```typescript
-import type { 
-  PhonemeData,
-  MouthState,
-  Conversation,
-  ChatStatus,
-  RealtimeProvider,
-  RealtimeTool
-} from '@khaveeai/core';
+import { ToolExecutor } from "@khaveeai/core";
 
-// Use types for type-safe development
-function handlePhoneme(phoneme: PhonemeData) {
-  console.log(`Detected ${phoneme.phoneme} at ${phoneme.intensity}`);
-}
-
-function handleMessage(message: Conversation) {
-  console.log(`${message.role}: ${message.text}`);
-}
+const executor = new ToolExecutor();
+executor.register("get_weather", getWeather.execute);
+const result = await executor.execute("get_weather", { city: "Bangkok" });
 ```
 
-## Package Structure
+## KhaveeClient
 
-```
-@khaveeai/core/
-├── src/
-│   ├── index.ts           # Main exports
-│   ├── types/
-│   │   ├── audio.ts       # Audio & lip sync types
-│   │   ├── conversation.ts # Chat & message types
-│   │   ├── providers.ts   # Provider interfaces
-│   │   ├── realtime.ts    # Realtime API types
-│   │   ├── qdrant.ts      # Vector DB types
-│   │   └── index.ts       # Type exports
-│   └── tools/
-│       └── animate.ts     # Animation utilities
+A small `axios`-based HTTP client for Khavee's hosted platform API (project preview data, etc.) — a separate concern from the pipeline interfaces above. Most SDK usage doesn't need it.
+
+```typescript
+import { createKhaveeClient } from "@khaveeai/core";
+
+const client = createKhaveeClient({ apiKey: "your-api-key" });
+const preview = await client.getProjectPreview();
 ```
 
-## Dependencies
+Supports API key (`X-API-Key`) or JWT (`Authorization: Bearer`) auth, plus `get`/`post`/`put`/`delete` and `getProjectPreview()`/`getProjectById(id)`.
 
-This is a types-only package with minimal dependencies:
+## Notes
 
-```json
-{
-  "peerDependencies": {
-    "typescript": ">=4.5.0"
-  }
-}
-```
-
-## TypeScript Configuration
-
-For best experience, use these TypeScript settings:
-
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "moduleResolution": "node"
-  }
-}
-```
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](https://github.com/SolveServeSolution/khaveeai-sdk/blob/main/CONTRIBUTING.md).
+- **Legacy interfaces.** `src/types/mock.ts` defines an older, smaller pair — `LegacyLLMProvider` (`streamChat`) and `LegacyTTSProvider` (`speak`) — predating `RealtimeProvider`. Only `@khaveeai/providers-mock` implements them today. `KhaveeProvider` accepts a `config.llm`/`config.tts` of this shape for typing only — its actual pipeline runs on `config.realtime` (a `RealtimeProvider`), not these.
+- **`toolAnimate`** (`src/tools/animate.ts`) is not re-exported from `src/index.ts` — it isn't importable as `@khaveeai/core`'s public API today.
 
 ## License
 
-MIT © [KhaveeAI](https://github.com/SolveServeSolution/khaveeai-sdk)
+MIT

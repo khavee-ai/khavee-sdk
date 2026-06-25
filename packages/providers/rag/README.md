@@ -1,433 +1,232 @@
 # @khaveeai/providers-rag
 
-[![npm version](https://badge.fury.io/js/@khaveeai%2Fproviders-rag.svg)](https://badge.fury.io/js/@khaveeai%2Fproviders-rag)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/@khaveeai/providers-rag.svg)](https://www.npmjs.com/package/@khaveeai/providers-rag)
+[![license](https://img.shields.io/npm/l/@khaveeai/providers-rag.svg)](../../../LICENSE)
 
-Clean and easy-to-use RAG (Retrieval-Augmented Generation) provider for Khavee AI SDK. Seamlessly integrate vector search with your VRM avatar conversations.
+Retrieval-augmented generation for Khavee SDK projects. `RAGProvider` embeds a query with OpenAI, searches a Qdrant collection for relevant chunks, and formats the results into a context string an LLM can use to ground its answer. `createRAGTool` wraps it into a tool object a tool-calling LLM can invoke mid-conversation instead of you calling it by hand.
 
-## ✨ Features
+> **Qdrant + OpenAI only.** The constructor takes connection details (URL, API keys, collection name), not a pre-built client instance — there's currently no way to plug in `@khaveeai/providers-pgvector` or another vector store without writing your own equivalent class. See [Using a different vector store](#using-a-different-vector-store).
 
-- 🔍 **Vector Search** - Powered by Qdrant for fast, accurate retrieval
-- 🤖 **OpenAI Embeddings** - Automatic embedding generation
-- 🎯 **Zero Config** - Works out of the box with sensible defaults
-- ⚡ **Easy Integration** - One function to add RAG to your realtime chat
-- 🛠️ **Flexible** - Customize search parameters and context formatting
-- 📊 **Metadata Support** - Include source, title, and custom metadata
-
-## 📦 Installation
+## Install
 
 ```bash
-npm install @khaveeai/providers-rag @khaveeai/providers-openai-realtime @khaveeai/react
+npm install @khaveeai/providers-rag
 ```
 
-## 🚀 Quick Start
+`@qdrant/js-client-rest` and `openai` are installed automatically as dependencies.
 
-### 1. Next.js with Server Actions (Recommended)
+## Quick start
 
-```tsx
-// app/lib/rag.ts
-"use server"
+```ts
 import { RAGProvider } from "@khaveeai/providers-rag";
 
-export async function searchKnowledgeBase(query: string) {
-  const ragProvider = new RAGProvider({
-    qdrantUrl: process.env.QDRANT_URL!,
-    qdrantApiKey: process.env.QDRANT_API_KEY,
-    collectionName: process.env.QDRANT_COLLECTION!,
-    openaiApiKey: process.env.OPENAI_API_KEY!,
-  });
-
-  return await ragProvider.search(query);
-}
-
-// app/page.tsx
-"use client";
-import { OpenAIRealtimeProvider } from "@khaveeai/providers-openai-realtime";
-import { KhaveeProvider, VRMAvatar } from "@khaveeai/react";
-import { searchKnowledgeBase } from "./lib/rag";
-
-const realtime = new OpenAIRealtimeProvider({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  instructions: "Use search_knowledge_base to answer questions accurately.",
-  tools: [
-    {
-      name: "search_knowledge_base",
-      description: "Search the knowledge base for relevant information",
-      parameters: {
-        query: {
-          type: "string",
-          description: "The search query",
-          required: true,
-        },
-      },
-      execute: async (args: { query: string }) => {
-        return await searchKnowledgeBase(args.query);
-      },
-    },
-  ],
-});
-
-export default function App() {
-  return (
-    <KhaveeProvider config={{ realtime }}>
-      <Canvas>
-        <VRMAvatar src="./models/avatar.vrm" />
-      </Canvas>
-    </KhaveeProvider>
-  );
-}
-```
-
-### 2. Environment Variables
-
-```bash
-# .env.local (Next.js)
-# Server-side only (secure)
-OPENAI_API_KEY=sk-...
-QDRANT_URL=https://your-qdrant-instance.com
-QDRANT_API_KEY=your-qdrant-key
-QDRANT_COLLECTION=your-collection-name
-
-# Client-side (public)
-NEXT_PUBLIC_OPENAI_API_KEY=sk-...  # For OpenAI Realtime only
-```
-
-**Security Note:** RAG operations should use server-side keys (no `NEXT_PUBLIC_` prefix) to keep your Qdrant and OpenAI embeddings API keys secure. Use Next.js server actions as shown above.
-```
-
-## ⚙️ Configuration
-
-### RAGProvider Options
-
-```tsx
-const ragProvider = new RAGProvider({
-  // Required
-  qdrantUrl: "https://your-qdrant-instance.com",
-  collectionName: "your-collection",
-  openaiApiKey: "sk-...",
-  
-  // Optional
-  qdrantApiKey: "your-key",              // Required for protected Qdrant instances
-  embeddingModel: "text-embedding-3-large", // Default (3072 dimensions)
-  topK: 10,                               // Number of results (default: 10)
-  scoreThreshold: 0.21,                   // Minimum relevance (default: 0.21)
-  includeMetadata: true,                  // Include metadata (default: true)
-  metadataFields: ["title", "source"],    // Metadata to include
-});
-
-// Note: Make sure your Qdrant collection uses 3072-dimensional vectors
-// if using text-embedding-3-large (default)
-```
-
-### Custom Tool Configuration
-
-```tsx
-const ragTool = createRAGTool({
-  ragProvider,
-  toolName: "search_docs",                // Custom tool name
-  toolDescription: "Search product documentation", // Custom description
-  promptTemplate: (query, context) =>     // Custom formatting
-    `Question: ${query}\n\nRelevant docs:\n${context}`
-});
-```
-
-## 📖 Usage Examples
-
-### Example 1: Customer Support Bot
-
-```tsx
-import { RAGProvider, createRAGTool } from "@khaveeai/providers-rag";
-import { OpenAIRealtimeProvider } from "@khaveeai/providers-openai-realtime";
-
-const ragProvider = new RAGProvider({
+const rag = new RAGProvider({
   qdrantUrl: process.env.QDRANT_URL!,
-  qdrantApiKey: process.env.QDRANT_API_KEY,
-  collectionName: "customer-support-docs",
-  openaiApiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  topK: 5,
-  scoreThreshold: 0.3,
+  qdrantApiKey: process.env.QDRANT_API_KEY,        // optional, only if your Qdrant instance requires auth
+  collectionName: "my-docs",
+  openaiApiKey: process.env.OPENAI_API_KEY!,
 });
 
-const supportTool = createRAGTool({
-  ragProvider,
-  toolName: "search_support_docs",
-  toolDescription: "Search customer support documentation for answers",
-});
+const context = await rag.prepareContext("What is the refund policy?");
 
-const realtime = new OpenAIRealtimeProvider({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  instructions: `You are a helpful customer support assistant.
-    Use the search_support_docs tool to find accurate answers from our documentation.
-    Always cite your sources when using information from the knowledge base.`,
-  tools: [supportTool],
-  voice: "coral",
+console.log(context.formattedContext);
+// [1] Refunds are available within 30 days of purchase...
+// (source: refund-policy.md)
+// [Relevance: 87.3%]
+```
+
+`prepareContext(query)` is the main method: it embeds the query, searches Qdrant, and returns a `RAGContext` containing the retrieved documents and a single formatted string ready to drop into an LLM prompt.
+
+To turn that into an actual prompt string in one call, use `createPromptWithContext` instead:
+
+```ts
+const prompt = await rag.createPromptWithContext("What is the refund policy?");
+// "What is the refund policy?\n\nRelevant information:\n[1] Refunds are available..."
+
+const completion = await openai.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages: [{ role: "user", content: prompt }],
 });
 ```
 
-### Example 2: Product Expert
+Pass a custom `promptTemplate` as the second argument to control formatting:
 
-```tsx
-const productRag = new RAGProvider({
-  qdrantUrl: process.env.QDRANT_URL!,
-  collectionName: "product-catalog",
-  openaiApiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  metadataFields: ["title", "category", "price", "brand"],
-});
-
-const productTool = createRAGTool({
-  ragProvider: productRag,
-  toolName: "search_products",
-  toolDescription: "Search product information and specifications",
-  promptTemplate: (query, context) => 
-    `Product search for: "${query}"\n\nMatching products:\n${context}\n\nUse this information to help the customer.`
-});
-
-const realtime = new OpenAIRealtimeProvider({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  instructions: "You are a product expert. Help customers find the right products.",
-  tools: [productTool],
-});
-```
-
-### Example 3: Multi-Source RAG
-
-```tsx
-// Multiple knowledge bases
-const docsRag = new RAGProvider({
-  qdrantUrl: process.env.QDRANT_URL!,
-  collectionName: "documentation",
-  openaiApiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-});
-
-const faqRag = new RAGProvider({
-  qdrantUrl: process.env.QDRANT_URL!,
-  collectionName: "faq",
-  openaiApiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  topK: 3,
-});
-
-const tools = [
-  createRAGTool({
-    ragProvider: docsRag,
-    toolName: "search_docs",
-    toolDescription: "Search technical documentation",
-  }),
-  createRAGTool({
-    ragProvider: faqRag,
-    toolName: "search_faq",
-    toolDescription: "Search frequently asked questions",
-  }),
-];
-
-const realtime = new OpenAIRealtimeProvider({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  instructions: "Search docs for technical questions, FAQ for common questions.",
-  tools,
-});
-```
-
-## 🔧 Advanced Usage
-
-### Manual Context Preparation
-
-```tsx
-const ragProvider = new RAGProvider({...});
-
-// Get context without tool wrapper
-const context = await ragProvider.prepareContext("What is VRM?");
-
-console.log(context.query);             // Original query
-console.log(context.documents);         // Array of documents
-console.log(context.formattedContext);  // Formatted string
-
-// Use in custom prompt
-const prompt = await ragProvider.createPromptWithContext(
-  "Explain VRM avatars",
-  (query, context) => `${query}\n\nContext:\n${context}`
+```ts
+const prompt = await rag.createPromptWithContext(
+  "What is the refund policy?",
+  (query, context) => `Question: ${query}\n\nDocs:\n${context}`
 );
 ```
 
-### Update Configuration Dynamically
+### Required Qdrant payload shape
 
-```tsx
-const ragProvider = new RAGProvider({...});
-
-// Update search parameters
-ragProvider.updateConfig({
-  topK: 15,
-  scoreThreshold: 0.4,
-});
-
-// Get current config
-const config = ragProvider.getConfig();
-console.log(config);
-```
-
-### Direct Search
-
-```tsx
-const ragProvider = new RAGProvider({...});
-
-// Search directly
-const results = await ragProvider.searchDocuments("query");
-
-results.forEach(result => {
-  console.log(result.id);
-  console.log(result.score);
-  console.log(result.payload);
-});
-```
-
-## 📊 Data Structure
-
-### Expected Qdrant Payload Format
-
-Your Qdrant documents should have this structure:
+`RAGProvider` expects each Qdrant point's payload to contain a `text` or `content` field:
 
 ```json
 {
-  "text": "Your document content here",
-  "metadata": {
-    "title": "Document Title",
-    "source": "https://example.com",
-    "category": "FAQ"
-  }
+  "text": "Refunds are available within 30 days of purchase.",
+  "metadata": { "title": "Refund Policy", "source": "refund-policy.md" }
 }
 ```
 
-Or with `_node_content` (like your Morritt project):
+It also handles a nested `_node_content` JSON-string field (a format produced by some document-indexing tools) — if present, it is parsed and used in place of the top-level payload.
 
-```json
-{
-  "_node_content": "{\"text\":\"Content here\",\"metadata\":{\"title\":\"Title\"}}"
-}
-```
+## `createRAGTool`
 
-Both formats are automatically handled!
+`createRAGTool` wraps a `RAGProvider` instance into a `RealtimeTool` object (the plain-object tool shape defined in `@khaveeai/core`, with `name`, `description`, `parameters`, and an `execute` function) so a tool-calling LLM can decide on its own when to search your knowledge base, instead of you calling `prepareContext` by hand.
 
-## 🎯 How It Works
-
-1. **User asks a question** → OpenAI Realtime API receives it
-2. **AI decides to search** → Calls your RAG tool automatically
-3. **Generate embedding** → OpenAI creates vector for query
-4. **Search Qdrant** → Finds most relevant documents
-5. **Format context** → Prepares formatted response
-6. **AI responds** → Uses context to answer accurately
-
-## 🐛 Troubleshooting
-
-### "No relevant information found"
-
-```tsx
-// Lower the score threshold
-const ragProvider = new RAGProvider({
-  scoreThreshold: 0.15, // Lower = more permissive
-  topK: 20,             // Get more results
-  // ...
-});
-```
-
-### Metadata not showing
-
-```tsx
-const ragProvider = new RAGProvider({
-  includeMetadata: true,
-  metadataFields: ["title", "source", "author", "date"], // Add your fields
-  // ...
-});
-```
-
-### Connection issues
-
-```bash
-# Test Qdrant connection
-curl https://your-qdrant-instance.com/collections
-
-# Test OpenAI API
-curl https://api.openai.com/v1/models \
-  -H "Authorization: Bearer $OPENAI_API_KEY"
-```
-
-## 📝 Complete Example
-
-```tsx
-"use client";
-import { KhaveeProvider, VRMAvatar, useRealtime } from "@khaveeai/react";
-import { OpenAIRealtimeProvider } from "@khaveeai/providers-openai-realtime";
+```ts
 import { RAGProvider, createRAGTool } from "@khaveeai/providers-rag";
-import { Canvas } from "@react-three/fiber";
-import { Environment } from "@react-three/drei";
 
-// Setup RAG
-const ragProvider = new RAGProvider({
+const rag = new RAGProvider({
   qdrantUrl: process.env.QDRANT_URL!,
-  qdrantApiKey: process.env.QDRANT_API_KEY,
-  collectionName: process.env.QDRANT_COLLECTION!,
-  openaiApiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  topK: 10,
-  scoreThreshold: 0.21,
+  collectionName: "my-docs",
+  openaiApiKey: process.env.OPENAI_API_KEY!,
 });
 
 const ragTool = createRAGTool({
-  ragProvider,
-  toolName: "search_knowledge",
-  toolDescription: "Search company knowledge base",
+  ragProvider: rag,
+  toolName: "search_knowledge_base",       // optional, this is the default
+  toolDescription: "Search the knowledge base for relevant information to answer user questions", // optional, this is the default
+});
+```
+
+`ragTool.execute(args)` calls `rag.prepareContext(args.query)` internally and returns `{ success: boolean, message: string }` — `success: false` if the query argument is missing/invalid or the search throws, otherwise a message containing the formatted document context (or a "no relevant information found" message if nothing matched).
+
+### Registering it with a tool-calling provider
+
+`createRAGTool` returns a `RealtimeTool`, which is exactly the shape `RealtimeProvider.registerFunction()` accepts. With `@khaveeai/providers-generic-stt-tts`'s `GenericPipelineProvider`:
+
+```ts
+import { GenericPipelineProvider } from "@khaveeai/providers-generic-stt-tts";
+import { RAGProvider, createRAGTool } from "@khaveeai/providers-rag";
+
+const rag = new RAGProvider({
+  qdrantUrl: process.env.QDRANT_URL!,
+  collectionName: "my-docs",
+  openaiApiKey: process.env.OPENAI_API_KEY!,
 });
 
-// Setup Realtime with RAG
-const realtime = new OpenAIRealtimeProvider({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY!,
-  instructions: `You are a knowledgeable assistant with access to our knowledge base.
-    Use the search_knowledge tool when you need specific information to answer questions.
-    Always provide accurate, helpful responses based on the available information.`,
-  tools: [ragTool],
-  voice: "coral",
+const ragTool = createRAGTool({ ragProvider: rag });
+
+const provider = new GenericPipelineProvider({
+  // ...stt/llm/tts config
 });
 
-// Monitor RAG usage
-realtime.onToolCall = (toolName, args, result) => {
-  console.log(`🔍 RAG Search: ${args.query}`);
-  console.log(`📊 Result: ${result.success ? 'Found' : 'Not found'}`);
-};
+provider.registerFunction(ragTool);
+```
 
-function Chat() {
-  const { connect, isConnected, conversation, chatStatus } = useRealtime();
-  
-  return (
-    <div>
-      {!isConnected && <button onClick={connect}>Start Chat</button>}
-      <div>Status: {chatStatus}</div>
-      {conversation.map((msg, i) => (
-        <div key={i}>{msg.role}: {msg.text}</div>
-      ))}
-    </div>
-  );
-}
+The LLM will now see `search_knowledge_base` as an available function and can call it mid-conversation when it decides the user's question needs grounding from your documents.
 
-export default function App() {
-  return (
-    <KhaveeProvider config={{ realtime }}>
-      <Canvas>
-        <VRMAvatar src="./models/avatar.vrm" position-y={-1.25} />
-        <Environment preset="sunset" />
-        <ambientLight intensity={0.5} />
-      </Canvas>
-      <Chat />
-    </KhaveeProvider>
-  );
+This same `RealtimeTool` object also works directly with `@khaveeai/providers-openai-realtime`'s `OpenAIRealtimeProvider`, passed via its `tools` constructor option.
+
+## Using a different vector store
+
+`RAGProvider` is hardcoded to Qdrant (`@qdrant/js-client-rest`) — its constructor builds a `QdrantClient` directly from `qdrantUrl`/`qdrantApiKey`, and `searchDocuments()` calls `qdrantClient.search()` directly. There is no constructor option to inject a different client or a `VectorSearchProvider`-style interface.
+
+`@khaveeai/providers-pgvector` exports a separate, similarly self-contained `PgVectorProvider` class (Postgres + pgvector instead of Qdrant) that implements its own `VectorSearchProvider` interface (`search(query, topK?, threshold?, metadataFilter?)`), but `RAGProvider` does not accept a `VectorSearchProvider` and has no code path that would use it. Swapping vector stores today means writing your own RAG class modeled on `RAGProvider`'s `searchDocuments`/`formatDocument`/`formatContext` methods, but backed by `PgVectorProvider.search()` instead of a direct `@qdrant/js-client-rest` client.
+
+## API reference
+
+All types are exported from `@khaveeai/providers-rag` (re-exported via `src/types.ts`).
+
+### `RAGConfig`
+
+Constructor config for `RAGProvider`.
+
+```ts
+interface RAGConfig {
+  // Qdrant connection
+  qdrantUrl: string;
+  qdrantApiKey?: string;
+  collectionName: string;
+
+  // OpenAI embeddings
+  openaiApiKey: string;
+  embeddingModel?: string;       // default: "text-embedding-3-small"
+
+  // Search behavior
+  topK?: number;                 // default: 10
+  scoreThreshold?: number;       // default: 0.21
+
+  // Context formatting
+  includeMetadata?: boolean;     // default: true
+  metadataFields?: string[];     // default: ["title", "source"]
 }
 ```
 
-## 📄 License
+| Field | Required | Default | Notes |
+|---|---|---|---|
+| `qdrantUrl` | yes | — | Your Qdrant instance URL |
+| `qdrantApiKey` | no | — | Only needed if the instance requires auth |
+| `collectionName` | yes | — | Qdrant collection to search |
+| `openaiApiKey` | yes | — | Used for `embeddings.create` calls |
+| `embeddingModel` | no | `"text-embedding-3-small"` | Must match the dimensionality of your Qdrant collection's vectors |
+| `topK` | no | `10` | Max number of search results returned |
+| `scoreThreshold` | no | `0.21` | Minimum similarity score to include a result |
+| `includeMetadata` | no | `true` | Whether to attach metadata to formatted documents |
+| `metadataFields` | no | `["title", "source"]` | Which payload fields to surface as metadata in addition to `payload.metadata` |
 
-MIT License - see [LICENSE](LICENSE) file for details.
+### `SearchResult`
 
-## 🤝 Support
+Raw result from `searchDocuments()`, one per matched Qdrant point.
 
-- [GitHub Issues](https://github.com/SolveServeSolution/khaveeai-sdk/issues)
-- [Documentation](https://github.com/SolveServeSolution/khaveeai-sdk#readme)
-- Email: support@khaveeai.com
+```ts
+interface SearchResult {
+  id: string | number;
+  score: number;
+  payload: any;
+}
+```
 
-## 🚀 Contributing
+### `RAGDocument`
 
-Contributions welcome! Please read our contributing guidelines and submit pull requests to our [GitHub repository](https://github.com/SolveServeSolution/khaveeai-sdk).
+A formatted document, derived from a `SearchResult`'s payload.
+
+```ts
+interface RAGDocument {
+  content: string;
+  metadata?: Record<string, any>;
+  score?: number;
+}
+```
+
+### `RAGContext`
+
+Returned by `prepareContext()` — everything needed to ground an LLM prompt.
+
+```ts
+interface RAGContext {
+  query: string;
+  documents: RAGDocument[];
+  formattedContext: string;
+}
+```
+
+## `RAGProvider` methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `getEmbedding` | `(text: string) => Promise<number[]>` | Calls OpenAI's embeddings API and returns the embedding vector. |
+| `searchDocuments` | `(query: string) => Promise<SearchResult[]>` | Embeds the query and searches Qdrant; returns raw `SearchResult[]`. |
+| `prepareContext` | `(query: string) => Promise<RAGContext>` | Main method. Searches, formats documents, and builds a single context string. |
+| `createPromptWithContext` | `(query: string, promptTemplate?: (query, context) => string) => Promise<string>` | Calls `prepareContext` then renders a full prompt string via the default or supplied template. |
+| `updateConfig` | `(config: Partial<RAGConfig>) => void` | Mutates the provider's config in place (e.g. to change `topK` or `scoreThreshold` at runtime). |
+| `getConfig` | `() => RAGConfig & { ...resolved defaults }` | Returns a shallow copy of the current resolved config. |
+
+## `createRAGTool` options
+
+```ts
+interface CreateRAGToolOptions {
+  ragProvider: RAGProvider;
+  toolName?: string;                                     // default: "search_knowledge_base"
+  toolDescription?: string;                              // default: "Search the knowledge base for relevant information to answer user questions"
+  promptTemplate?: (query: string, context: string) => string;
+}
+```
+
+`createRAGTool(options): RealtimeTool` — the returned `RealtimeTool` has a single required `query: string` parameter and an `execute` function that returns `{ success: boolean, message: string }`.
+
+## License
+
+MIT — see [LICENSE](../../../LICENSE) if present in the repository root.

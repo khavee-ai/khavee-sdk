@@ -303,3 +303,29 @@
     color: rgba(255, 255, 255, 0.55);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Layout container (STUDIO-03/STUDIO-05, Plan 09-05)
+ * Wraps AvatarScene + ChatBox when config.chatShow is true.
+ * Applied by mountAvatarInstance: className="khaveeai-layout khaveeai-layout--{beside|below}"
+ *
+ * --beside: row layout — avatar canvas left, chat panel right (default)
+ * --below:  column layout — avatar canvas top, chat panel below
+ *
+ * height: 100% propagates to the Canvas so the avatar fills its flex child.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+.khaveeai-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: stretch;
+}
+
+.khaveeai-layout--beside {
+  flex-direction: row;
+}
+
+.khaveeai-layout--below {
+  flex-direction: column;
+}

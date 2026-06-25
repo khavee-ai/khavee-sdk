@@ -17,6 +17,7 @@ use Khavee\Plugin\Render\AvatarRenderer;
 use Khavee\Plugin\Assets\AssetManager;
 use Khavee\Plugin\Shortcode\AvatarShortcode;
 use Khavee\Plugin\Block\AvatarBlock;
+use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
 /**
  * Constructs the concrete ConfigSource/TokenProvider/RateLimiter
@@ -40,6 +41,22 @@ final class Plugin {
 	 * @return void
 	 */
 	public static function boot(): void {
+		// Self-hosted auto-updates: this plugin isn't on WordPress.org,
+		// so without this, site owners would have to manually download
+		// a new zip and re-upload it via wp-admin on every release.
+		// Wired unconditionally (not behind a strategy interface) since
+		// there's only one update source this milestone — GitHub
+		// Releases on this repo. Release-asset mode is required (not
+		// the default "build a zip from the repo" mode) because the
+		// release zip's directory layout (vendor/, build/ included;
+		// tests/, src/ excluded) differs from the raw repo tree.
+		$update_checker = PucFactory::buildUpdateChecker(
+			'https://github.com/khavee-ai/khavee-sdk/',
+			KHAVEEAI_PLUGIN_FILE,
+			'khaveeai-ai-avatar'
+		);
+		$update_checker->getVcsApi()->enableReleaseAssets();
+
 		$config_source  = new WpOptionsConfigSource();
 		$token_provider = new OpenAiDirectTokenProvider();
 		$rate_limiter   = new RateLimiter();

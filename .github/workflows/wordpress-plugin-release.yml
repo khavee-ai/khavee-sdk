@@ -1,0 +1,54 @@
+name: Release WordPress Plugin
+
+on:
+  push:
+    tags:
+      - 'wordpress-plugin-v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+
+      - name: Install Composer dependencies (production only)
+        run: composer install --no-dev --optimize-autoloader --working-dir=wordpress-plugin
+
+      # The release zip's top-level directory must be khaveeai-ai-avatar/
+      # (not wordpress-plugin/) to match the layout the update checker's
+      # release-asset mode expects to unpack over the installed plugin
+      # folder. tests/, src/, node_modules/, and package*.json are
+      # dev-only and excluded — they were never part of the distributed
+      # zip (see wordpress-plugin/khaveeai-ai-avatar.zip for reference).
+      - name: Stage release directory
+        run: |
+          mkdir -p staging/khaveeai-ai-avatar
+          cp -r wordpress-plugin/includes staging/khaveeai-ai-avatar/includes
+          cp -r wordpress-plugin/build staging/khaveeai-ai-avatar/build
+          cp -r wordpress-plugin/assets staging/khaveeai-ai-avatar/assets
+          cp -r wordpress-plugin/vendor staging/khaveeai-ai-avatar/vendor
+          cp wordpress-plugin/khaveeai.php staging/khaveeai-ai-avatar/khaveeai.php
+          cp wordpress-plugin/composer.json staging/khaveeai-ai-avatar/composer.json
+
+      - name: Zip release directory
+        run: |
+          cd staging
+          zip -r ../khaveeai-ai-avatar.zip khaveeai-ai-avatar
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: WordPress Plugin ${{ github.ref_name }}
+          files: khaveeai-ai-avatar.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

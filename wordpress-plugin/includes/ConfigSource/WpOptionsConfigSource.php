@@ -53,6 +53,50 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 	private const DEFAULT_MODEL = 'gpt-realtime-1.5';
 
 	/**
+	 * Default ambient/directional light intensity for the 3D scene.
+	 * Matches Phase-8 mount.tsx:59 hardcoded value.
+	 *
+	 * @var float
+	 */
+	private const DEFAULT_LIGHT_INTENSITY = 1.0;
+
+	/**
+	 * Default avatar scale multiplier (1.0 = natural size).
+	 *
+	 * @var float
+	 */
+	private const DEFAULT_AVATAR_SCALE = 1.0;
+
+	/**
+	 * Default horizontal avatar offset in scene units (0.0 = centred).
+	 *
+	 * @var float
+	 */
+	private const DEFAULT_AVATAR_OFFSET_X = 0.0;
+
+	/**
+	 * Default vertical avatar offset in scene units (0.0 = centred).
+	 *
+	 * @var float
+	 */
+	private const DEFAULT_AVATAR_OFFSET_Y = 0.0;
+
+	/**
+	 * Default camera preset key.
+	 * Must match a key in CAMERA_PRESETS (packages/wp-bundle/src/config.ts).
+	 *
+	 * @var string
+	 */
+	private const DEFAULT_CAMERA_PRESET = 'front';
+
+	/**
+	 * Default chat panel placement relative to the avatar canvas.
+	 *
+	 * @var string
+	 */
+	private const DEFAULT_CHAT_PLACEMENT = 'beside';
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function get_runtime_config(): array {
@@ -70,10 +114,31 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 		$avatar_url      = is_string( $avatar_url ) ? $avatar_url : ''; // wp_get_attachment_url() returns false on an invalid ID — coerce to '' so the return shape stays avatar_url: string (T-07A-02).
 
 		return [
-			'instructions' => '' !== $instructions ? $instructions : self::DEFAULT_INSTRUCTIONS,
-			'voice'        => '' !== $voice ? $voice : self::DEFAULT_VOICE,
-			'avatar_url'   => $avatar_url,
-			'model'        => '' !== $model ? $model : self::DEFAULT_MODEL,
+			'instructions'   => '' !== $instructions ? $instructions : self::DEFAULT_INSTRUCTIONS,
+			'voice'          => '' !== $voice ? $voice : self::DEFAULT_VOICE,
+			'avatar_url'     => $avatar_url,
+			'model'          => '' !== $model ? $model : self::DEFAULT_MODEL,
+			// Phase-9 visual/chat config defaults (STUDIO-05).
+			// Admin settings-page UI for editing these is out of scope this phase
+			// (CONTEXT <deferred_ideas>); only the defaults must exist so
+			// wp_parse_args() in AvatarRenderer::render() has a fallback for every key.
+			'container_width'  => isset( $settings['container_width'] )  ? (int)    $settings['container_width']  : 0,
+			'container_height' => isset( $settings['container_height'] ) ? (int)    $settings['container_height'] : 0,
+			'full_width'       => isset( $settings['full_width'] )       ? (bool)   $settings['full_width']       : false,
+			'bg_type'          => isset( $settings['bg_type'] )          ? (string) $settings['bg_type']          : '',
+			'bg_color'         => isset( $settings['bg_color'] )         ? (string) $settings['bg_color']         : '',
+			'bg_transparent'   => isset( $settings['bg_transparent'] )   ? (bool)   $settings['bg_transparent']   : false,
+			// bg_image_url is resolved per-instance from bgImageId in AvatarBlock.php;
+			// there is no meaningful global admin default for a URL — empty string causes
+			// AvatarRenderer::public_safe() to emit '' which the bundle treats as "no background image".
+			'bg_image_url'     => '',
+			'light_intensity'  => isset( $settings['light_intensity'] )  ? (float)  $settings['light_intensity']  : self::DEFAULT_LIGHT_INTENSITY,
+			'avatar_scale'     => isset( $settings['avatar_scale'] )     ? (float)  $settings['avatar_scale']     : self::DEFAULT_AVATAR_SCALE,
+			'avatar_offset_x'  => isset( $settings['avatar_offset_x'] )  ? (float)  $settings['avatar_offset_x']  : self::DEFAULT_AVATAR_OFFSET_X,
+			'avatar_offset_y'  => isset( $settings['avatar_offset_y'] )  ? (float)  $settings['avatar_offset_y']  : self::DEFAULT_AVATAR_OFFSET_Y,
+			'camera_preset'    => isset( $settings['camera_preset'] )    ? (string) $settings['camera_preset']    : self::DEFAULT_CAMERA_PRESET,
+			'chat_show'        => isset( $settings['chat_show'] )        ? (bool)   $settings['chat_show']        : false,
+			'chat_placement'   => isset( $settings['chat_placement'] )   ? (string) $settings['chat_placement']   : self::DEFAULT_CHAT_PLACEMENT,
 		];
 	}
 

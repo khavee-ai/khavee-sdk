@@ -13,7 +13,7 @@
  * - Input audio: 16kHz/mono/float32 WAV from MicVAD's encodeWAV()
  * - No auth (local demo service)
  * - No rejection heuristic (thonburian-stt returns whatever Whisper produces)
- * - 60s timeout via AbortSignal.timeout() + opts?.signal composition
+ * - No client-side timeout — only the caller-supplied AbortSignal (barge-in) can cancel
  */
 
 import { STTProvider, STTResult } from "@khaveeai/core";
@@ -46,12 +46,6 @@ export class ThonburianSTTAdapter implements STTProvider {
     // (thonburian-stt always transcribes as Thai)
 
     try {
-      // Compose 60s timeout with caller-supplied signal (AbortSignal.any)
-      const timeout = AbortSignal.timeout(60000); // 60 seconds
-      const signal = opts?.signal
-        ? AbortSignal.any([timeout, opts.signal].filter(Boolean))
-        : timeout;
-
       // Create multipart form data with field name "file" (NOT "audio" per CONTEXT.md)
       const formData = new FormData();
       formData.append("file", audio, "utterance.wav");
@@ -59,7 +53,7 @@ export class ThonburianSTTAdapter implements STTProvider {
       const response = await fetch(`${this.baseUrl}/transcribe`, {
         method: "POST",
         body: formData,
-        signal,
+        signal: opts?.signal,
       });
 
       if (!response.ok) {

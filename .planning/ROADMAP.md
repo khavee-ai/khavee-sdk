@@ -282,9 +282,9 @@ Plans:
 
 **Wave 2** *(blocked on 09-01 — three parallel surfaces, zero file overlap)*
 
-- [ ] 09-02-PLAN.md — STUDIO-01 inspector: 7 PanelBody panels (Layout/Background/Lighting/Avatar/Camera/Voice & Behavior/Chat Box) with locked knob set + mutual-exclusivity rules + debounced setAttributes + preview-talking local state + data-khaveeai-preview-config JSON emission
-- [ ] 09-03-PLAN.md — STUDIO-02 safe preview bundle entry (src/preview.ts + mountPreview.tsx with MutationObserver config-sync + PreviewScene.tsx config-driven 3D VRM + usePreviewTalking viseme cycler) — structurally excludes @khaveeai/providers-openai-realtime
-- [ ] 09-04-PLAN.md — STUDIO-03 ChatBox component (dependency-free, consumes useRealtime for transcript/sendMessage; Enter sends/Shift+Enter newline; auto-scroll pinned-to-bottom; plain-text-only bubbles for XSS safety) + ChatBox CSS (light/dark theme)
+- [x] 09-02-PLAN.md — STUDIO-01 inspector: 7 PanelBody panels (Layout/Background/Lighting/Avatar/Camera/Voice & Behavior/Chat Box) with locked knob set + mutual-exclusivity rules + debounced setAttributes + preview-talking local state + data-khaveeai-preview-config JSON emission
+- [x] 09-03-PLAN.md — STUDIO-02 safe preview bundle entry (src/preview.ts + mountPreview.tsx with MutationObserver config-sync + PreviewScene.tsx config-driven 3D VRM + usePreviewTalking viseme cycler) — structurally excludes @khaveeai/providers-openai-realtime
+- [x] 09-04-PLAN.md — STUDIO-03 ChatBox component (dependency-free, consumes useRealtime for transcript/sendMessage; Enter sends/Shift+Enter newline; auto-scroll pinned-to-bottom; plain-text-only bubbles for XSS safety) + ChatBox CSS (light/dark theme)
 
 **Wave 3** *(integration + live UAT — blocked on 09-01/09-02/09-03/09-04/09-05)*
 
@@ -310,4 +310,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
-| 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 1/6 | In Progress|  |
+| 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 4/6 | In Progress|  |

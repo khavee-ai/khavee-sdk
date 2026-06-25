@@ -238,7 +238,7 @@ Plans:
   5. The avatar bundle's JS/CSS assets are present in the page source on a page containing the shortcode/block, and absent from the page source on a page that does not
   6. When the API key is unset or invalid, an admin viewing a page with the embedded avatar sees an inline notice identifying the problem, while a logged-out visitor sees a neutral placeholder instead of a broken widget or console error *(the frontend-embed half of the SET-06 split; Phase 7 delivers the `is_configured()` contract + settings-page banner this builds on)*
 
-**Plans**: 4 plans
+**Plans**: 5 plans (4 + 1 gap closure)
 Plans:
 **Wave 1** *(three independent surfaces — packages/wp-bundle JS, PHP render core, REST override validation — zero file overlap, fully parallel)*
 
@@ -249,6 +249,10 @@ Plans:
 **Wave 2** *(blocked on 08-02 — reuses AvatarRenderer + modifies Plugin.php)*
 
 - [x] 08-04-PLAN.md — Gutenberg block: block.json (no viewScript), AvatarBlock render_callback delegating to shared renderer, assets/editor.js (InspectorControls + ServerSideRender, zero @khaveeai/react imports), live wp-env human-verify checkpoint (EMBED-03, EMBED-05)
+
+**Gap Closure** *(UAT Test 1 blocker — pre-existing temperature field in OpenAIRealtimeProvider proxy sessionConfig rejected by OpenAI)*
+
+- [ ] 08-05-PLAN.md — Remove invalid session-level `temperature` from OpenAIRealtimeProvider proxy sessionConfig (extract buildProxySessionConfig + vitest regression test) (EMBED-01, EMBED-05)
 
 **UI hint**: yes
 

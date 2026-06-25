@@ -252,7 +252,7 @@ Plans:
 
 **Gap Closure** *(UAT Test 1 blocker — pre-existing temperature field in OpenAIRealtimeProvider proxy sessionConfig rejected by OpenAI)*
 
-- [ ] 08-05-PLAN.md — Remove invalid session-level `temperature` from OpenAIRealtimeProvider proxy sessionConfig (extract buildProxySessionConfig + vitest regression test) (EMBED-01, EMBED-05)
+- [x] 08-05-PLAN.md — Remove invalid session-level `temperature` from OpenAIRealtimeProvider proxy sessionConfig (extract buildProxySessionConfig + vitest regression test) (EMBED-01, EMBED-05)
 
 **UI hint**: yes
 
@@ -272,4 +272,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
-| 8. Frontend Bundle, Shortcode & Block | 4/4 | Complete    | 2026-06-25 |
+| 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |

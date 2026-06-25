@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: WordPress Plugin (Custom Mode)
-status: milestone_complete
-stopped_at: Milestone complete (Phase 8 was final phase)
-last_updated: 2026-06-25T07:15:36.029Z
-last_activity: 2026-06-24 -- Phase 08 execution started
+status: executing
+stopped_at: Phase 08 UI-SPEC approved
+last_updated: "2026-06-25T08:37:47.598Z"
+last_activity: 2026-06-25 -- Phase 08 execution started
 progress:
   total_phases: 8
   completed_phases: 6
-  total_plans: 28
+  total_plans: 29
   completed_plans: 28
   percent: 75
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value (v2.0):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
-**Current focus:** Milestone complete
+**Current focus:** Phase 08 — frontend-bundle-shortcode-block
 
 ## Current Position
 
-Phase: 8
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-06-25
+Phase: 08 (frontend-bundle-shortcode-block) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 08
+Last activity: 2026-06-25 -- Phase 08 execution started
 
 Progress: [██████████] 100%
 

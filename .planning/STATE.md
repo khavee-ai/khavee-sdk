@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: WordPress Plugin
 status: executing
 stopped_at: context exhaustion at 77% (2026-06-25)
-last_updated: "2026-06-25T17:50:36.507Z"
-last_activity: 2026-06-25 -- Phase 09 planning complete
+last_updated: "2026-06-25T17:58:50.954Z"
+last_activity: 2026-06-25 -- Phase 09 execution started
 progress:
   total_phases: 9
   completed_phases: 7
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value (v2.0):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
-**Current focus:** Phase 08 — frontend-bundle-shortcode-block
+**Current focus:** Phase 09 — block-studio-visual-config-chat-lipsync
 
 ## Current Position
 
-Phase: 08 (frontend-bundle-shortcode-block) — EXECUTING
-Plan: 1 of 5
-Status: Ready to execute
-Last activity: 2026-06-25 -- Phase 09 planning complete
+Phase: 09 (block-studio-visual-config-chat-lipsync) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 09
+Last activity: 2026-06-25 -- Phase 09 execution started
 
 Progress: [██████████] 100%
 

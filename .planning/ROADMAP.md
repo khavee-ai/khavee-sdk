@@ -278,7 +278,7 @@ Plans:
 Plans:
 **Wave 1** *(STUDIO-05 foundation — every other plan depends on the config keys flowing end-to-end)*
 
-- [ ] 09-01-PLAN.md — STUDIO-05 config-transport extension end-to-end (14 new block.json attrs + PHP merge + public_safe allowlist + WpOptionsConfigSource defaults + bundle config.ts types/camera-presets/resolveSceneDefaults + build.mjs second entry + safety grep assertion)
+- [x] 09-01-PLAN.md — STUDIO-05 config-transport extension end-to-end (14 new block.json attrs + PHP merge + public_safe allowlist + WpOptionsConfigSource defaults + bundle config.ts types/camera-presets/resolveSceneDefaults + build.mjs second entry + safety grep assertion)
 
 **Wave 2** *(blocked on 09-01 — three parallel surfaces, zero file overlap)*
 
@@ -310,4 +310,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
-| 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 0/TBD | Not started | - |
+| 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 1/6 | In Progress|  |

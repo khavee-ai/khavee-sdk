@@ -21,6 +21,12 @@
  * never silently falls back to OpenAIRealtimeProvider's own hardcoded
  * default — discovered live (post-Phase-8 UAT) when an account without
  * access to the old constructor default got `model_not_found`.
+ *
+ * Phase 9 (STUDIO-05): KhaveeAvatarConfig is now owned by config.ts and
+ * re-exported from here so packages/wp-bundle/src/index.ts:17
+ * (`import type { KhaveeAvatarConfig } from "./mount"`) remains unchanged.
+ * AvatarScene and mountAvatarInstance are extended with config-driven scene
+ * parameters in plan 09-05; this file carries the re-export only for now.
  */
 import type { Root } from "react-dom/client";
 import { OpenAIRealtimeProvider } from "@khaveeai/providers-openai-realtime";
@@ -28,28 +34,10 @@ import { KhaveeProvider, VRMAvatar, GLBAvatar } from "@khaveeai/react";
 import { Canvas } from "@react-three/fiber";
 import { ClickToTalkOverlay } from "./ui/ClickToTalkOverlay";
 import { ErrorOverlay } from "./ui/ErrorOverlay";
+import type { KhaveeAvatarConfig } from "./config";
 
-/**
- * Shape of the JSON object server-rendered into each mount point's
- * `data-khaveeai-config` attribute by AvatarRenderer::render() (plan 02/04).
- */
-export interface KhaveeAvatarConfig {
-  voice?:
-    | "alloy"
-    | "ash"
-    | "ballad"
-    | "coral"
-    | "echo"
-    | "sage"
-    | "shimmer"
-    | "verse"
-    | "marin"
-    | "cedar";
-  instructions?: string;
-  avatarUrl?: string;
-  model?: string;
-  restUrl?: string;
-}
+// Re-export so index.ts:17 `import type { KhaveeAvatarConfig } from "./mount"` continues to work.
+export type { KhaveeAvatarConfig } from "./config";
 
 function AvatarScene({ avatarUrl }: { avatarUrl: string }) {
   const isGlb = avatarUrl.toLowerCase().endsWith(".glb");

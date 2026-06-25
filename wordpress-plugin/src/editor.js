@@ -16,6 +16,13 @@
  * @wordpress/scripts' webpack `output.clean` (which wipes the
  * --output-path directory before each build) never deletes this source
  * file — assets/ is build OUTPUT only.
+ *
+ * AvatarBlock::render_callback()'s output is an EMPTY mount-point <div> by
+ * design (the live SPA bundle, which would otherwise paint the avatar, is
+ * never loaded here per EMBED-05) — so ServerSideRender alone renders
+ * nothing visible in the editor canvas. The static placeholder box below
+ * wraps it purely so an editor can see/select the block; it adds no SPA
+ * imports and does not affect what render_callback() itself returns.
  */
 
 import { registerBlockType } from '@wordpress/blocks';
@@ -105,10 +112,33 @@ function Edit( { attributes, setAttributes } ) {
 				)
 			)
 		),
-		createElement( ServerSideRender, {
-			block: 'khaveeai/avatar',
-			attributes: { voice, instructions, avatar },
-		} )
+		createElement(
+			'div',
+			{
+				style: {
+					border: '1px dashed #757575',
+					borderRadius: 4,
+					padding: 24,
+					marginTop: 8,
+					textAlign: 'center',
+					background: '#f0f0f0',
+				},
+			},
+			createElement(
+				'p',
+				{ style: { margin: 0, fontWeight: 600 } },
+				__( 'Khavee AI Avatar', 'khaveeai' )
+			),
+			createElement(
+				'p',
+				{ style: { margin: '4px 0 0', color: '#757575', fontSize: 13 } },
+				__( 'Live preview is not shown in the editor — view the published page to see the avatar.', 'khaveeai' )
+			),
+			createElement( ServerSideRender, {
+				block: 'khaveeai/avatar',
+				attributes: { voice, instructions, avatar },
+			} )
+		)
 	);
 }
 

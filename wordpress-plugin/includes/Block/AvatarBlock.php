@@ -59,10 +59,15 @@ final class AvatarBlock {
 	 * to a URL here before delegating, so AvatarRenderer never needs to
 	 * know whether `avatar_url` came from a shortcode or a block.
 	 *
+	 * The `bgImageId` attribute (Phase 9, STUDIO-05) is resolved to a URL
+	 * in the same way: cast to int, verified > 0, then resolved via
+	 * wp_get_attachment_url() — no user-supplied URL string is ever accepted
+	 * (T-09-01-02 mitigates SSRF/path-traversal risk).
+	 *
 	 * Never echoes get_api_key() or any secret — delegates entirely to
 	 * AvatarRenderer, which already enforces public_safe().
 	 *
-	 * @param array $attributes Block attributes (voice, instructions, avatar).
+	 * @param array $attributes Block attributes (voice, instructions, avatar, + Phase-9 visual/chat keys).
 	 * @return string
 	 */
 	public function render_callback( array $attributes ): string {
@@ -70,13 +75,51 @@ final class AvatarBlock {
 		$avatar_url    = $attachment_id > 0 ? wp_get_attachment_url( $attachment_id ) : '';
 		$avatar_url    = is_string( $avatar_url ) ? $avatar_url : '';
 
+		// Phase-9: resolve bgImageId → URL exactly as `avatar` is resolved above
+		// (T-09-01-02 — only Media Library IDs accepted, no user-supplied URL strings).
+		$bg_image_url = isset( $attributes['bgImageId'] ) && $attributes['bgImageId'] > 0
+			? wp_get_attachment_url( (int) $attributes['bgImageId'] ) : '';
+		$bg_image_url = is_string( $bg_image_url ) ? $bg_image_url : '';
+
 		$renderer_atts = array(
-			'voice'        => isset( $attributes['voice'] ) ? (string) $attributes['voice'] : '',
-			'instructions' => isset( $attributes['instructions'] ) ? (string) $attributes['instructions'] : '',
-			'avatar_url'   => $avatar_url,
+			'voice'           => isset( $attributes['voice'] )        ? (string) $attributes['voice']        : '',
+			'instructions'    => isset( $attributes['instructions'] ) ? (string) $attributes['instructions'] : '',
+			'avatar_url'      => $avatar_url,
+			// Phase-9 visual/chat config keys (STUDIO-05).
+			// Numeric keys default to their "real" defaults here (not 0) because a
+			// block attribute value of 0 means "use admin default" — the attribute
+			// schema uses 0 as the sentinel, and the render_callback applies the
+			// real default so wp_parse_args receives a meaningful value to merge.
+			'container_width'  => isset( $attributes['containerWidth'] )  ? (int)    $attributes['containerWidth']  : 0,
+			'container_height' => isset( $attributes['containerHeight'] ) ? (int)    $attributes['containerHeight'] : 0,
+			'full_width'       => ! empty( $attributes['fullWidth'] ),
+			'bg_type'          => isset( $attributes['bgType'] )          ? (string) $attributes['bgType']         : '',
+			'bg_color'         => isset( $attributes['bgColor'] )         ? (string) $attributes['bgColor']        : '',
+			'bg_transparent'   => ! empty( $attributes['bgTransparent'] ),
+			'bg_image_url'     => $bg_image_url,
+			'light_intensity'  => isset( $attributes['lightIntensity'] )  ? (float)  $attributes['lightIntensity']  : 1.0,
+			'avatar_scale'     => isset( $attributes['avatarScale'] )     ? (float)  $attributes['avatarScale']     : 1.0,
+			'avatar_offset_x'  => isset( $attributes['avatarOffsetX'] )   ? (float)  $attributes['avatarOffsetX']   : 0.0,
+			'avatar_offset_y'  => isset( $attributes['avatarOffsetY'] )   ? (float)  $attributes['avatarOffsetY']   : 0.0,
+			'camera_preset'    => isset( $attributes['cameraPreset'] )    ? (string) $attributes['cameraPreset']    : '',
+			'chat_show'        => ! empty( $attributes['chatShow'] ),
+			'chat_placement'   => isset( $attributes['chatPlacement'] )   ? (string) $attributes['chatPlacement']   : '',
 		);
 
-		$renderer_atts = array_filter( $renderer_atts, static fn( $v ) => '' !== $v );
+		// SAFE FILTER (T-09-01-03): the original `static fn( $v ) => '' !== $v` would
+		// strip numeric 0 / 0.0 and false under PHP loose comparison (`'' == 0` is true).
+		// This type-aware callback preserves non-string values so scale=0 or offset=0
+		// survive the filter and correctly override the admin default via wp_parse_args.
+		$renderer_atts = array_filter(
+			$renderer_atts,
+			static function ( $v, $k ) {
+				if ( is_string( $v ) ) {
+					return '' !== $v;
+				}
+				return true; // keep numeric + bool as-is (preserves 0, 0.0, false)
+			},
+			ARRAY_FILTER_USE_BOTH
+		);
 
 		return $this->renderer->render( $renderer_atts );
 	}

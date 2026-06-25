@@ -73,6 +73,26 @@ final class AvatarRenderer {
 		$merged['avatar_url']   = '' !== $avatar_url ? $avatar_url : (string) $defaults['avatar_url'];
 		$merged['model']        = '' !== $model ? $model : (string) $defaults['model'];
 
+		// Phase-9 visual/chat config — defensive re-application of the 13 new keys
+		// (mirrors the existing 4-key block above; same rationale: AvatarRenderer must
+		// not trust that callers have already array_filter'd blank overrides).
+		$merged['container_width']  = isset( $merged['container_width'] )  ? (int)    $merged['container_width']  : 0;
+		$merged['container_height'] = isset( $merged['container_height'] ) ? (int)    $merged['container_height'] : 0;
+		$merged['full_width']       = (bool) ( $merged['full_width'] ?? false );
+		$merged['bg_type']          = isset( $merged['bg_type'] )          ? (string) $merged['bg_type']          : '';
+		$merged['bg_color']         = isset( $merged['bg_color'] )         ? (string) $merged['bg_color']         : '';
+		$merged['bg_transparent']   = (bool) ( $merged['bg_transparent'] ?? false );
+		$merged['bg_image_url']     = isset( $merged['bg_image_url'] )     ? (string) $merged['bg_image_url']     : '';
+		$merged['light_intensity']  = isset( $merged['light_intensity'] )  ? (float)  $merged['light_intensity']  : 1.0;
+		$merged['avatar_scale']     = isset( $merged['avatar_scale'] )     ? (float)  $merged['avatar_scale']     : 1.0;
+		$merged['avatar_offset_x']  = isset( $merged['avatar_offset_x'] )  ? (float)  $merged['avatar_offset_x']  : 0.0;
+		$merged['avatar_offset_y']  = isset( $merged['avatar_offset_y'] )  ? (float)  $merged['avatar_offset_y']  : 0.0;
+		$merged['camera_preset']    = isset( $merged['camera_preset'] ) && '' !== $merged['camera_preset']
+			? (string) $merged['camera_preset'] : 'front';
+		$merged['chat_show']        = (bool) ( $merged['chat_show'] ?? false );
+		$merged['chat_placement']   = isset( $merged['chat_placement'] ) && '' !== $merged['chat_placement']
+			? (string) $merged['chat_placement'] : 'beside';
+
 		if ( ! $this->config_source->is_configured() ) {
 			if ( current_user_can( 'manage_options' ) ) {
 				return $this->render_admin_notice();
@@ -132,16 +152,38 @@ final class AvatarRenderer {
 	 * method does not, and must never, read the secret credential from
 	 * ConfigSourceInterface.
 	 *
+	 * All new Phase-9 keys (bgColor, bgImageUrl, cameraPreset, etc.) pass
+	 * through the existing `esc_attr( wp_json_encode( ... ) )` at the call
+	 * site — JSON-encoding plus attribute escaping defeats any XSS attempt
+	 * (T-09-01-01). Each key is also cast to its primitive type before
+	 * arriving here, preventing arbitrary string injection.
+	 *
 	 * @param array $merged Merged instance+global config.
-	 * @return array{voice: string, instructions: string, avatarUrl: string, model: string, restUrl: string}
+	 * @return array
 	 */
 	private function public_safe( array $merged ): array {
 		return array(
-			'voice'        => isset( $merged['voice'] ) ? (string) $merged['voice'] : '',
-			'instructions' => isset( $merged['instructions'] ) ? (string) $merged['instructions'] : '',
-			'avatarUrl'    => isset( $merged['avatar_url'] ) ? (string) $merged['avatar_url'] : '',
-			'model'        => isset( $merged['model'] ) ? (string) $merged['model'] : '',
-			'restUrl'      => rest_url( 'khaveeai/v1/session' ),
+			// Phase-8 keys (unchanged):
+			'voice'           => isset( $merged['voice'] )        ? (string) $merged['voice']        : '',
+			'instructions'    => isset( $merged['instructions'] ) ? (string) $merged['instructions'] : '',
+			'avatarUrl'       => isset( $merged['avatar_url'] )   ? (string) $merged['avatar_url']   : '',
+			'model'           => isset( $merged['model'] )        ? (string) $merged['model']        : '',
+			'restUrl'         => rest_url( 'khaveeai/v1/session' ),
+			// Phase-9 visual/chat config keys (STUDIO-05, snake→camel translation boundary):
+			'containerWidth'  => isset( $merged['container_width'] )  ? (int)   $merged['container_width']  : 0,
+			'containerHeight' => isset( $merged['container_height'] ) ? (int)   $merged['container_height'] : 0,
+			'fullWidth'       => (bool) ( $merged['full_width'] ?? false ),
+			'bgType'          => isset( $merged['bg_type'] )          ? (string)$merged['bg_type']          : '',
+			'bgColor'         => isset( $merged['bg_color'] )         ? (string)$merged['bg_color']         : '',
+			'bgTransparent'   => (bool) ( $merged['bg_transparent'] ?? false ),
+			'bgImageUrl'      => isset( $merged['bg_image_url'] )     ? (string)$merged['bg_image_url']     : '',
+			'lightIntensity'  => isset( $merged['light_intensity'] )  ? (float) $merged['light_intensity']  : 1.0,
+			'avatarScale'     => isset( $merged['avatar_scale'] )     ? (float) $merged['avatar_scale']     : 1.0,
+			'avatarOffsetX'   => isset( $merged['avatar_offset_x'] )  ? (float) $merged['avatar_offset_x']  : 0.0,
+			'avatarOffsetY'   => isset( $merged['avatar_offset_y'] )  ? (float) $merged['avatar_offset_y']  : 0.0,
+			'cameraPreset'    => isset( $merged['camera_preset'] )    ? (string)$merged['camera_preset']    : 'front',
+			'chatShow'        => (bool) ( $merged['chat_show'] ?? false ),
+			'chatPlacement'   => isset( $merged['chat_placement'] )   ? (string)$merged['chat_placement']   : 'beside',
 		);
 	}
 }

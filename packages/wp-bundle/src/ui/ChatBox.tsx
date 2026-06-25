@@ -70,7 +70,7 @@ export function ChatBox({ placement }: { placement: "beside" | "below" }) {
       className={`khaveeai-chat khaveeai-chat--${placement} khaveeai-chat--${chatStatus}`}
     >
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      {/* "AI Assistant" — verbatim UI-SPEC copywriting (white-label, NOT "Khavee AI Assistant") */}
+      {/* "AI Assistant" — verbatim UI-SPEC copywriting; white-label WP embed uses no brand name */}
       <div className="khaveeai-chat__header">AI Assistant</div>
 
       {/* ── Body: three mutually exclusive states ────────────────────────── */}

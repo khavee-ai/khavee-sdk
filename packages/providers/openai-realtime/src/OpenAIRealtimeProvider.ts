@@ -47,6 +47,8 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   private ephemeralUserMessageId: string | null = null;
   private micEnabled = false;
   private hasHeardFirstGreeting = false;
+  private _warnedTemperatureDropped = false;
+  private _temperatureExplicitlySet = false;
   private audioOutputElement: HTMLAudioElement | null = null;
 
   // Audio streams for lip sync
@@ -71,6 +73,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   ) => void;
 
   constructor(config: RealtimeConfig) {
+    this._temperatureExplicitlySet = config.temperature !== undefined;
     this.config = {
       model: "gpt-4o-realtime-preview",
       voice: "shimmer",
@@ -327,16 +330,27 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
    * Build the sessionConfig object POSTed to the proxy endpoint when
    * useProxy+proxyEndpoint are set. Extracted from connect() so it can be
    * exercised directly by a regression test (see Task 1 of 08-05).
+   *
+   * (gap 08-05) `config.temperature` is intentionally NOT included here.
+   * OpenAI's /v1/realtime/client_secrets schema rejects session-level
+   * temperature — confirmed via live 400 "Unknown parameter:
+   * session.temperature". It remains a constructor option (for any future
+   * non-proxy API surface that does accept it) but is silently dropped on
+   * this path; warn once so a caller setting it doesn't wonder why it has
+   * no effect.
    */
   private buildProxySessionConfig(): any {
+    if (this._temperatureExplicitlySet && !this._warnedTemperatureDropped) {
+      this._warnedTemperatureDropped = true;
+      console.warn(
+        "OpenAIRealtimeProvider: config.temperature is ignored in proxy mode — OpenAI's session-create endpoint rejects it (gap 08-05)."
+      );
+    }
     const sessionConfig: any = {
       type: "realtime" as const,
       model: this.config.model || "gpt-realtime-1.5",
       instructions:
         this.config.instructions || "You are a helpful AI assistant.",
-      // (gap 08-05) OpenAI's /v1/realtime/client_secrets schema rejects
-      // session-level temperature — confirmed via live 400
-      // "Unknown parameter: session.temperature".
       output_modalities: ["audio"] as const,
       audio: {
         input: {

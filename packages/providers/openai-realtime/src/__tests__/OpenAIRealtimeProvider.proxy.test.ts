@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { OpenAIRealtimeProvider } from "../OpenAIRealtimeProvider";
 
 // ── 08-05: regression test for the temperature-free proxy sessionConfig ────
@@ -58,5 +58,34 @@ describe("OpenAIRealtimeProvider proxy sessionConfig (buildProxySessionConfig)",
 
     const sessionConfig = (provider as any).buildProxySessionConfig();
     expect(sessionConfig.model).toBe("gpt-realtime-1.5");
+  });
+
+  it("does not warn when the caller never set temperature (constructor default only)", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const provider = new OpenAIRealtimeProvider({
+      useProxy: true,
+      proxyEndpoint: "https://example.test/session",
+    });
+
+    (provider as any).buildProxySessionConfig();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("warns once when the caller explicitly sets temperature, since it is silently dropped", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const provider = new OpenAIRealtimeProvider({
+      useProxy: true,
+      proxyEndpoint: "https://example.test/session",
+      temperature: 0.2,
+    });
+
+    (provider as any).buildProxySessionConfig();
+    (provider as any).buildProxySessionConfig();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("temperature");
+    warnSpy.mockRestore();
   });
 });

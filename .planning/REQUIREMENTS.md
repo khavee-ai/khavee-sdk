@@ -18,11 +18,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Embedding (Shortcode + Block)
 
-- [ ] **EMBED-01**: Site owner can embed the avatar via a `[khaveeai_avatar]` shortcode, usable in any editor or page builder
-- [ ] **EMBED-02**: Shortcode supports per-instance attribute overrides (voice, instructions, avatar) that fall back to the global settings when omitted
-- [ ] **EMBED-03**: Site owner can embed the avatar via an equivalent Gutenberg block whose inspector controls mirror the shortcode's attributes
-- [ ] **EMBED-04**: Shortcode and block resolve attributes (instance override → global default → hardcoded fallback) through one shared PHP function, so the two embed methods cannot drift out of sync
-- [ ] **EMBED-05**: The Gutenberg block's editor preview (`edit()`) never mounts the live SPA, opens a microphone prompt, or mints a real OpenAI token while editing — only the front-end render does
+- [x] **EMBED-01**: Site owner can embed the avatar via a `[khaveeai_avatar]` shortcode, usable in any editor or page builder
+- [x] **EMBED-02**: Shortcode supports per-instance attribute overrides (voice, instructions, avatar) that fall back to the global settings when omitted
+- [x] **EMBED-03**: Site owner can embed the avatar via an equivalent Gutenberg block whose inspector controls mirror the shortcode's attributes
+- [x] **EMBED-04**: Shortcode and block resolve attributes (instance override → global default → hardcoded fallback) through one shared PHP function, so the two embed methods cannot drift out of sync
+- [x] **EMBED-05**: The Gutenberg block's editor preview (`edit()`) never mounts the live SPA, opens a microphone prompt, or mints a real OpenAI token while editing — only the front-end render does
 
 ### Session Backend (REST)
 
@@ -34,7 +34,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Asset Handling & Performance
 
 - [ ] **ASSET-01**: VRM/GLB Media Library uploads are validated server-side beyond file extension (binary magic-byte check) before being accepted, in addition to the `upload_mimes` allowlist
-- [ ] **PERF-01**: The avatar JS bundle and its dependencies are enqueued only on pages that actually contain the shortcode or block (via `has_shortcode()`/`has_block()` detection), not site-wide
+- [x] **PERF-01**: The avatar JS bundle and its dependencies are enqueued only on pages that actually contain the shortcode or block (via `has_shortcode()`/`has_block()` detection), not site-wide
 
 ### Architecture / Extensibility
 
@@ -90,17 +90,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SET-04 | Phase 7 | Pending |
 | SET-05 | Phase 7 | Pending |
 | SET-06 | Phase 7 | Pending |
-| EMBED-01 | Phase 8 | Pending |
-| EMBED-02 | Phase 8 | Pending |
-| EMBED-03 | Phase 8 | Pending |
-| EMBED-04 | Phase 8 | Pending |
-| EMBED-05 | Phase 8 | Pending |
+| EMBED-01 | Phase 8 | Complete |
+| EMBED-02 | Phase 8 | Complete |
+| EMBED-03 | Phase 8 | Complete |
+| EMBED-04 | Phase 8 | Complete |
+| EMBED-05 | Phase 8 | Complete |
 | REST-01 | Phase 6 | Complete |
 | REST-02 | Phase 6 | Complete |
 | REST-03 | Phase 6 | Complete |
 | REST-04 | Phase 6 | Complete |
 | ASSET-01 | Phase 7 | Pending |
-| PERF-01 | Phase 8 | Pending |
+| PERF-01 | Phase 8 | Complete |
 | ARCH-01 | Phase 6 | Complete |
 | ARCH-02 | Phase 6 | Complete |
 

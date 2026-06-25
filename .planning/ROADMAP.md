@@ -268,4 +268,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. End-to-End Mixed-Vendor Demo & Documentation | 0/TBD | Not started | - |
 | 6. PHP Backend Core — Config/Token Strategies + REST Contract | 4/4 | Complete | 2026-06-23 |
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
-| 8. Frontend Bundle, Shortcode & Block | 4/4 | Complete   | 2026-06-24 |
+| 8. Frontend Bundle, Shortcode & Block | 4/4 | Complete    | 2026-06-25 |

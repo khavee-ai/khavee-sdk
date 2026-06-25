@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 08-frontend-bundle-shortcode-block
 source: [08-01-SUMMARY.md, 08-02-SUMMARY.md, 08-03-SUMMARY.md, 08-04-SUMMARY.md]
 started: 2026-06-25T07:32:02Z
@@ -55,5 +55,10 @@ blocked: 0
   reason: "User reported: it said {\"error\":\"session_unavailable\"}"
   severity: blocker
   test: 1
-  artifacts: []
-  missing: []
+  root_cause: "packages/providers/openai-realtime/src/OpenAIRealtimeProvider.ts (~line 145) unconditionally includes `temperature` in the sessionConfig object POSTed in the useProxy branch. OpenAI's real /v1/realtime/client_secrets endpoint rejects `temperature` as a session-level field (400 Unknown parameter: 'session.temperature'), confirmed by live curl reproduction with the real API key. OpenAiDirectTokenProvider.php forwards sessionConfig verbatim and correctly maps the resulting 400 to a detail-free TokenMintException (D-09 by design); SessionController.php correctly surfaces that as the public {\"error\":\"session_unavailable\"}. Neither PHP file is buggy — both are working as designed. This is pre-existing code outside Phase 8's scope (Phase 8 was explicitly told not to modify OpenAIRealtimeProvider.ts) — Phase 8's bundle is simply the first real caller to exercise the useProxy branch's full session shape; earlier harnesses/curl tests always used a minimal hand-crafted sessionConfig that never included temperature."
+  artifacts:
+    - path: "packages/providers/openai-realtime/src/OpenAIRealtimeProvider.ts"
+      issue: "Unconditionally injects temperature into the proxy sessionConfig; OpenAI's real session-create endpoint rejects this field"
+  missing:
+    - "Remove or conditionally gate the temperature field in OpenAIRealtimeProvider.connect()'s useProxy sessionConfig construction"
+  debug_session: ".planning/debug/session-unavailable-error.md"

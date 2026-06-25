@@ -23,10 +23,10 @@
  *
  * The live editor preview reads config from the
  * data-khaveeai-preview-config attribute emitted on the mount-point div
- * below (added in Task 2). editor.js rewrites this attribute on every
- * edit() re-render (Gutenberg re-renders on every setAttributes call), so
- * the preview bundle's MutationObserver (Plan 09-03) always sees fresh
- * values.
+ * below. editor.js rewrites this attribute on every edit() re-render
+ * (Gutenberg re-renders on every setAttributes call AND on local state
+ * changes), so the preview bundle's MutationObserver (Plan 09-03) always
+ * sees fresh values including in-progress RangeControl drag positions.
  *
  * Uses @wordpress/element's createElement (not bare react/JSX) so WP
  * core's bundled React version is irrelevant to this file.
@@ -37,7 +37,7 @@
  */
 
 import { registerBlockType } from '@wordpress/blocks';
-import { createElement } from '@wordpress/element';
+import { createElement, useState, useRef, useEffect } from '@wordpress/element';
 import {
 	InspectorControls,
 	MediaUpload,
@@ -114,6 +114,92 @@ function Edit( { attributes, setAttributes } ) {
 
 	const blockProps = useBlockProps();
 
+	// ── Editor-only local state (not persisted as block attributes) ──────
+	// previewTalking drives a mouth-animation demo in the editor preview.
+	// It is NOT a block attribute — it only lives for the duration of the
+	// editing session and flows into data-khaveeai-preview-config JSON.
+	const [ previewTalking, setPreviewTalking ] = useState( false );
+
+	// ── RangeControl undo-spam mitigation (RESEARCH Pitfall 4) ──────────
+	// setAttributes writes the Gutenberg undo stack. Firing it on every
+	// pixel of a drag produces 50+ undo entries per slider interaction.
+	// Pattern: maintain local React state for the displayed slider value so
+	// the handle moves smoothly; debounce the actual setAttributes call at
+	// ~50ms so only the settled value lands in the undo stack.
+	//
+	// data-khaveeai-preview-config (below) reads from live.* so the preview
+	// bundle always reflects the current drag position without waiting for
+	// the debounced commit. (UI-SPEC §Interaction-States "Preview — config
+	// reactivity lag: last-applied value wins; no debouncing of slider input
+	// beyond what R3F's frame loop already provides" — this no-debounce rule
+	// applies to the PREVIEW RENDERING; setAttributes persistence DOES need
+	// debounce to protect the undo stack.)
+	const [ live, setLive ] = useState( {
+		containerWidth,
+		containerHeight,
+		lightIntensity,
+		avatarScale,
+		avatarOffsetX,
+		avatarOffsetY,
+	} );
+	const debounceRef = useRef( {} );
+
+	// Sync local state back from attributes on undo/redo so the slider
+	// snaps to the undone value when the author uses Ctrl+Z.
+	useEffect( () => {
+		setLive( ( prev ) => ( {
+			...prev,
+			containerWidth,
+			containerHeight,
+			lightIntensity,
+			avatarScale,
+			avatarOffsetX,
+			avatarOffsetY,
+		} ) );
+	}, [ containerWidth, containerHeight, lightIntensity, avatarScale, avatarOffsetX, avatarOffsetY ] );
+
+	/**
+	 * Update local slider state immediately (smooth drag) and schedule a
+	 * debounced setAttributes call (~50ms trailing) so the undo stack only
+	 * gets the settled value.
+	 *
+	 * @param {string} key      - Block attribute key (camelCase).
+	 * @param {number} value    - New slider value.
+	 */
+	function debouncedAttr( key, value ) {
+		setLive( ( prev ) => ( { ...prev, [ key ]: value } ) );
+		clearTimeout( debounceRef.current[ key ] );
+		debounceRef.current[ key ] = setTimeout( () => {
+			setAttributes( { [ key ]: value } );
+		}, 50 );
+	}
+
+	// ── Preview config JSON (emitted on the mount-point div) ─────────────
+	// All 16 persisted attributes + the editor-only previewTalking flag.
+	// live.* overrides the attribute values for the 6 RangeControls so the
+	// preview bundle sees the in-progress drag value without waiting for the
+	// debounced setAttributes commit.
+	const previewConfig = JSON.stringify( {
+		voice,
+		instructions,
+		avatar,
+		containerWidth:  live.containerWidth,
+		containerHeight: live.containerHeight,
+		fullWidth,
+		bgType,
+		bgColor,
+		bgTransparent,
+		bgImageId,
+		lightIntensity:  live.lightIntensity,
+		avatarScale:     live.avatarScale,
+		avatarOffsetX:   live.avatarOffsetX,
+		avatarOffsetY:   live.avatarOffsetY,
+		cameraPreset,
+		chatShow,
+		chatPlacement,
+		previewTalking,
+	} );
+
 	return createElement(
 		'div',
 		blockProps,
@@ -129,18 +215,18 @@ function Edit( { attributes, setAttributes } ) {
 				createElement( RangeControl, {
 					label: __( 'Container width (px)', 'khaveeai' ),
 					help: __( 'Leave blank to use the global default.', 'khaveeai' ),
-					value: containerWidth > 0 ? containerWidth : undefined,
+					value: live.containerWidth > 0 ? live.containerWidth : undefined,
 					min: 200,
 					max: 1200,
-					onChange: ( value ) => setAttributes( { containerWidth: value } ),
+					onChange: ( value ) => debouncedAttr( 'containerWidth', value ),
 				} ),
 				createElement( RangeControl, {
 					label: __( 'Container height (px)', 'khaveeai' ),
 					help: __( 'Leave blank to use the global default.', 'khaveeai' ),
-					value: containerHeight > 0 ? containerHeight : undefined,
+					value: live.containerHeight > 0 ? live.containerHeight : undefined,
 					min: 200,
 					max: 1200,
-					onChange: ( value ) => setAttributes( { containerHeight: value } ),
+					onChange: ( value ) => debouncedAttr( 'containerHeight', value ),
 				} ),
 				createElement( ToggleControl, {
 					label: __( 'Full-width', 'khaveeai' ),
@@ -244,11 +330,11 @@ function Edit( { attributes, setAttributes } ) {
 				createElement( RangeControl, {
 					label: __( 'Light intensity', 'khaveeai' ),
 					help: __( '0 is dark, 2 is bright. Default 1.', 'khaveeai' ),
-					value: lightIntensity > 0 ? lightIntensity : undefined,
+					value: live.lightIntensity > 0 ? live.lightIntensity : undefined,
 					min: 0,
 					max: 2,
 					step: 0.1,
-					onChange: ( value ) => setAttributes( { lightIntensity: value } ),
+					onChange: ( value ) => debouncedAttr( 'lightIntensity', value ),
 				} )
 			),
 
@@ -277,11 +363,11 @@ function Edit( { attributes, setAttributes } ) {
 				createElement( RangeControl, {
 					label: __( 'Avatar scale', 'khaveeai' ),
 					help: __( '1 is normal size.', 'khaveeai' ),
-					value: avatarScale > 0 ? avatarScale : undefined,
+					value: live.avatarScale > 0 ? live.avatarScale : undefined,
 					min: 0.5,
 					max: 2.0,
 					step: 0.05,
-					onChange: ( value ) => setAttributes( { avatarScale: value } ),
+					onChange: ( value ) => debouncedAttr( 'avatarScale', value ),
 				} ),
 				createElement( RangeControl, {
 					label: __( 'Horizontal offset', 'khaveeai' ),
@@ -289,20 +375,20 @@ function Edit( { attributes, setAttributes } ) {
 					// avatarOffsetX range includes 0 as a meaningful centre position;
 					// pass raw value so the slider centres at 0 (which also happens to
 					// be the attribute default for "use global default").
-					value: avatarOffsetX,
+					value: live.avatarOffsetX,
 					min: -1.0,
 					max: 1.0,
 					step: 0.05,
-					onChange: ( value ) => setAttributes( { avatarOffsetX: value } ),
+					onChange: ( value ) => debouncedAttr( 'avatarOffsetX', value ),
 				} ),
 				createElement( RangeControl, {
 					label: __( 'Vertical offset', 'khaveeai' ),
 					help: __( 'Move the avatar up or down.', 'khaveeai' ),
-					value: avatarOffsetY,
+					value: live.avatarOffsetY,
 					min: -1.0,
 					max: 1.0,
 					step: 0.05,
-					onChange: ( value ) => setAttributes( { avatarOffsetY: value } ),
+					onChange: ( value ) => debouncedAttr( 'avatarOffsetY', value ),
 				} )
 			),
 
@@ -359,40 +445,66 @@ function Edit( { attributes, setAttributes } ) {
 					disabled: ! chatShow,
 					onChange: ( value ) => setAttributes( { chatPlacement: value } ),
 				} ),
-				// Preview-talking is editor-only local state (Task 2 wires it to useState).
+				// Preview-talking drives the editor mouth-animation demo. It is
+				// editor-only local state — NOT a persisted block attribute — so it
+				// calls setPreviewTalking (not setAttributes).
 				// UI-SPEC §Mutual-exclusivity correction: stays ENABLED regardless of
 				// chatShow — it animates the avatar, not the chat panel.
 				createElement( ToggleControl, {
 					label: __( 'Preview talking', 'khaveeai' ),
 					help: __( 'Play a sample mouth animation in the editor. Visitors see real lip-sync on the published page.', 'khaveeai' ),
-					checked: false,
-					onChange: () => {},
+					checked: previewTalking,
+					onChange: setPreviewTalking,
 				} )
 			)
 		),
 
-		// ── Editor canvas — placeholder (replaced by mount-point div in Task 2) ──
+		// ── Editor canvas — preview mount-point div ───────────────────────
+		// The separately-enqueued khaveeai-preview.js bundle (Plan 09-06)
+		// scans for [data-khaveeai-preview-config] and mounts the R3F scene
+		// here. Before the preview bundle loads, the fallback banner below
+		// is visible so the author can see and select the block.
+		//
+		// data-khaveeai-preview-config is rebuilt on every edit() re-render
+		// (Gutenberg re-renders on every setAttributes call AND on local
+		// state changes), so the preview bundle's MutationObserver always
+		// sees the current config including in-progress RangeControl drags
+		// (live.* overrides the debounced attribute values above).
 		createElement(
 			'div',
 			{
+				'data-khaveeai-preview-config': previewConfig,
 				style: {
+					minHeight: 200,
 					border: '1px dashed #757575',
 					borderRadius: 4,
-					padding: 24,
 					marginTop: 8,
-					textAlign: 'center',
-					background: '#f0f0f0',
+					position: 'relative',
+					overflow: 'hidden',
 				},
 			},
+			// Fallback banner — visible before khaveeai-preview.js mounts.
+			// UI-SPEC §Copywriting "Editor-preview banner" copy verbatim.
+			// The preview bundle replaces this with the live 3D scene on mount.
 			createElement(
-				'p',
-				{ style: { margin: 0, fontWeight: 600 } },
-				__( 'Khavee AI Avatar', 'khaveeai' )
-			),
-			createElement(
-				'p',
-				{ style: { margin: '4px 0 0', color: '#757575', fontSize: 13 } },
-				__( 'Live preview is not shown in the editor — view the published page to see the avatar.', 'khaveeai' )
+				'div',
+				{
+					className: 'khaveeai-editor-preview-banner',
+					style: {
+						padding: 24,
+						textAlign: 'center',
+					},
+				},
+				createElement(
+					'p',
+					{ style: { margin: 0, fontWeight: 600, fontSize: 16 } },
+					__( 'Khavee AI Avatar — preview', 'khaveeai' )
+				),
+				createElement(
+					'p',
+					{ style: { margin: '8px 0 0', color: '#757575', fontSize: 14 } },
+					__( 'Live preview — view the published page to talk.', 'khaveeai' )
+				)
 			)
 		)
 	);

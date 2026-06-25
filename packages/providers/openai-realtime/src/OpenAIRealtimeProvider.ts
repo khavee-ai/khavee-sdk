@@ -75,7 +75,11 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   constructor(config: RealtimeConfig) {
     this._temperatureExplicitlySet = config.temperature !== undefined;
     this.config = {
-      model: "gpt-4o-realtime-preview",
+      // Matches buildProxySessionConfig()'s and the non-proxy calls-URL's
+      // own "gpt-realtime-1.5" fallback below — "gpt-4o-realtime-preview"
+      // was the prior default but is unavailable on some accounts
+      // (model_not_found), discovered live during Phase 8 UAT.
+      model: "gpt-realtime-1.5",
       voice: "shimmer",
       temperature: 0.8,
       speed: 1.4,

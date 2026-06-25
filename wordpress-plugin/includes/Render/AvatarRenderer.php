@@ -66,10 +66,12 @@ final class AvatarRenderer {
 		$instructions = isset( $merged['instructions'] ) ? (string) $merged['instructions'] : '';
 		$voice        = isset( $merged['voice'] ) ? (string) $merged['voice'] : '';
 		$avatar_url   = isset( $merged['avatar_url'] ) ? (string) $merged['avatar_url'] : '';
+		$model        = isset( $merged['model'] ) ? (string) $merged['model'] : '';
 
 		$merged['instructions'] = '' !== $instructions ? $instructions : (string) $defaults['instructions'];
 		$merged['voice']        = '' !== $voice ? $voice : (string) $defaults['voice'];
 		$merged['avatar_url']   = '' !== $avatar_url ? $avatar_url : (string) $defaults['avatar_url'];
+		$merged['model']        = '' !== $model ? $model : (string) $defaults['model'];
 
 		if ( ! $this->config_source->is_configured() ) {
 			if ( current_user_can( 'manage_options' ) ) {
@@ -131,13 +133,14 @@ final class AvatarRenderer {
 	 * ConfigSourceInterface.
 	 *
 	 * @param array $merged Merged instance+global config.
-	 * @return array{voice: string, instructions: string, avatarUrl: string, restUrl: string}
+	 * @return array{voice: string, instructions: string, avatarUrl: string, model: string, restUrl: string}
 	 */
 	private function public_safe( array $merged ): array {
 		return array(
 			'voice'        => isset( $merged['voice'] ) ? (string) $merged['voice'] : '',
 			'instructions' => isset( $merged['instructions'] ) ? (string) $merged['instructions'] : '',
 			'avatarUrl'    => isset( $merged['avatar_url'] ) ? (string) $merged['avatar_url'] : '',
+			'model'        => isset( $merged['model'] ) ? (string) $merged['model'] : '',
 			'restUrl'      => rest_url( 'khaveeai/v1/session' ),
 		);
 	}

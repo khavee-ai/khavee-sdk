@@ -15,6 +15,12 @@
  * route (D-05, plan 08-03) — this module does not add any separate
  * override-style field or make any additional network call beyond the one
  * request OpenAIRealtimeProvider already sends.
+ *
+ * `model` flows the admin's globally-configured model (AvatarRenderer's
+ * public_safe() output) straight into the constructor config so the bundle
+ * never silently falls back to OpenAIRealtimeProvider's own hardcoded
+ * default — discovered live (post-Phase-8 UAT) when an account without
+ * access to the old constructor default got `model_not_found`.
  */
 import type { Root } from "react-dom/client";
 import { OpenAIRealtimeProvider } from "@khaveeai/providers-openai-realtime";
@@ -41,6 +47,7 @@ export interface KhaveeAvatarConfig {
     | "cedar";
   instructions?: string;
   avatarUrl?: string;
+  model?: string;
   restUrl?: string;
 }
 
@@ -62,6 +69,7 @@ export function mountAvatarInstance(root: Root, config: KhaveeAvatarConfig): voi
     proxyEndpoint: config.restUrl,
     voice: config.voice,
     instructions: config.instructions,
+    model: config.model,
   });
 
   root.render(

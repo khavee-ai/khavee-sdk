@@ -465,6 +465,19 @@ run_case(
 );
 
 run_case(
+	'AvatarRenderer: public_safe output includes the global model setting (regression — was silently dropped, caused live model_not_found)',
+	function () {
+		khaveeai_test_reset_state();
+		$renderer = new AvatarRenderer( new FixtureConfigSource(), new AssetManager() );
+
+		$html   = $renderer->render( array() );
+		$config = extract_public_safe_config( $html );
+
+		return null !== $config && 'gpt-realtime-1.5' === ( $config['model'] ?? null );
+	}
+);
+
+run_case(
 	'AvatarRenderer: explicit avatar_url override wins over the global default',
 	function () {
 		khaveeai_test_reset_state();

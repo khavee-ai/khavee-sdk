@@ -460,21 +460,17 @@ function Edit( { attributes, setAttributes } ) {
 		),
 
 		// ── Editor canvas — preview mount-point div ───────────────────────
-		// The __html:'' inner-HTML ownership hint prevents Gutenberg's
-		// reconciler from clobbering React 19's scene output on every
-		// re-render (GAP-1 fix). Before the preview bundle loads the
-		// container shows as an empty dashed box.
-		//
-		// data-khaveeai-preview-config is rebuilt on every edit() re-render
-		// (Gutenberg re-renders on every setAttributes call AND on local
-		// state changes), so the preview bundle's MutationObserver always
-		// sees the current config including in-progress RangeControl drags
-		// (live.* overrides the debounced attribute values above).
+		// No virtual-DOM children on this div — React 18's reconciler only
+		// manages nodes in its own fiber tree. With zero virtual children,
+		// it never touches the div's actual DOM children, so React 19's
+		// Canvas (mounted by the preview bundle) is preserved across every
+		// Edit() re-render. data-khaveeai-preview-config attribute updates
+		// are handled independently by attribute diffing and still fire the
+		// MutationObserver in mountPreview.tsx on every slider drag.
 		createElement(
 			'div',
 			{
 				'data-khaveeai-preview-config': previewConfig,
-				dangerouslySetInnerHTML: { __html: '' },
 				style: {
 					minHeight: 200,
 					border: '1px dashed #757575',

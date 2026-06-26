@@ -84,9 +84,14 @@ final class Plugin {
 		$block = new AvatarBlock( $renderer );
 		add_action( 'init', array( $block, 'register' ) );
 
-		// Phase 9: enqueue the preview bundle (khaveeai-preview.js) in the
-		// block editor only — never on published pages (Pitfall 5).
-		add_action( 'enqueue_block_editor_assets', array( __CLASS__, 'enqueue_preview_bundle' ) );
+		// Phase 9: register khaveeai-preview so block.json's editorScript array
+		// can reference it by handle. Registration runs in init (priority 9, before
+		// AvatarBlock::register at priority 10) so the handle exists when
+		// register_block_type resolves the editorScript list.
+		// The script is editor-only: block.json lists it in "editorScript" (not
+		// "script" / "viewScript"), so WordPress loads it only inside the Gutenberg
+		// block-canvas iframe — never on published pages (Pitfall 5 / PERF-01).
+		add_action( 'init', array( __CLASS__, 'register_preview_bundle' ), 9 );
 	}
 
 	/**
@@ -117,20 +122,20 @@ final class Plugin {
 	 *
 	 * @return void
 	 */
-	public static function enqueue_preview_bundle(): void {
-		if ( wp_script_is( 'khaveeai-preview', 'enqueued' ) ) {
-			return; // Idempotent — safe if called more than once.
+	public static function register_preview_bundle(): void {
+		if ( wp_script_is( 'khaveeai-preview', 'registered' ) ) {
+			return;
 		}
 
 		$preview_path = plugin_dir_path( KHAVEEAI_PLUGIN_FILE ) . 'build/khaveeai-preview.js';
 		$version      = file_exists( $preview_path ) ? (string) filemtime( $preview_path ) : KHAVEEAI_VERSION;
 
-		wp_enqueue_script(
+		wp_register_script(
 			'khaveeai-preview',
 			plugins_url( 'build/khaveeai-preview.js', KHAVEEAI_PLUGIN_FILE ),
-			array(), // Deliberately empty — D-10 full isolation; bundle owns its own React.
+			array(), // D-10 full isolation — bundle owns its own React 19.
 			$version,
-			array( 'in_footer' => false ) // Load in <head>/<body>, not footer, so mount is prompt.
+			false
 		);
 	}
 }

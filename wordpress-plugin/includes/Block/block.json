@@ -76,5 +76,5 @@
 			"default": ""
 		}
 	},
-	"editorScript": "file:../../assets/editor.js"
+	"editorScript": ["file:../../assets/editor.js", "khaveeai-preview"]
 }

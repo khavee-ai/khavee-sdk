@@ -460,10 +460,10 @@ function Edit( { attributes, setAttributes } ) {
 		),
 
 		// ── Editor canvas — preview mount-point div ───────────────────────
-		// The separately-enqueued khaveeai-preview.js bundle (Plan 09-06)
-		// scans for [data-khaveeai-preview-config] and mounts the R3F scene
-		// here. Before the preview bundle loads, the fallback banner below
-		// is visible so the author can see and select the block.
+		// The __html:'' inner-HTML ownership hint prevents Gutenberg's
+		// reconciler from clobbering React 19's scene output on every
+		// re-render (GAP-1 fix). Before the preview bundle loads the
+		// container shows as an empty dashed box.
 		//
 		// data-khaveeai-preview-config is rebuilt on every edit() re-render
 		// (Gutenberg re-renders on every setAttributes call AND on local
@@ -474,6 +474,7 @@ function Edit( { attributes, setAttributes } ) {
 			'div',
 			{
 				'data-khaveeai-preview-config': previewConfig,
+				dangerouslySetInnerHTML: { __html: '' },
 				style: {
 					minHeight: 200,
 					border: '1px dashed #757575',
@@ -482,30 +483,7 @@ function Edit( { attributes, setAttributes } ) {
 					position: 'relative',
 					overflow: 'hidden',
 				},
-			},
-			// Fallback banner — visible before khaveeai-preview.js mounts.
-			// UI-SPEC §Copywriting "Editor-preview banner" copy verbatim.
-			// The preview bundle replaces this with the live 3D scene on mount.
-			createElement(
-				'div',
-				{
-					className: 'khaveeai-editor-preview-banner',
-					style: {
-						padding: 24,
-						textAlign: 'center',
-					},
-				},
-				createElement(
-					'p',
-					{ style: { margin: 0, fontWeight: 600, fontSize: 16 } },
-					__( 'Khavee AI Avatar — preview', 'khaveeai' )
-				),
-				createElement(
-					'p',
-					{ style: { margin: '8px 0 0', color: '#757575', fontSize: 14 } },
-					__( 'Live preview — view the published page to talk.', 'khaveeai' )
-				)
-			)
+			}
 		)
 	);
 }

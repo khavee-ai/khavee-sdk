@@ -22,33 +22,57 @@ import { createRoot } from "react-dom/client";
 import { mountEditorPreview } from "./preview/mountPreview";
 import type { KhaveeAvatarConfig } from "./config";
 
+function mountIfNeeded(el: HTMLElement): void {
+  if (el.dataset.khaveeaiMounted === "true") return; // idempotency guard
+  el.dataset.khaveeaiMounted = "true";
+
+  let config: KhaveeAvatarConfig;
+  try {
+    config = JSON.parse(
+      el.dataset.khaveeaiPreviewConfig ?? "{}"
+    ) as KhaveeAvatarConfig;
+  } catch {
+    // Malformed config JSON must fail gracefully per-element.
+    return;
+  }
+
+  const root = createRoot(el);
+  mountEditorPreview(root, config, el);
+}
+
 function mountAllPreviews(): void {
-  const roots = document.querySelectorAll<HTMLElement>(
-    "[data-khaveeai-preview-config]"
-  );
-  roots.forEach((el) => {
-    if (el.dataset.khaveeaiMounted === "true") return; // idempotency guard (mirror index.ts:24)
-    el.dataset.khaveeaiMounted = "true";
+  document
+    .querySelectorAll<HTMLElement>("[data-khaveeai-preview-config]")
+    .forEach(mountIfNeeded);
+}
 
-    let config: KhaveeAvatarConfig;
-    try {
-      config = JSON.parse(
-        el.dataset.khaveeaiPreviewConfig ?? "{}"
-      ) as KhaveeAvatarConfig;
-    } catch {
-      // Malformed config JSON must fail gracefully per-element, not throw
-      // uncaught and break the rest of the editor page (mirrors index.ts:30-34).
-      return;
+// Gutenberg renders blocks asynchronously (React 18 createRoot schedules
+// its initial render after DOMContentLoaded). A one-shot DOMContentLoaded
+// scan misses elements added after the event fires. Watch the entire body
+// subtree for new [data-khaveeai-preview-config] nodes so the preview
+// mounts regardless of when Gutenberg flushes its first render.
+function startBodyObserver(): void {
+  const bodyObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.matches("[data-khaveeai-preview-config]")) mountIfNeeded(node);
+        node
+          .querySelectorAll<HTMLElement>("[data-khaveeai-preview-config]")
+          .forEach(mountIfNeeded);
+      }
     }
-
-    const root = createRoot(el);
-    mountEditorPreview(root, config, el);
   });
+  bodyObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", mountAllPreviews);
+  document.addEventListener("DOMContentLoaded", () => {
+    startBodyObserver();
+    mountAllPreviews(); // catch elements already in DOM at DOMContentLoaded
+  });
 } else {
+  startBodyObserver();
   mountAllPreviews();
 }
 

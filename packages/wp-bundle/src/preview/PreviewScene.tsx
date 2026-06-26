@@ -25,6 +25,8 @@
  */
 import React, { useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
+import { useThree } from "@react-three/fiber";
+import * as THREE from "three";
 import { KhaveeProvider, VRMAvatar, GLBAvatar, useVRMExpressions } from "@khaveeai/react";
 import {
   resolveSceneDefaults,
@@ -41,6 +43,50 @@ import {
 interface PreviewAvatarConfig extends KhaveeAvatarConfig {
   /** When true, the no-audio viseme cycler runs at ~4Hz. Default false. */
   previewTalking?: boolean;
+}
+
+// ── CameraController ─────────────────────────────────────────────────────────
+
+/**
+ * Imperatively syncs the R3F camera to position/target/fov on every change.
+ *
+ * R3F's <Canvas camera={{...}}> prop is initialization-only (Pitfall 7: camera
+ * prop not reactive). This component uses useThree() to access the live camera
+ * object and useEffect to call camera.position.set / camera.lookAt /
+ * camera.updateProjectionMatrix imperatively whenever the props change.
+ *
+ * Uses individual array-element deps ([pos[0], pos[1], pos[2], ...]) rather
+ * than the tuple refs so the effect does not re-run when resolveSceneDefaults
+ * returns a new tuple reference with identical values.
+ *
+ * STUDIO-02 safety: does NOT call useRealtime(), does NOT import any khaveeai
+ * provider — only useThree from @react-three/fiber and THREE from three.
+ */
+function CameraController({
+  position,
+  target,
+  fov,
+}: {
+  position: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+}): null {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    camera.position.set(position[0], position[1], position[2]);
+    camera.lookAt(target[0], target[1], target[2]);
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+    // Individual element deps avoid re-firing when a new tuple reference
+    // is created with the same values (resolveSceneDefaults returns new
+    // tuple objects on every render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera, position[0], position[1], position[2], target[0], target[1], target[2], fov]);
+
+  return null;
 }
 
 // ── Preview-talking viseme cycler ─────────────────────────────────────────────
@@ -156,6 +202,11 @@ function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
         gl={canvasGl}
         style={canvasStyle}
       >
+        <CameraController
+          position={sceneDefaults.cameraPosition}
+          target={sceneDefaults.cameraTarget}
+          fov={sceneDefaults.cameraFov}
+        />
         {/* ── Lighting ─────────────────────────────────────────────────── */}
         {/* ambient: config-driven Part A Lighting. directional: matches Phase-8 mount.tsx:59-60. */}
         <ambientLight intensity={sceneDefaults.lightIntensity} />

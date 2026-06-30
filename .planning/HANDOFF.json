@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-30T09:32:58.932Z",
+  "phase": "09",
+  "phase_name": "block-studio-visual-config-chat-lipsync",
+  "phase_dir": ".planning/phases/09-block-studio-visual-config-chat-lipsync",
+  "plan": "07",
+  "task": 3,
+  "total_tasks": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Fix GAP-1 — editor.js mount-point div", "status": "done", "commit": "5e9f584", "note": "Plan prescribed dangerouslySetInnerHTML; that caused a regression and was reverted in 2078a83. Final fix: empty virtual children (no child element, no dangerouslySetInnerHTML)."},
+    {"id": 2, "name": "Fix GAP-2 — CameraController in PreviewScene.tsx", "status": "done", "commit": "2d54510"},
+    {"id": 3, "name": "Checkpoint — human-verify UAT steps 5-14", "status": "in_progress", "progress": "Avatar STILL not appearing in editor after GAP-1/GAP-2 fixes. Root cause found: preview bundle loaded in parent editor document, but Gutenberg renders blocks inside an iframe. Fix applied in 5a4d5ec (editorScript array). User has NOT yet confirmed whether the iframe fix works — awaiting test result."}
+  ],
+  "remaining_tasks": [
+    {"id": 3, "name": "Human-verify UAT steps 5-14", "status": "not_started", "note": "BLOCKED on confirming the avatar now renders. If iframe fix works, run full UAT. If not, next likely cause is R3F/three.js failing to init inside the iframe document (WebGL context, or React 19 createRoot on an iframe element)."}
+  ],
+  "blockers": [
+    {"description": "Avatar not rendering in Gutenberg editor preview — unverified whether iframe-loading fix resolves it", "type": "technical", "workaround": "User must hard-reload editor and confirm. If still broken, inspect browser console inside the iframe (devtools > select iframe context > console) for WebGL/React errors."}
+  ],
+  "human_actions_pending": [
+    {"action": "Hard-reload Gutenberg editor (Cmd+Shift+R) and confirm the VRM avatar now appears in the block preview; drag a slider and confirm live update", "context": "Determines whether the iframe editorScript fix (5a4d5ec) resolved the no-avatar bug", "blocking": true},
+    {"action": "If avatar renders, run UAT steps 5-14 from 09-07-PLAN.md against live WP install", "context": "Required to close the plan's blocking checkpoint", "blocking": true}
+  ],
+  "decisions": [
+    {"decision": "Reverted plan-prescribed dangerouslySetInnerHTML fix for GAP-1", "rationale": "dangerouslySetInnerHTML:{__html:''} caused React 18 to set innerHTML='' on first render, destroying React 19's canvas before the preview bundle mounted. Replaced with empty virtual children (no child createElement) — React 18 reconciler only manages fiber-tree nodes, never externally-added DOM children.", "phase": "09"},
+    {"decision": "Added MutationObserver on document.body in preview.ts", "rationale": "Gutenberg renders blocks asynchronously after DOMContentLoaded; one-shot scan missed dynamically-added divs. Body subtree observer catches them.", "phase": "09"},
+    {"decision": "Load preview bundle inside Gutenberg iframe via block.json editorScript array instead of enqueue_block_editor_assets", "rationale": "WP 6.1+ renders the block canvas in an isolated iframe. enqueue_block_editor_assets loads scripts in the parent document, which cannot see iframe DOM. editorScript-array entry loads the script inside the iframe where the data-khaveeai-preview-config div lives.", "phase": "09"},
+    {"decision": "Changed Plugin.php from enqueue_block_editor_assets hook to init-priority-9 wp_register_script", "rationale": "block.json editorScript references scripts by handle; the handle must be registered before register_block_type resolves the list. Registration (not enqueue) is editor-only because block.json lists it in editorScript, not script/viewScript.", "phase": "09"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Ask user to hard-reload the editor and report whether the avatar renders. If yes, proceed to UAT steps 5-14. If no, open the iframe's console context in devtools and capture the error (likely WebGL init failure or React 19 root error inside the iframe document).",
+  "context_notes": "The 09-07 plan's prescribed fix was wrong (dangerouslySetInnerHTML regression). Three real bugs were fixed this session: (1) the clobbering banner child, (2) async Gutenberg render timing, (3) iframe-vs-parent-document script loading. All fixes are committed. The verification gate is still open — user reported 'still not show' after the dangerouslySetInnerHTML removal but BEFORE testing the iframe fix (the most recent commit). That test result is the single unknown blocking plan completion."
+}

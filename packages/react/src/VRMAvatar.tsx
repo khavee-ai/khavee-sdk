@@ -750,6 +750,26 @@ export function VRMAvatar({
       }
     }
 
+    // ── Wave-4: Thinking pose (head tilt) ──
+    if (enableHeadMovement && currentVrm.humanoid) {
+      // Randomise tilt direction on first frame entering thinking
+      if (chatStatus === "thinking" && prevChatStatusRef.current !== "thinking") {
+        thinkingTiltDirectionRef.current = Math.random() > 0.5 ? 1 : -1;
+      }
+      // Lerp tilt 0→1 when thinking, 1→0 otherwise
+      const thinkingTarget = chatStatus === "thinking" ? 1 : 0;
+      thinkingTiltRef.current +=
+        (thinkingTarget - thinkingTiltRef.current) * Math.min(delta * 2, 1);
+      if (thinkingTiltRef.current > 0.001) {
+        const headBoneTilt = currentVrm.humanoid.getNormalizedBoneNode("head" as any);
+        if (headBoneTilt) {
+          const tiltY = thinkingTiltRef.current * thinkingTiltDirectionRef.current * 0.13;
+          headQuatY.setFromAxisAngle(scratchY, tiltY);
+          headBoneTilt.quaternion.multiply(headQuatY);
+        }
+      }
+    }
+
     // Eye gaze: drifting lookAt target (D-05)
     if (enableEyeGaze && gazeTargetRef.current && currentVrm.humanoid) {
       gazeTimeRef.current += delta;
@@ -763,6 +783,59 @@ export function VRMAvatar({
 
       gazeTargetRef.current.position.set(gazeX, gazeY, 2.0);
       // vrm.lookAt.autoUpdate handles the rest in vrm.update()
+    }
+
+    // ── Wave-4: Gaze aversion (thinking only, additive on top of drift above) ──
+    if (enableEyeGaze && gazeTargetRef.current && chatStatus === "thinking") {
+      aversionTimerRef.current -= delta;
+
+      if (aversionPhaseRef.current === 0 && aversionTimerRef.current <= 0) {
+        // Start aversion
+        aversionPhaseRef.current = 1;
+        aversionProgressRef.current = 0;
+        aversionTargetXRef.current =
+          (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 0.3 + 0.5);
+      }
+
+      if (aversionPhaseRef.current === 1) {
+        // Averting outward
+        aversionProgressRef.current += delta / 0.4;
+        if (aversionProgressRef.current >= 1) {
+          aversionProgressRef.current = 1;
+          aversionPhaseRef.current = 2;
+          aversionHoldTimerRef.current = 1.5;
+        }
+        const easedP =
+          aversionProgressRef.current * aversionProgressRef.current * (3 - 2 * aversionProgressRef.current);
+        gazeTargetRef.current.position.x += aversionTargetXRef.current * easedP;
+        gazeTargetRef.current.position.y -= 0.25 * easedP;
+      } else if (aversionPhaseRef.current === 2) {
+        // Hold
+        aversionHoldTimerRef.current -= delta;
+        gazeTargetRef.current.position.x += aversionTargetXRef.current;
+        gazeTargetRef.current.position.y -= 0.25;
+        if (aversionHoldTimerRef.current <= 0) {
+          aversionPhaseRef.current = 3;
+          aversionProgressRef.current = 0;
+        }
+      } else if (aversionPhaseRef.current === 3) {
+        // Returning
+        aversionProgressRef.current += delta / 0.6;
+        if (aversionProgressRef.current >= 1) {
+          aversionProgressRef.current = 1;
+          aversionPhaseRef.current = 0;
+          aversionTimerRef.current = Math.random() * 3 + 4;
+        }
+        const easedP =
+          1 -
+          aversionProgressRef.current * aversionProgressRef.current * (3 - 2 * aversionProgressRef.current);
+        gazeTargetRef.current.position.x += aversionTargetXRef.current * easedP;
+        gazeTargetRef.current.position.y -= 0.25 * easedP;
+      }
+    } else if (chatStatus !== "thinking") {
+      // Force reset on exit from thinking
+      aversionPhaseRef.current = 0;
+      aversionTimerRef.current = Math.random() * 3 + 4;
     }
 
     // Finger curl noise (D-08)

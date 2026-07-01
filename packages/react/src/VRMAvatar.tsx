@@ -222,6 +222,16 @@ const allFingerBones = [...leftFingerBones, ...rightFingerBones];
 // Phase offsets for per-finger variety (0–1 range)
 const fingerPhases = [0, 1.1, 2.3, 0.7, 1.9];
 
+// ── Wave-4: Keyword gesture override ──
+// Fixed regex patterns mapped to candidate animation-key substrings.
+// Regexes are module-level constants — never built from user input (T-10-04-B).
+const gestureKeywords: [RegExp, string[]][] = [
+  [/\byes\b|\bใช่\b|\bagree\b|\bexact|\bright\b|\bcorrect\b/i, ["agree", "nod", "yes"]],
+  [/\bno\b|\bไม่\b|\bdisagree\b|\bnever\b/i, ["disagree", "shake", "no"]],
+  [/\bi\b|\bฉัน\b|\bผม\b|\bme\b/i, ["self", "chest", "point"]],
+  [/\bthink\b|\bคิด\b|\bbelieve\b|\bfeel\b/i, ["think", "ponder", "wonder"]],
+];
+
 // Internal component to load FBX and GLB animation files
 function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
   const loadedAnimations: Record<string, { type: 'fbx' | 'glb', data: THREE.Group | GLTFResult }> = {};
@@ -548,6 +558,34 @@ export function VRMAvatar({
         currentSpeakingAnimRef.current = pick;
         animate(pick);
       }
+
+      // ── Wave-4: Keyword gesture override ──
+      // Check last assistant message for a semantic gesture hint; overrides the
+      // random pick above only when BOTH a keyword pattern matches AND a matching
+      // animation key exists in the animations prop. Silently no-ops otherwise.
+      const msgs = realtimeProvider?.conversation ?? [];
+      const lastAI = [...msgs].reverse().find((m) => m.role === "assistant");
+      if (lastAI?.text) {
+        const text = lastAI.text;
+        const availableKeys = Object.keys(animationsRef.current ?? {});
+        for (const [pattern, candidates] of gestureKeywords) {
+          if (pattern.test(text)) {
+            const matchedCandidate = candidates.find((c) =>
+              availableKeys.some((k) => k.toLowerCase().includes(c))
+            );
+            if (matchedCandidate) {
+              const matchedKey = availableKeys.find((k) =>
+                k.toLowerCase().includes(matchedCandidate)
+              );
+              if (matchedKey) {
+                animate(matchedKey);
+                currentSpeakingAnimRef.current = matchedKey;
+              }
+              break;
+            }
+          }
+        }
+      }
     } else {
       // Clear the remembered speaking variant when leaving the speaking state.
       currentSpeakingAnimRef.current = null;
@@ -559,7 +597,7 @@ export function VRMAvatar({
         animate(targetKey);
       }
     }
-  }, [chatStatus, animate]);
+  }, [chatStatus, animate, realtimeProvider]);
 
   // Handle animation switching with proper crossfading
   useEffect(() => {

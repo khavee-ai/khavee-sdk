@@ -207,6 +207,8 @@ const GAZE_HOLD_SECONDS = 3.9; // ease-out + hold ≈ 5s total time spent lookin
 const GAZE_YAW_MAX_DEG = 7; // peak horizontal deflection — small enough to avoid range-map saturation
 const GAZE_PITCH_MAX_DEG = 3; // peak vertical deflection
 
+const ARM_SWAY_FADE_SECONDS = 0.45; // fade the whole speaking arm-sway effect in/out over this long
+
 // Ease-in-out (slow start, fast middle, slow finish) rather than exponential
 // decay — pure exponential decay has its LARGEST step on the very first
 // frame after retargeting, which for a short, small-amplitude glance reads
@@ -449,6 +451,12 @@ export function VRMAvatar({
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
   const armSwayTimeRef = useRef(0);
+  /** Fades the whole arm-sway effect in/out over ARM_SWAY_FADE_SECONDS instead
+   *  of snapping to full/zero amplitude the instant chatStatus flips. */
+  const armSwayWeightRef = useRef(0);
+  const armSwayWeightStartRef = useRef(0);
+  const armSwayWeightTargetRef = useRef(0);
+  const armSwayWeightTimeRef = useRef(0);
 
   // Idle gaze-away state (D-05)
   const idleTimeRef = useRef(0);
@@ -1009,9 +1017,7 @@ export function VRMAvatar({
     // this layer is to make "talking" read as alive/expressive rather than as
     // a scripted full-body gesture clip swap — the same problem breathing and
     // head-movement already solve for the idle case, just applied to the arms
-    // during speech. Runs only while speaking; the phase resets to 0 on exit
-    // so each speaking turn starts from a clean, zero-amplitude point (no pop
-    // on entry/exit, since sin(0) = 0).
+    // during speech.
     //
     // NOT driven by rawVolume/currentVolume: TTS voices are loudness-
     // compressed within an utterance — they don't have real quiet/loud
@@ -1023,59 +1029,85 @@ export function VRMAvatar({
     // so it drifts between calmer and more animated stretches over several
     // seconds without ever feeling like an obviously repeating loop or
     // depending on an audio signal that isn't actually that expressive.
-    if (currentVrm.humanoid && chatStatus === "speaking") {
-      armSwayTimeRef.current += delta;
-      const armIntensity = THREE.MathUtils.clamp(
-        0.65 + Math.sin(armSwayTimeRef.current * 0.35) * 0.25 +
-          Math.sin(armSwayTimeRef.current * 0.13 + 1.7) * 0.15,
-        0.3,
-        1.05
+    //
+    // The whole effect is additionally scaled by armSwayWeightRef, an eased
+    // leg (same technique as the gaze system) that fades in/out over
+    // ARM_SWAY_FADE_SECONDS instead of snapping to full/zero amplitude the
+    // instant chatStatus flips — without this, starting a new sentence
+    // (going idle -> speaking) or finishing one (speaking -> idle) applied a
+    // sudden, non-zero rotation delta in a single frame, which read as the
+    // arm "snapping" into or out of the gesture.
+    {
+      const armSwayTarget = chatStatus === "speaking" ? 1 : 0;
+      if (armSwayTarget !== armSwayWeightTargetRef.current) {
+        armSwayWeightTargetRef.current = armSwayTarget;
+        armSwayWeightStartRef.current = armSwayWeightRef.current;
+        armSwayWeightTimeRef.current = 0;
+      }
+      armSwayWeightTimeRef.current += delta;
+      const weightT = easeInOutCubic(
+        Math.min(armSwayWeightTimeRef.current / ARM_SWAY_FADE_SECONDS, 1)
       );
+      armSwayWeightRef.current =
+        armSwayWeightStartRef.current +
+        (armSwayWeightTargetRef.current - armSwayWeightStartRef.current) * weightT;
 
-      const swayLeft =
-        (Math.sin(armSwayTimeRef.current * 0.9) * 0.14 +
-          Math.sin(armSwayTimeRef.current * 1.7) * 0.05) *
-        armIntensity;
-      const swayRight =
-        (Math.sin(armSwayTimeRef.current * 0.9 + Math.PI * 0.6) * 0.14 +
-          Math.sin(armSwayTimeRef.current * 1.7 + Math.PI * 0.3) * 0.05) *
-        armIntensity;
-      const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.08 * armIntensity;
-      const liftRight =
-        Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.08 * armIntensity;
-      const elbowLeft =
-        (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.2) * 0.5 + 0.5) *
-        0.22 *
-        armIntensity;
-      const elbowRight =
-        (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.9) * 0.5 + 0.5) *
-        0.22 *
-        armIntensity;
+      if (currentVrm.humanoid && armSwayWeightRef.current > 0.001) {
+        armSwayTimeRef.current += delta;
+        const armIntensity =
+          THREE.MathUtils.clamp(
+            0.65 +
+              Math.sin(armSwayTimeRef.current * 0.35) * 0.25 +
+              Math.sin(armSwayTimeRef.current * 0.13 + 1.7) * 0.15,
+            0.3,
+            1.05
+          ) * armSwayWeightRef.current;
 
-      const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
-      if (leftUpperArm) {
-        armQuatZ.setFromAxisAngle(scratchZ, swayLeft);
-        armQuatX.setFromAxisAngle(scratchX, liftLeft);
-        leftUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
+        const swayLeft =
+          (Math.sin(armSwayTimeRef.current * 0.9) * 0.14 +
+            Math.sin(armSwayTimeRef.current * 1.7) * 0.05) *
+          armIntensity;
+        const swayRight =
+          (Math.sin(armSwayTimeRef.current * 0.9 + Math.PI * 0.6) * 0.14 +
+            Math.sin(armSwayTimeRef.current * 1.7 + Math.PI * 0.3) * 0.05) *
+          armIntensity;
+        const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.08 * armIntensity;
+        const liftRight =
+          Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.08 * armIntensity;
+        const elbowLeft =
+          (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.2) * 0.5 + 0.5) *
+          0.22 *
+          armIntensity;
+        const elbowRight =
+          (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.9) * 0.5 + 0.5) *
+          0.22 *
+          armIntensity;
+
+        const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
+        if (leftUpperArm) {
+          armQuatZ.setFromAxisAngle(scratchZ, swayLeft);
+          armQuatX.setFromAxisAngle(scratchX, liftLeft);
+          leftUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
+        }
+        const rightUpperArm = currentVrm.humanoid.getNormalizedBoneNode("rightUpperArm" as any);
+        if (rightUpperArm) {
+          armQuatZ.setFromAxisAngle(scratchZ, -swayRight);
+          armQuatX.setFromAxisAngle(scratchX, liftRight);
+          rightUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
+        }
+        const leftLowerArm = currentVrm.humanoid.getNormalizedBoneNode("leftLowerArm" as any);
+        if (leftLowerArm) {
+          armQuatX.setFromAxisAngle(scratchX, elbowLeft);
+          leftLowerArm.quaternion.multiply(armQuatX);
+        }
+        const rightLowerArm = currentVrm.humanoid.getNormalizedBoneNode("rightLowerArm" as any);
+        if (rightLowerArm) {
+          armQuatX.setFromAxisAngle(scratchX, elbowRight);
+          rightLowerArm.quaternion.multiply(armQuatX);
+        }
+      } else {
+        armSwayTimeRef.current = 0;
       }
-      const rightUpperArm = currentVrm.humanoid.getNormalizedBoneNode("rightUpperArm" as any);
-      if (rightUpperArm) {
-        armQuatZ.setFromAxisAngle(scratchZ, -swayRight);
-        armQuatX.setFromAxisAngle(scratchX, liftRight);
-        rightUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
-      }
-      const leftLowerArm = currentVrm.humanoid.getNormalizedBoneNode("leftLowerArm" as any);
-      if (leftLowerArm) {
-        armQuatX.setFromAxisAngle(scratchX, elbowLeft);
-        leftLowerArm.quaternion.multiply(armQuatX);
-      }
-      const rightLowerArm = currentVrm.humanoid.getNormalizedBoneNode("rightLowerArm" as any);
-      if (rightLowerArm) {
-        armQuatX.setFromAxisAngle(scratchX, elbowRight);
-        rightLowerArm.quaternion.multiply(armQuatX);
-      }
-    } else {
-      armSwayTimeRef.current = 0;
     }
 
     // ── Wave-4: Nodding (listening state) ──

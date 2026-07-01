@@ -1,7 +1,7 @@
 'use client';
 
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Environment, OrbitControls } from '@react-three/drei';
 import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
 import { KhaveeProvider, VRMAvatar, useRealtime } from '@khaveeai/react';
 
@@ -15,11 +15,20 @@ const openaiProvider = new OpenAIRealtimeProvider({
 // Animation keys follow the chatStatus auto-mapping convention (Phase 11):
 // "idle" backs chatStatus === "ready"; "listening"/"thinking"/"speaking" map
 // 1:1 to their chatStatus values.
+//
+// "listening"/"thinking" intentionally reuse the calm idle pose rather than an
+// energetic talking/gesture clip — the procedural layer (nod during listening,
+// head-tilt + gaze-aversion during thinking) is what conveys those states. Using
+// an energetic gesture clip for "thinking" combined with those same procedural
+// effects looked like the torso bending / head spinning erratically.
+// "speaking"/"speaking2" are the only keys that intentionally use energetic
+// talking clips (matched via /speak|talk|gesture/i for variety on each pick).
 const animations = {
   idle: '/models/animations/Idle.fbx',
-  listening: '/models/animations/talking1.fbx',
-  thinking: '/models/animations/talking.fbx',
+  listening: '/models/animations/Idle.fbx',
+  thinking: '/models/animations/Idle.fbx',
   speaking: '/models/animations/talking.fbx',
+  speaking2: '/models/animations/talking1.fbx',
 };
 
 function Avatar() {
@@ -43,9 +52,22 @@ function Avatar() {
       >
         chatStatus: <b>{chatStatus}</b>
       </div>
-      <Canvas camera={{ position: [0, 1.4, 3], fov: 35 }}>
-        <ambientLight intensity={1} />
-        <directionalLight position={[2, 4, 3]} intensity={2} />
+      <Canvas
+        camera={{ position: [0, 1.4, 3], fov: 35 }}
+        dpr={[1, 2]}
+        shadows
+        gl={{ antialias: true }}
+      >
+        {/* Soft ambient fill so unlit areas never go pure black */}
+        <hemisphereLight args={['#dceeff', '#403830', 0.55]} />
+        {/* Key light — main directional light, slightly warm, from front-upper */}
+        <directionalLight position={[2, 4, 3]} intensity={1.8} color="#fff4e6" />
+        {/* Fill light — softer, opposite side, cooler, to reduce harsh shadow contrast */}
+        <directionalLight position={[-3, 2, 2]} intensity={0.5} color="#cfe0ff" />
+        {/* Rim/back light — separates the avatar's silhouette from the dark background */}
+        <directionalLight position={[0, 3, -3]} intensity={0.9} color="#e6f0ff" />
+        {/* Realistic ambient reflections on VRM materials */}
+        <Environment preset="city" environmentIntensity={0.4} />
         <VRMAvatar src="/models/male.vrm" animations={animations} />
         <OrbitControls target={[0, 1.2, 0]} />
       </Canvas>

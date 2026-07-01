@@ -173,6 +173,10 @@ const breathQuat = new THREE.Quaternion();
 const headQuatX = new THREE.Quaternion();
 const headQuatY = new THREE.Quaternion();
 
+// Seconds of continuous idle (chatStatus === "ready") before the avatar glances
+// away briefly. Otherwise gaze stays locked on the user at all times.
+const IDLE_GAZE_AWAY_SECONDS = 6;
+
 // ── Wave-4: Keyword gesture override ──
 // Fixed regex patterns mapped to candidate animation-key substrings.
 // Regexes are module-level constants — never built from user input (T-10-04-B).
@@ -402,7 +406,6 @@ export function VRMAvatar({
   // Procedural animation time refs
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
-  const gazeTimeRef = useRef(0);
   const gazeTargetRef = useRef<THREE.Object3D | null>(null);
 
   // ── Procedural life layer ──
@@ -426,7 +429,7 @@ export function VRMAvatar({
   const aversionPhaseRef = useRef<0 | 1 | 2 | 3>(0); // 0=idle, 1=averting, 2=hold, 3=returning
   const aversionProgressRef = useRef(0);
   const aversionHoldTimerRef = useRef(0);
-  const aversionTimerRef = useRef(4.5);
+  const idleGazeTimerRef = useRef(0);
   const aversionTargetXRef = useRef(0);
 
 
@@ -1009,37 +1012,25 @@ export function VRMAvatar({
       }
     }
 
-    // Eye gaze: drifting lookAt target (D-05), held steady on the user while speaking
+    // Eye gaze (D-05, simplified): locked on the user/camera almost all the time.
+    // No continuous drift — the avatar only glances away briefly after being
+    // continuously idle (chatStatus === "ready") for IDLE_GAZE_AWAY_SECONDS,
+    // then returns to a locked gaze. Any other status (listening/thinking/
+    // speaking) cancels an in-progress glance-away and resets the idle timer.
     if (enableEyeGaze && gazeTargetRef.current && currentVrm.humanoid) {
-      gazeTimeRef.current += delta;
-
-      if (chatStatus === "speaking") {
-        // Hold direct eye contact with the user/camera while talking — no drift.
-        gazeTargetRef.current.position.set(0, 1.6, 2.0);
+      if (chatStatus === "ready") {
+        idleGazeTimerRef.current += delta;
       } else {
-        const gazeX =
-          Math.sin(gazeTimeRef.current * 0.12) * 0.25 +
-          Math.sin(gazeTimeRef.current * 0.38) * 0.12;
-        const gazeY =
-          1.6 +
-          Math.sin(gazeTimeRef.current * 0.15) * 0.08 +
-          Math.sin(gazeTimeRef.current * 0.42) * 0.04;
-
-        gazeTargetRef.current.position.set(gazeX, gazeY, 2.0);
+        idleGazeTimerRef.current = 0;
+        aversionPhaseRef.current = 0;
       }
-      // vrm.lookAt.autoUpdate handles the rest in vrm.update()
-    }
 
-    // ── Wave-4: Gaze aversion (thinking only, additive on top of drift above) ──
-    if (enableEyeGaze && gazeTargetRef.current && chatStatus === "thinking") {
-      aversionTimerRef.current -= delta;
-
-      if (aversionPhaseRef.current === 0 && aversionTimerRef.current <= 0) {
-        // Start aversion
+      if (aversionPhaseRef.current === 0 && idleGazeTimerRef.current >= IDLE_GAZE_AWAY_SECONDS) {
         aversionPhaseRef.current = 1;
         aversionProgressRef.current = 0;
+        // Subtle glance-away, not a big head-turn.
         aversionTargetXRef.current =
-          (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 0.3 + 0.5);
+          (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 0.1 + 0.15);
       }
 
       if (aversionPhaseRef.current === 1) {
@@ -1052,13 +1043,15 @@ export function VRMAvatar({
         }
         const easedP =
           aversionProgressRef.current * aversionProgressRef.current * (3 - 2 * aversionProgressRef.current);
-        gazeTargetRef.current.position.x += aversionTargetXRef.current * easedP;
-        gazeTargetRef.current.position.y -= 0.25 * easedP;
+        gazeTargetRef.current.position.set(
+          aversionTargetXRef.current * easedP,
+          1.6 - 0.08 * easedP,
+          2.0
+        );
       } else if (aversionPhaseRef.current === 2) {
         // Hold
         aversionHoldTimerRef.current -= delta;
-        gazeTargetRef.current.position.x += aversionTargetXRef.current;
-        gazeTargetRef.current.position.y -= 0.25;
+        gazeTargetRef.current.position.set(aversionTargetXRef.current, 1.6 - 0.08, 2.0);
         if (aversionHoldTimerRef.current <= 0) {
           aversionPhaseRef.current = 3;
           aversionProgressRef.current = 0;
@@ -1069,18 +1062,21 @@ export function VRMAvatar({
         if (aversionProgressRef.current >= 1) {
           aversionProgressRef.current = 1;
           aversionPhaseRef.current = 0;
-          aversionTimerRef.current = Math.random() * 3 + 4;
+          idleGazeTimerRef.current = 0; // wait another IDLE_GAZE_AWAY_SECONDS before glancing away again
         }
         const easedP =
           1 -
           aversionProgressRef.current * aversionProgressRef.current * (3 - 2 * aversionProgressRef.current);
-        gazeTargetRef.current.position.x += aversionTargetXRef.current * easedP;
-        gazeTargetRef.current.position.y -= 0.25 * easedP;
+        gazeTargetRef.current.position.set(
+          aversionTargetXRef.current * easedP,
+          1.6 - 0.08 * easedP,
+          2.0
+        );
+      } else {
+        // Locked on the user — no drift.
+        gazeTargetRef.current.position.set(0, 1.6, 2.0);
       }
-    } else if (chatStatus !== "thinking") {
-      // Force reset on exit from thinking
-      aversionPhaseRef.current = 0;
-      aversionTimerRef.current = Math.random() * 3 + 4;
+      // vrm.lookAt.autoUpdate handles the rest in vrm.update()
     }
 
     // Apply expressions from the hook with smooth lerping

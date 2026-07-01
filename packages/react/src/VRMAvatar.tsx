@@ -547,6 +547,24 @@ export function VRMAvatar({
     });
   }, [scene, currentVrm, setVrm]);
 
+  // Eye gaze target lifecycle (D-05)
+  useEffect(() => {
+    if (!currentVrm || !enableEyeGaze) return;
+
+    const gazeObj = new THREE.Object3D();
+    gazeObj.position.set(0, 1.6, 2.0); // Base target position
+    currentVrm.scene.add(gazeObj);
+    gazeTargetRef.current = gazeObj;
+    currentVrm.lookAt.target = gazeObj;
+    currentVrm.lookAt.autoUpdate = true;
+
+    return () => {
+      currentVrm.scene.remove(gazeObj);
+      currentVrm.lookAt.target = null;
+      gazeTargetRef.current = null;
+    };
+  }, [currentVrm, enableEyeGaze]);
+
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {
     if (!currentVrm?.expressionManager) return;
 

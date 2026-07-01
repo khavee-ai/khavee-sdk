@@ -272,6 +272,23 @@ const gestureKeywords: [RegExp, string[]][] = [
   [/\bthink\b|\bคิด\b|\bbelieve\b|\bfeel\b/i, ["think", "ponder", "wonder"]],
 ];
 
+// ── Conversational emotion (D-14) ──
+// Keyword-heuristic sentiment on the most recent user + assistant messages —
+// NOT LLM-driven emotion tagging (that would need per-provider prompt/tool
+// changes outside this provider-agnostic component). Checks both roles:
+// a well-behaved AI stays polite even when the user is hostile, so scanning
+// only the assistant's own reply would miss "the user is fighting with it."
+// Applied via the standard VRM expression presets "happy"/"sad" — silently
+// no-ops on models that don't define them (see lerpExpression's null guard).
+const EMOTION_HAPPY_PATTERN =
+  /\b(great|glad|happy|wonderful|awesome|love|thanks|thank you|nice|good job|excellent|haha|lol|amazing)\b/i;
+const EMOTION_SAD_PATTERN =
+  /\b(sorry|unfortunately|sad|upset|angry|mad|frustrat\w*|hate|stupid|worst|shut up|screw you|terrible|awful|fuck|damn|hell)\b/i;
+// How long the detected emotion lingers after the AI stops speaking before
+// resetting to neutral, per the requirement that expressions shouldn't snap
+// back to neutral the instant a turn ends.
+const EMOTION_DECAY_SECONDS = 10;
+
 // ── Variant families (D-13) ──
 // Lets a single logical status (idle/listening/thinking/speaking/starting)
 // have multiple animation files that the SDK randomly cycles between,
@@ -514,6 +531,11 @@ export function VRMAvatar({
   const animationsRef = useRef<AnimationConfig | undefined>(effectiveAnimations);
   /** Remembers the speaking animation variant chosen for the current speaking turn. */
   const currentSpeakingAnimRef = useRef<string | null>(null);
+  /** Conversational emotion (D-14): current detected emotion and the countdown
+   *  (seconds remaining) until it resets to neutral. null decay = not counting
+   *  down (either already neutral, or still within an active speaking turn). */
+  const emotionRef = useRef<"neutral" | "happy" | "sad">("neutral");
+  const emotionDecayRemainingRef = useRef<number | null>(null);
 
   // Sync animationsRef whenever the effective animations config changes (Pitfall 3 stale-closure guard).
   useEffect(() => {
@@ -860,9 +882,35 @@ export function VRMAvatar({
           }
         }
       }
+
+      // D-14: re-evaluate conversational emotion on each new speaking turn.
+      // Checks both the last user message and the last assistant message —
+      // a well-behaved AI stays polite even while the user is hostile, so
+      // "the user is fighting with it" wouldn't show up if only the
+      // assistant's own reply were scanned. Sad takes priority over happy
+      // when both somehow match, since a hostile exchange is the more
+      // important signal to surface. No match on either → leave whatever
+      // emotion was already active (an on-topic reply mid-argument
+      // shouldn't reset to neutral early; the decay timer below owns that).
+      const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+      const emotionText = `${lastUser?.text ?? ""} ${lastAI?.text ?? ""}`;
+      if (EMOTION_SAD_PATTERN.test(emotionText)) {
+        emotionRef.current = "sad";
+      } else if (EMOTION_HAPPY_PATTERN.test(emotionText)) {
+        emotionRef.current = "happy";
+      }
+      // Actively speaking (or about to) — not counting down to neutral.
+      emotionDecayRemainingRef.current = null;
     } else {
       // Clear the remembered speaking variant when leaving the speaking state.
       currentSpeakingAnimRef.current = null;
+      // D-14: start the reset countdown now that the AI has stopped talking,
+      // rather than resetting immediately — the detected emotion should
+      // visibly linger for a bit rather than snapping back to neutral the
+      // instant a turn ends.
+      if (emotionRef.current !== "neutral" && emotionDecayRemainingRef.current === null) {
+        emotionDecayRemainingRef.current = EMOTION_DECAY_SECONDS;
+      }
       // D-01: 'idle' is the animation key convention for chatStatus === 'ready'
       // (ChatStatus has no 'idle' value — the animation key name and the status differ).
       const targetKey = chatStatus === "ready" ? "idle" : chatStatus;
@@ -1345,6 +1393,23 @@ export function VRMAvatar({
         lerpExpression(name, value, delta * 8);
       }
     });
+
+    // D-14: conversational emotion decay + expression application. Runs the
+    // countdown to neutral (started when the AI stops speaking, see the
+    // chatStatus-mapping effect) and drives the "happy"/"sad" VRM expression
+    // presets with the same smooth lerp as every other expression here —
+    // never a hard snap, consistent with the rest of this file's animation
+    // philosophy (see D-05/D-11/D-12's extensive prior history of exactly
+    // this kind of pop being the recurring bug).
+    if (emotionDecayRemainingRef.current !== null) {
+      emotionDecayRemainingRef.current -= delta;
+      if (emotionDecayRemainingRef.current <= 0) {
+        emotionRef.current = "neutral";
+        emotionDecayRemainingRef.current = null;
+      }
+    }
+    lerpExpression("happy", emotionRef.current === "happy" ? 1 : 0, delta * 4);
+    lerpExpression("sad", emotionRef.current === "sad" ? 1 : 0, delta * 4);
 
     // Blinking system
     if (enableBlinking) {

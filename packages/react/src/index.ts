@@ -7,5 +7,5 @@ export {
   useAnimations,
 } from "./VRMAvatar";
 export { GLBAvatar } from "./GLBAvatar";
-export type { AnimationConfig } from "./VRMAvatar";
+export type { AnimationConfig, VRMAvatarProps } from "./VRMAvatar";
 export * from "./hooks";

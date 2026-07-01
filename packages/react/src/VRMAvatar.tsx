@@ -110,17 +110,34 @@ interface GLTFResult {
   asset: any;
 }
 
-interface VRMAvatarProps {
+/**
+ * VRMAvatarProps - Configuration props for the VRMAvatar component
+ *
+ * All optional props default to true, enabling all procedural animation layers by default.
+ * Set any to false to disable specific features.
+ */
+export interface VRMAvatarProps {
+  /** URL or path to the VRM model file (.vrm) */
   src: string;
+  /** Position in 3D space [x, y, z]. Default: [0, 0, 0] */
   position?: [number, number, number];
+  /** Rotation in radians [x, y, z]. Default: [0, Math.PI, 0] */
   rotation?: [number, number, number];
+  /** Scale [x, y, z]. Default: [1, 1, 1] */
   scale?: [number, number, number];
+  /** Optional animation configuration using URLs to FBX or GLB files */
   animations?: AnimationConfig;
+  /** Enable natural blinking animations. Default: true */
   enableBlinking?: boolean;
+  /** Enable subtle breathing motion (spine/chest oscillation). Default: true */
   enableBreathing?: boolean;
+  /** Enable natural head micro-movement. Default: true */
   enableHeadMovement?: boolean;
+  /** Enable drifting eye gaze behavior. Default: true */
   enableEyeGaze?: boolean;
+  /** Enable subtle finger curl noise. Default: true */
   enableHandGestures?: boolean;
+  /** Enable status-based micro-expressions (idle/listening/thinking). Default: true */
   enableMicroExpressions?: boolean;
 }
 
@@ -147,6 +164,31 @@ interface VRMAvatarProps {
  */
 export interface AnimationConfig {
   [name: string]: string; // URL to FBX or GLB file! SDK handles loading & remapping
+}
+
+export interface VRMAvatarProps {
+  /** URL or path to the VRM model file (.vrm) */
+  src: string;
+  /** Position in 3D space [x, y, z]. Default: [0, 0, 0] */
+  position?: [number, number, number];
+  /** Rotation in radians [x, y, z]. Default: [0, Math.PI, 0] */
+  rotation?: [number, number, number];
+  /** Scale [x, y, z]. Default: [1, 1, 1] */
+  scale?: [number, number, number];
+  /** Optional animation configuration using URLs to FBX or GLB files */
+  animations?: AnimationConfig;
+  /** Enable natural blinking animations. Default: true */
+  enableBlinking?: boolean;
+  /** Enable subtle breathing motion (spine/chest oscillation). Default: true */
+  enableBreathing?: boolean;
+  /** Enable natural head micro-movement. Default: true */
+  enableHeadMovement?: boolean;
+  /** Enable drifting eye gaze behavior. Default: true */
+  enableEyeGaze?: boolean;
+  /** Enable subtle finger curl noise. Default: true */
+  enableHandGestures?: boolean;
+  /** Enable status-based micro-expressions (idle/listening/thinking). Default: true */
+  enableMicroExpressions?: boolean;
 }
 
 // ── Module-level scratch objects (avoid per-frame GC) ──
@@ -228,7 +270,11 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param scale - Scale [x, y, z]. Default: [1, 1, 1]
  * @param animations - Optional animation configuration using URLs to FBX files
  * @param enableBlinking - Enable natural blinking animations. Default: true
- * @param enableTalkingAnimations - Enable talking animations during AI speech. Default: true
+ * @param enableBreathing - Enable subtle breathing motion (spine/chest oscillation). Default: true
+ * @param enableHeadMovement - Enable natural head micro-movement. Default: true
+ * @param enableEyeGaze - Enable drifting eye gaze behavior. Default: true
+ * @param enableHandGestures - Enable subtle finger curl noise. Default: true
+ * @param enableMicroExpressions - Enable status-based micro-expressions (idle/listening/thinking). Default: true
  *
  * @example
  * // Basic usage

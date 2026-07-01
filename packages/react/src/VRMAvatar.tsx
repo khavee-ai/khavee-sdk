@@ -121,6 +121,7 @@ interface VRMAvatarProps {
   enableHeadMovement?: boolean;
   enableEyeGaze?: boolean;
   enableHandGestures?: boolean;
+  enableMicroExpressions?: boolean;
 }
 
 /**
@@ -315,6 +316,7 @@ export function VRMAvatar({
   enableHeadMovement = true,
   enableEyeGaze = true,
   enableHandGestures = true,
+  enableMicroExpressions = true,
   ...props
 }: VRMAvatarProps) {
   const { setVrm, expressions, currentAnimation, animate, chatStatus } = useKhavee();
@@ -347,6 +349,12 @@ export function VRMAvatar({
   const gazeTimeRef = useRef(0);
   const fingerTimeRef = useRef(0);
   const gazeTargetRef = useRef<THREE.Object3D | null>(null);
+
+  // ── Procedural life layer ──
+  // Micro-expression scheduler refs
+  const microExprTimeRef = useRef(0);
+  const nextExprChangeRef = useRef(3 + Math.random() * 5);
+  const currentExprTargetsRef = useRef<Record<string, number>>({});
 
 
   const parsed = useLoadVRM(src);

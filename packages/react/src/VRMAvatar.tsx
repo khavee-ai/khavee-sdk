@@ -718,6 +718,57 @@ export function VRMAvatar({
       }
     }
 
+    // Micro-expression scheduler (D-07)
+    if (enableMicroExpressions && currentVrm.expressionManager) {
+      microExprTimeRef.current += delta;
+
+      // Re-roll targets every 3-8 seconds
+      if (microExprTimeRef.current >= nextExprChangeRef.current) {
+        nextExprChangeRef.current = microExprTimeRef.current + 3 + Math.random() * 5;
+
+        // D-07 schedule: effectiveStatus maps 'ready' -> 'idle'
+        const effectiveStatus = chatStatus === "ready" ? "idle" : chatStatus;
+
+        if (effectiveStatus === "idle") {
+          currentExprTargetsRef.current = {
+            relaxed: 0.06 + Math.random() * 0.04, // 0.06-0.10
+          };
+        } else if (effectiveStatus === "listening") {
+          currentExprTargetsRef.current = {
+            happy: 0.10 + Math.random() * 0.05, // 0.10-0.15
+            surprised: 0.04 + Math.random() * 0.02, // 0.04-0.06
+          };
+        } else if (effectiveStatus === "thinking") {
+          currentExprTargetsRef.current = {
+            neutral: 0.08 + Math.random() * 0.04, // 0.08-0.12
+          };
+        } else {
+          // speaking and other statuses produce no micro-expressions
+          currentExprTargetsRef.current = {};
+        }
+      }
+
+      // Each frame: lerp toward additive targets (Open Question 2 resolution)
+      const exprManager = currentVrm.expressionManager;
+      Object.entries(currentExprTargetsRef.current).forEach(([name, microTarget]) => {
+        // Null-guard: only setValue if the expression exists on this model (T-10-04)
+        if (exprManager.getValue(name) === null) {
+          return;
+        }
+
+        // Additive over developer-set values, capped at 1.0 (T-10-05)
+        const devValue = expressions[name] ?? 0;
+        const currentValue = exprManager.getValue(name) ?? 0;
+        const combinedTarget = Math.min(1, devValue + microTarget);
+
+        // Slow lerp for smooth transitions (delta * 0.8)
+        const lerpFactor = delta * 0.8;
+        const newValue = lerp(currentValue, combinedTarget, lerpFactor);
+
+        exprManager.setValue(name, newValue);
+      });
+    }
+
     // Update VRM after all changes (expressions + animations + blinking + gestures)
     currentVrm.update(delta);
   });

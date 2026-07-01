@@ -411,6 +411,38 @@ export function VRMAvatar({
     }
   }, [processedClips]);
 
+  // chatStatus → animation auto-mapping (D-01, D-02, D-03)
+  // Runs only on a real chatStatus transition; early-returns if the status is unchanged
+  // (Pitfall 5: prevents re-triggering on every render while already in a given state).
+  useEffect(() => {
+    if (chatStatus === prevChatStatusRef.current) return;
+
+    prevChatStatusRef.current = chatStatus;
+
+    const animKeys = Object.keys(animationsRef.current || {});
+
+    if (chatStatus === "speaking") {
+      // D-02: pick a random speak/talk/gesture variant on transition INTO speaking.
+      // Re-roll happens only here, not on subsequent renders while already speaking.
+      const variants = animKeys.filter((key) => /speak|talk|gesture/i.test(key));
+      if (variants.length > 0) {
+        const pick = variants[Math.floor(Math.random() * variants.length)];
+        currentSpeakingAnimRef.current = pick;
+        animate(pick);
+      }
+    } else {
+      // Clear the remembered speaking variant when leaving the speaking state.
+      currentSpeakingAnimRef.current = null;
+      // D-01: 'idle' is the animation key convention for chatStatus === 'ready'
+      // (ChatStatus has no 'idle' value — the animation key name and the status differ).
+      const targetKey = chatStatus === "ready" ? "idle" : chatStatus;
+      // D-03: if no matching key exists, do nothing — never throw.
+      if (animKeys.includes(targetKey)) {
+        animate(targetKey);
+      }
+    }
+  }, [chatStatus, animate]);
+
   // Handle animation switching with proper crossfading
   useEffect(() => {
     if (!mixerRef.current || !currentAnimation) {

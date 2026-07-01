@@ -175,16 +175,18 @@ const headQuatY = new THREE.Quaternion();
 
 // ── Idle gaze-away (D-05) ──
 // Only while chatStatus is "ready" or "stopped" (both are idle-eligible) and
-// continuously idle for this long does the avatar glance subtly away. The
-// glance-out is a smooth ease (see easeInOutCubic below); the glance BACK is
-// a deliberate instant snap, like a person's attention quickly refocusing —
-// slow curious drift away, sharp return to eye contact reads more natural
-// than a slow glide back both ways. lookAt.autoUpdate is only enabled while
-// the glance-out is actually easing — the rest of the time it stays off, so
-// the eyes stay frozen at bind pose (see the lifecycle effect) rather than
-// perpetually re-chasing breathing/head-jitter.
+// continuously idle for this long does the avatar glance subtly away, then
+// smoothly return. Every transition — out, back, or an urgent reset — is a
+// real eased glide (see easeInOutCubic below), never a teleport; "urgent"
+// transitions (starting/listening/speaking) just use a much shorter duration
+// so they still feel immediate while remaining visibly smooth.
+// lookAt.autoUpdate is only enabled while a leg is actually easing — the
+// rest of the time it stays off, so the eyes stay frozen at bind pose (see
+// the lifecycle effect) rather than perpetually re-chasing breathing/head-jitter.
 const IDLE_GAZE_DELAY_SECONDS = 10;
-const GAZE_EASE_SECONDS = 1.1;
+const GAZE_EASE_SECONDS = 1.1; // glance-out duration
+const GAZE_RETURN_EASE_SECONDS = 1.1; // natural/soft-cancel return duration
+const GAZE_HARD_RESET_EASE_SECONDS = 0.4; // urgent (starting/listening/speaking) return duration
 const GAZE_HOLD_SECONDS = 3.9; // ease-out + hold ≈ 5s total time spent looking away
 const GAZE_CENTER = { x: 0, y: 1.6, z: 2.0 };
 
@@ -444,6 +446,7 @@ export function VRMAvatar({
   const gazeLegStartRef = useRef(0);
   const gazeLegTargetRef = useRef(0);
   const gazeLegTimeRef = useRef(0);
+  const gazeLegDurationRef = useRef(GAZE_EASE_SECONDS);
 
   // ── Procedural life layer ──
   // Micro-expression scheduler refs
@@ -1074,30 +1077,31 @@ export function VRMAvatar({
     // Idle gaze-away state machine (D-05). Only progresses while
     // enableEyeGaze is on and the target object exists (see lifecycle effect).
     //
-    // gazeAwayAmountRef is driven by an ease-in-out-cubic "leg" (start value
-    // -> target value over GAZE_EASE_SECONDS), NOT plain exponential decay.
-    // Exponential decay has its LARGEST step on the very first frame after
-    // retargeting, which for a short, small-amplitude glance reads as "snap
-    // into position, then an imperceptible crawl" rather than genuinely
-    // smooth motion. Whenever the desired target (0 or 1) changes — glance
-    // triggered, glance naturally finished, or interrupted mid-flight by a
-    // status change — a fresh leg is re-based FROM THE CURRENT AMOUNT, so
+    // gazeAwayAmountRef is ALWAYS driven by an ease-in-out-cubic "leg" (start
+    // value -> target value over some duration) — never teleported/frozen
+    // mid-motion. An earlier version disabled autoUpdate and force-called
+    // lookAt.reset() to make "urgent" resets (listening/speaking/starting)
+    // instant, but that's a real teleport: the eyes jump because autoUpdate
+    // turns off before the system ever computes a centered rotation. Instead,
+    // "urgent" transitions just use a SHORTER leg duration
+    // (GAZE_HARD_RESET_EASE_SECONDS) — still a real, visible glide, just a
+    // fast one — while autoUpdate stays on for the whole leg so the eyes are
+    // continuously (re)computed from the smoothly-moving target, only
+    // freezing once they've actually arrived at center.
+    //
+    // Whenever the desired target (0 or 1) changes — glance triggered, glance
+    // naturally finished, interrupted mid-flight by a status change, or a
+    // hard reset — a fresh leg is re-based FROM THE CURRENT AMOUNT, so
     // there's never a discontinuity even if retargeted before a leg finishes.
     if (enableEyeGaze && gazeTargetRef.current && currentVrm.lookAt) {
       const gazeObj = gazeTargetRef.current;
-      let hardReset = false;
+      const isUrgent =
+        chatStatus === "starting" || chatStatus === "listening" || chatStatus === "speaking";
 
-      if (chatStatus === "starting" || chatStatus === "listening" || chatStatus === "speaking") {
-        // Hard, instant reset (no easing window): the user needs full,
-        // immediate eye contact the moment the session is starting or the AI
-        // is listening to or speaking to them — unlike the "thinking" pause
-        // below, there's no acceptable transition period where the eyes
-        // could still be drifting from a prior glance.
-        idleTimeRef.current = 0;
-        gazePhaseRef.current = "waiting";
-        hardReset = true;
-      } else if (chatStatus !== "ready" && chatStatus !== "stopped") {
-        // e.g. "thinking" — cancel the cycle but ease back rather than snap.
+      if (isUrgent || (chatStatus !== "ready" && chatStatus !== "stopped")) {
+        // Urgent (starting/listening/speaking) or a softer cancel (e.g.
+        // "thinking") — either way the cycle stops and eases back to center;
+        // only the leg duration chosen below differs.
         idleTimeRef.current = 0;
         gazePhaseRef.current = "waiting";
       } else if (gazePhaseRef.current === "waiting") {
@@ -1116,64 +1120,40 @@ export function VRMAvatar({
         if (gazeDwellTimeRef.current >= GAZE_EASE_SECONDS + GAZE_HOLD_SECONDS) {
           gazePhaseRef.current = "waiting";
           idleTimeRef.current = 0;
-          // Snap back instantly rather than easing (see comment above the
-          // constants). As with the hard-reset branch below, disabling
-          // autoUpdate alone would only freeze the eyes at their current
-          // off-center rotation — reset() is what actually re-centers them.
-          gazeAwayAmountRef.current = 0;
-          gazeLegStartRef.current = 0;
-          gazeLegTargetRef.current = 0;
-          gazeLegTimeRef.current = GAZE_EASE_SECONDS;
-          gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
-          currentVrm.lookAt.autoUpdate = false;
-          currentVrm.lookAt.reset();
         }
       }
 
-      if (hardReset) {
+      const desiredTarget = gazePhaseRef.current === "away" ? 1 : 0;
+      if (desiredTarget !== gazeLegTargetRef.current) {
+        gazeLegTargetRef.current = desiredTarget;
+        gazeLegStartRef.current = gazeAwayAmountRef.current;
+        gazeLegTimeRef.current = 0;
+        gazeLegDurationRef.current =
+          desiredTarget === 1
+            ? GAZE_EASE_SECONDS
+            : isUrgent
+              ? GAZE_HARD_RESET_EASE_SECONDS
+              : GAZE_RETURN_EASE_SECONDS;
+      }
+      gazeLegTimeRef.current += delta;
+      const legT = easeInOutCubic(
+        Math.min(gazeLegTimeRef.current / gazeLegDurationRef.current, 1)
+      );
+      gazeAwayAmountRef.current =
+        gazeLegStartRef.current + (gazeLegTargetRef.current - gazeLegStartRef.current) * legT;
+
+      if (gazeLegTargetRef.current === 0 && gazeAwayAmountRef.current < 0.003) {
         gazeAwayAmountRef.current = 0;
-        gazeLegStartRef.current = 0;
-        gazeLegTargetRef.current = 0;
-        gazeLegTimeRef.current = GAZE_EASE_SECONDS;
         currentVrm.lookAt.autoUpdate = false;
         gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
-        // Merely disabling autoUpdate does NOT re-center already-applied eye
-        // rotation — VRMLookAt.update() only re-applies yaw/pitch to the
-        // bones/blendshapes when its internal _needsUpdate flag is set (by
-        // reset(), lookAt(), or the yaw/pitch setters). Without calling
-        // reset() here, the eyes stay frozen at whatever off-center rotation
-        // they had the instant autoUpdate flips off — which is exactly why
-        // this reset previously had no visible effect. reset() zeroes
-        // yaw/pitch and flags _needsUpdate; the upcoming currentVrm.update()
-        // call later this same frame actually applies it. Called every frame
-        // while a hard-reset status is active (not just on entry) so nothing
-        // else can leave the eyes off-center during it.
-        currentVrm.lookAt.reset();
       } else {
-        const desiredTarget = gazePhaseRef.current === "away" ? 1 : 0;
-        if (desiredTarget !== gazeLegTargetRef.current) {
-          gazeLegTargetRef.current = desiredTarget;
-          gazeLegStartRef.current = gazeAwayAmountRef.current;
-          gazeLegTimeRef.current = 0;
-        }
-        gazeLegTimeRef.current += delta;
-        const legT = easeInOutCubic(Math.min(gazeLegTimeRef.current / GAZE_EASE_SECONDS, 1));
-        gazeAwayAmountRef.current =
-          gazeLegStartRef.current + (gazeLegTargetRef.current - gazeLegStartRef.current) * legT;
-
-        if (gazeLegTargetRef.current === 0 && gazeAwayAmountRef.current < 0.003) {
-          gazeAwayAmountRef.current = 0;
-          currentVrm.lookAt.autoUpdate = false;
-          gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
-        } else {
-          currentVrm.lookAt.autoUpdate = true;
-          const amount = gazeAwayAmountRef.current;
-          gazeObj.position.set(
-            GAZE_CENTER.x + gazeAwayOffsetRef.current.x * amount,
-            GAZE_CENTER.y + gazeAwayOffsetRef.current.y * amount,
-            GAZE_CENTER.z
-          );
-        }
+        currentVrm.lookAt.autoUpdate = true;
+        const amount = gazeAwayAmountRef.current;
+        gazeObj.position.set(
+          GAZE_CENTER.x + gazeAwayOffsetRef.current.x * amount,
+          GAZE_CENTER.y + gazeAwayOffsetRef.current.y * amount,
+          GAZE_CENTER.z
+        );
       }
     }
 

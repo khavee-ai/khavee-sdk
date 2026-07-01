@@ -210,25 +210,37 @@ const gestureKeywords: [RegExp, string[]][] = [
 
 // Internal component to load FBX and GLB animation files
 function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
-  const loadedAnimations: Record<string, { type: 'fbx' | 'glb', data: THREE.Group | GLTFResult }> = {};
+  const rawLoadedAnimations: Record<string, { type: 'fbx' | 'glb', data: THREE.Group | GLTFResult }> = {};
 
   if (animationUrls) {
     Object.entries(animationUrls).forEach(([name, url]) => {
       const extension = url.toLowerCase().split('.').pop();
-      
+
       if (extension === 'fbx') {
         // eslint-disable-next-line react-hooks/rules-of-hooks
         const fbxData = useFBX(url);
-        loadedAnimations[name] = { type: 'fbx', data: fbxData };
+        rawLoadedAnimations[name] = { type: 'fbx', data: fbxData };
       } else if (extension === 'glb' || extension === 'gltf') {
         // eslint-disable-next-line react-hooks/rules-of-hooks
         const gltfData = useGLTF(url) as GLTFResult;
-        loadedAnimations[name] = { type: 'glb', data: gltfData };
+        rawLoadedAnimations[name] = { type: 'glb', data: gltfData };
       }
     });
   }
 
-  return loadedAnimations;
+  // Stabilize the returned object's identity across renders (Phase 11 fix). useFBX/useGLTF
+  // already return cached, stable `data` references per URL via drei's loader cache, but the
+  // plain object literal wrapping them above was rebuilt on every render. Every downstream
+  // useMemo keyed on this return value (processedClips, boneMaskedClips) therefore recomputed
+  // on every render too, minting fresh THREE.AnimationClip UUIDs each time. The bone-masked
+  // upper-layer effect treats a new clip UUID as "the animation changed" and restarts its
+  // 0.3s crossfade from scratch — with renders arriving faster than fades could settle, this
+  // produced a perpetually-restarting, overlapping crossfade (visible as the torso jittering/
+  // over-bending and dropped frames from constant AnimationAction/PropertyMixer churn).
+  const dataRefs = Object.values(rawLoadedAnimations).map((entry) => entry.data);
+  const nameKey = Object.keys(rawLoadedAnimations).join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => rawLoadedAnimations, [nameKey, ...dataRefs]);
 }
 
 /**

@@ -632,8 +632,35 @@ export function VRMAvatar({
     }
   }, [chatStatus, animate, realtimeProvider]);
 
-  // Handle animation switching with proper crossfading
+  // Phase 11 (D-01/D-02/D-04/D-05): is currentAnimation a status-driven key with a
+  // maskable upper-body clip available? When true, the bone-masked base-lower +
+  // upper-layer path drives the mixer for this key and the whole-skeleton path below
+  // must NOT also drive it (Pitfall 2 / Open Q2). When false (custom animate() key,
+  // or no maskable clips / no idle clip available), the OLD whole-skeleton behavior
+  // remains fully intact (D-04 exemption + Pitfall 5 fallback).
+  function isBoneMaskingActive(): boolean {
+    if (!currentAnimation || statusDrivenKeyRef.current !== currentAnimation) return false;
+    if (!boneMaskedClips?.baseLower) return false;
+    return Boolean(
+      boneMaskedClips.upperByKey[currentAnimation] || boneMaskedClips.upperByKey["idle"]
+    );
+  }
+
+  // Handle animation switching with proper crossfading (D-04: custom/non-status keys only,
+  // once bone-masking is active for a key — Phase 11 gate added below, dependency array
+  // unconditionally includes boneMaskedClips so a late-arriving boneMaskedClips re-fires
+  // this effect and cannot leave a stale unfiltered whole-skeleton action fighting the
+  // new base-lower/upper actions on shared hips/spine/leg tracks).
   useEffect(() => {
+    if (isBoneMaskingActive()) {
+      // Bone-masking owns this status-driven key — cede the whole-skeleton path.
+      if (currentActionRef.current) {
+        currentActionRef.current.fadeOut(0.3);
+        currentActionRef.current = null;
+      }
+      return;
+    }
+
     if (!mixerRef.current || !currentAnimation) {
       // Stop current animation
       if (currentActionRef.current) {
@@ -670,8 +697,51 @@ export function VRMAvatar({
     // readiness the way Suspense-based useGLTF did) — without it, "idle"
     // (the default currentAnimation, which never changes on its own) would
     // never get (re)applied once the mixer actually exists, leaving the
-    // avatar stuck in its raw bind pose.
-  }, [currentAnimation, processedClips]);
+    // avatar stuck in its raw bind pose. boneMaskedClips is also included
+    // (Phase 11) so the whole-skeleton gate above re-evaluates once masked
+    // clips arrive asynchronously.
+  }, [currentAnimation, processedClips, boneMaskedClips]);
+
+  // Upper-layer crossfade effect (Phase 11, D-02/D-05/D-06): drives upperActionRef
+  // between idle-upper and the current status-driven gesture's upper-filtered clip.
+  // Reuses the exact 0.3s fade pattern from the whole-skeleton effect above, scoped
+  // to upper-only clips.
+  useEffect(() => {
+    if (!mixerRef.current || !boneMaskedClips) return;
+
+    // D-05: fall back to idle-upper whenever no gesture status is active or the
+    // current status key has no maskable upper clip (Pitfall 5 non-Mixamo edge case).
+    const upperKey =
+      statusDrivenKeyRef.current === currentAnimation &&
+      currentAnimation &&
+      boneMaskedClips.upperByKey[currentAnimation]
+        ? currentAnimation
+        : "idle";
+
+    const upperClip = boneMaskedClips.upperByKey[upperKey];
+    if (!upperClip) return;
+
+    const newUpperAction = mixerRef.current.clipAction(upperClip);
+
+    if (!upperActionRef.current) {
+      // First-ever activation: snap to weight 1 immediately (no fadeIn), matching
+      // the whole-skeleton effect's cold-start handling (Pitfall 1).
+      newUpperAction.reset().play();
+    } else if (upperActionRef.current !== newUpperAction) {
+      upperActionRef.current.fadeOut(0.3);
+      newUpperAction.reset().fadeIn(0.3).play();
+    }
+    upperActionRef.current = newUpperAction;
+
+    // Cross-path weight coordination (Phase 11, Pitfall 2 / Open Q2 — REQUIRED):
+    // when bone-masking is active, base + upper actions are authoritative (weight 1);
+    // when a custom whole-skeleton key is authoritative, cede weight to 0 so the
+    // unfiltered custom clip's hips/spine/leg tracks don't fight the always-on
+    // base-lower action's PropertyMixers. Use setEffectiveWeight, not .stop() (Open Q2/A2).
+    const maskingActive = isBoneMaskingActive();
+    baseActionRef.current?.setEffectiveWeight(maskingActive ? 1 : 0);
+    upperActionRef.current?.setEffectiveWeight(maskingActive ? 1 : 0);
+  }, [currentAnimation, boneMaskedClips]);
 
   useEffect(() => {
     if (!currentVrm || !scene) return;

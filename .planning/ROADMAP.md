@@ -296,7 +296,7 @@ Plans:
 ### v3.0 Avatar Animation System
 
 - [x] **Phase 10: Avatar Animation Naturalness — Procedural Life Layer** - Add a procedural animation layer to `@khaveeai/react`'s `VRMAvatar` (breathing, head micro-movement, eye gaze shifts, micro-expressions, nodding, thinking pose, gaze aversion, volume-reactive movement) that runs on top of user-supplied FBX animations, plus built-in `chatStatus`→animation auto-mapping, making the avatar feel continuously alive across all conversation states with zero extra animation files required
-- [ ] **Phase 11: Bone-Masked Upper-Body Animation Layering** - Replace whole-skeleton FBX animation swapping on `chatStatus` change with bone-masked layering — a continuous base clip keeps playing on spine/legs/hips while gesture clips blend only onto upper-body bones — eliminating the full-body snap on every status transition and the head-bone collision with the Phase 10 procedural layer
+- [x] **Phase 11: Bone-Masked Upper-Body Animation Layering** - Replace whole-skeleton FBX animation swapping on `chatStatus` change with bone-masked layering — a continuous base clip keeps playing on spine/legs/hips while gesture clips blend only onto upper-body bones — eliminating the full-body snap on every status transition and the head-bone collision with the Phase 10 procedural layer (completed 2026-07-01)
 
 ### Phase 10: Avatar Animation Naturalness — Procedural Life Layer
 
@@ -338,7 +338,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Avatar Animation Naturalness — Procedural Life Layer | 4/4 | Complete | 2026-07-01 |
-| 11. Bone-Masked Upper-Body Animation Layering | 1/2 | In Progress|  |
+| 11. Bone-Masked Upper-Body Animation Layering | 2/2 | Complete   | 2026-07-01 |
 
 ### Phase 11: Bone-Masked Upper-Body Animation Layering
 
@@ -356,4 +356,4 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 — imports the utility)*
 
-- [ ] 11-02-PLAN.md — VRMAvatar.tsx integration: boneMaskedClips memo + always-on base-lower action + upper-layer 0.3s crossfade (idle-upper ↔ gesture) + status-driven-vs-custom provenance gate + Pitfall-2 setEffectiveWeight coordination + live human-verify checkpoint (BONE-02..BONE-05)
+- [x] 11-02-PLAN.md — VRMAvatar.tsx integration: boneMaskedClips memo + always-on base-lower action + upper-layer 0.3s crossfade (idle-upper ↔ gesture) + status-driven-vs-custom provenance gate + Pitfall-2 setEffectiveWeight coordination + live human-verify checkpoint (BONE-02..BONE-05)

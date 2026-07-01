@@ -237,10 +237,24 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
   // 0.3s crossfade from scratch — with renders arriving faster than fades could settle, this
   // produced a perpetually-restarting, overlapping crossfade (visible as the torso jittering/
   // over-bending and dropped frames from constant AnimationAction/PropertyMixer churn).
+  //
+  // A useMemo dependency array's length must stay constant across renders (code review
+  // WR-04) — spreading `dataRefs` (whose length tracks the current animation-key count)
+  // violates that whenever the key set changes between renders. Manual ref-based
+  // memoization avoids the variable-length-array requirement entirely.
   const dataRefs = Object.values(rawLoadedAnimations).map((entry) => entry.data);
   const nameKey = Object.keys(rawLoadedAnimations).join(",");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => rawLoadedAnimations, [nameKey, ...dataRefs]);
+  const stableRef = useRef<{ nameKey: string; dataRefs: unknown[]; result: typeof rawLoadedAnimations } | null>(null);
+  const prev = stableRef.current;
+  const unchanged =
+    prev !== null &&
+    prev.nameKey === nameKey &&
+    prev.dataRefs.length === dataRefs.length &&
+    prev.dataRefs.every((d, i) => d === dataRefs[i]);
+  if (!unchanged) {
+    stableRef.current = { nameKey, dataRefs, result: rawLoadedAnimations };
+  }
+  return stableRef.current!.result;
 }
 
 /**
@@ -522,9 +536,23 @@ export function VRMAvatar({
     }
 
     const idleClip = processedClips.find((c) => c?.name === "idle");
-    const baseLower = idleClip
+    if (!idleClip) {
+      // Code review IN-01: without this, bone-masking silently and permanently
+      // falls back to the whole-skeleton path with no indication why.
+      console.warn(
+        "[VRM Animation] No 'idle' animation key found — bone-masked upper-body layering is disabled; falling back to whole-skeleton crossfade."
+      );
+    }
+    const baseLowerCandidate = idleClip
       ? filterClipTracksByBoneSet(idleClip, currentVrm, BASE_LOWER_BONES, "base-lower")
       : null;
+    // Pitfall 5 fallback (code review WR-03): a zero-track baseLower (e.g.
+    // currentVrm.humanoid unexpectedly falsy) would otherwise be treated as "present"
+    // by isBoneMaskingActive()'s null-check alone, activating masking and gating out
+    // the whole-skeleton path while nothing actually drives the lower body — silently
+    // freezing hips/spine/legs instead of falling back gracefully.
+    const baseLower =
+      baseLowerCandidate && baseLowerCandidate.tracks.length > 0 ? baseLowerCandidate : null;
 
     const upperByKey: Record<string, THREE.AnimationClip> = {};
     processedClips.forEach((clip) => {
@@ -765,6 +793,24 @@ export function VRMAvatar({
   useEffect(() => {
     if (!mixerRef.current || !boneMaskedClips) return;
 
+    // Cross-path weight coordination (Phase 11, Pitfall 2 / Open Q2 — REQUIRED):
+    // when bone-masking is active, the base action is authoritative (weight 1);
+    // when a custom whole-skeleton key is authoritative, cede weight to 0 so the
+    // unfiltered custom clip's hips/spine/leg tracks don't fight the always-on
+    // base-lower action's PropertyMixers. Use setEffectiveWeight, not .stop() (Open Q2/A2).
+    //
+    // This MUST run before the `!upperClip` early return below (code review WR-02):
+    // that early return fires whenever the "idle" D-05 fallback upper clip doesn't
+    // exist, which can happen independently of baseLower's own availability — skipping
+    // this block in that case would leave baseActionRef fighting an unfiltered custom
+    // clip's hips/spine/leg tracks with no weight coordination at all.
+    const maskingActive = isBoneMaskingActive();
+    baseActionRef.current?.setEffectiveWeight(maskingActive ? 1 : 0);
+    if (!maskingActive) {
+      // Custom whole-skeleton key is authoritative — cede weight immediately.
+      upperActionRef.current?.setEffectiveWeight(0);
+    }
+
     // D-05: fall back to idle-upper whenever no gesture status is active or the
     // current status key has no maskable upper clip (Pitfall 5 non-Mixamo edge case).
     const upperKey =
@@ -775,9 +821,14 @@ export function VRMAvatar({
         : "idle";
 
     const upperClip = boneMaskedClips.upperByKey[upperKey];
-    if (!upperClip) return;
+    if (!upperClip) {
+      prevMaskingActiveRef.current = maskingActive;
+      return;
+    }
 
     const newUpperAction = mixerRef.current.clipAction(upperClip);
+    // Tracks whether a fade was scheduled THIS pass — code review WR-01.
+    let fadeScheduledThisPass = false;
 
     if (!upperActionRef.current) {
       // First-ever activation: snap to weight 1 immediately (no fadeIn), matching
@@ -786,34 +837,26 @@ export function VRMAvatar({
     } else if (upperActionRef.current !== newUpperAction) {
       upperActionRef.current.fadeOut(0.3);
       newUpperAction.reset().fadeIn(0.3).play();
+      fadeScheduledThisPass = true;
     }
     upperActionRef.current = newUpperAction;
 
-    // Cross-path weight coordination (Phase 11, Pitfall 2 / Open Q2 — REQUIRED):
-    // when bone-masking is active, base + upper actions are authoritative (weight 1);
-    // when a custom whole-skeleton key is authoritative, cede weight to 0 so the
-    // unfiltered custom clip's hips/spine/leg tracks don't fight the always-on
-    // base-lower action's PropertyMixers. Use setEffectiveWeight, not .stop() (Open Q2/A2).
-    //
     // IMPORTANT: setEffectiveWeight() calls THREE's AnimationAction.stopFading()
     // internally, cancelling any in-flight fadeIn/fadeOut interpolant and snapping
-    // weight to the given value immediately. Calling it unconditionally on
-    // upperActionRef every time this effect fires — including right after scheduling
-    // a fadeIn() a few lines above on that SAME action — cancelled every upper-layer
-    // crossfade before it could animate, so gesture transitions just snapped instead
-    // of blending (checkpoint feedback). Only touch weight here for the two binary
-    // on/off transitions (entering/leaving the custom whole-skeleton path); leave it
-    // alone while masking stays active across a gesture-to-gesture switch so the
-    // fadeIn/fadeOut scheduled above can actually run.
-    const maskingActive = isBoneMaskingActive();
-    baseActionRef.current?.setEffectiveWeight(maskingActive ? 1 : 0);
-    if (!maskingActive) {
-      // Custom whole-skeleton key is authoritative — cede weight immediately.
-      upperActionRef.current?.setEffectiveWeight(0);
-    } else if (!prevMaskingActiveRef.current) {
-      // Just returned from the custom whole-skeleton path — restore full weight.
-      // This recovers from a fully-zeroed weight, it is not interrupting an
-      // in-flight gesture crossfade, so an instant snap is correct here.
+    // weight to the given value immediately. Calling it unconditionally here —
+    // including right after scheduling a fadeIn() a few lines above on that SAME
+    // action — cancelled every upper-layer crossfade before it could animate, so
+    // gesture transitions just snapped instead of blending (checkpoint feedback).
+    //
+    // Only restore-to-1 when recovering from the custom whole-skeleton path AND no
+    // fade was just scheduled this pass (code review WR-01): if a custom animate()
+    // call is immediately followed by a DIFFERENT gesture than whatever was active
+    // before it (e.g. idle -> dance -> listening), `newUpperAction` is a fresh action
+    // whose own fadeIn already governs its weight from 0 — forcing it to 1 here would
+    // cancel that fade and produce an instant pop instead of a 0.3s crossfade. When the
+    // upper action identity DIDN'T change (e.g. idle -> dance -> idle, same action),
+    // no fade was scheduled to bring weight back up, so the instant snap is correct.
+    if (maskingActive && !prevMaskingActiveRef.current && !fadeScheduledThisPass) {
       upperActionRef.current?.setEffectiveWeight(1);
     }
     prevMaskingActiveRef.current = maskingActive;

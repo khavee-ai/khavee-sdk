@@ -180,15 +180,28 @@ const headQuatY = new THREE.Quaternion();
 // real eased glide (see easeInOutCubic below), never a teleport; "urgent"
 // transitions (starting/listening/speaking) just use a much shorter duration
 // so they still feel immediate while remaining visibly smooth.
-// lookAt.autoUpdate is only enabled while a leg is actually easing — the
-// rest of the time it stays off, so the eyes stay frozen at bind pose (see
-// the lifecycle effect) rather than perpetually re-chasing breathing/head-jitter.
+//
+// Driven DIRECTLY via lookAt.yaw/.pitch (degrees) rather than moving a
+// world-space target object for lookAt to trigonometrically resolve. Reason:
+// VRMLookAt's range-map SATURATES — it clamps to full blendshape/bone weight
+// once the angle passes a (small, per-model) threshold, often around 10°. A
+// world-space target far enough away to read as "glancing aside" easily
+// exceeds that, so most of an eased approach happened while the eyes were
+// already pinned at full deflection — nearly all the visible change was
+// compressed into a sliver of the transition, which reads as a snap even
+// though the underlying math was genuinely continuous. Driving yaw/pitch
+// directly lets us pick a small, explicit peak angle that stays inside the
+// visibly-continuous part of the range for the model's entire glide, and
+// also fully decouples eye rotation from head position/orientation — no
+// trigonometry involving the head bone's current (possibly jittering)
+// transform is involved at all.
 const IDLE_GAZE_DELAY_SECONDS = 10;
 const GAZE_EASE_SECONDS = 1.1; // glance-out duration
 const GAZE_RETURN_EASE_SECONDS = 1.1; // natural/soft-cancel return duration
 const GAZE_HARD_RESET_EASE_SECONDS = 0.4; // urgent (starting/listening/speaking) return duration
 const GAZE_HOLD_SECONDS = 3.9; // ease-out + hold ≈ 5s total time spent looking away
-const GAZE_CENTER = { x: 0, y: 1.6, z: 2.0 };
+const GAZE_YAW_MAX_DEG = 7; // peak horizontal deflection — small enough to avoid range-map saturation
+const GAZE_PITCH_MAX_DEG = 3; // peak vertical deflection
 
 // Ease-in-out (slow start, fast middle, slow finish) rather than exponential
 // decay — pure exponential decay has its LARGEST step on the very first
@@ -433,7 +446,6 @@ export function VRMAvatar({
   const headTimeRef = useRef(0);
 
   // Idle gaze-away state (D-05)
-  const gazeTargetRef = useRef<THREE.Object3D | null>(null);
   const idleTimeRef = useRef(0);
   const gazePhaseRef = useRef<"waiting" | "away">("waiting");
   const gazeDwellTimeRef = useRef(0);
@@ -888,52 +900,35 @@ export function VRMAvatar({
     });
   }, [scene, currentVrm, setVrm]);
 
-  // Eye gaze target lifecycle (D-05).
+  // Eye gaze lifecycle (D-05).
   //
   // Root cause of the earlier persistent "eyes still moving" reports:
-  // vrm.lookAt is a *compensation* system — every vrm.update() call it
-  // recomputes eye rotation from scratch to keep pointing at the target given
-  // the head's CURRENT world transform. Breathing, head micro-movement,
-  // nodding, and thinking-tilt all rotate the head bone earlier in the same
-  // frame (Pitfall 1 ordering), so even a perfectly static target produced
-  // perpetual counter-rotation as the eyes chased a head that never stops
-  // subtly moving.
+  // vrm.lookAt's target-based mode is a *compensation* system — every
+  // vrm.update() call it recomputes eye rotation from scratch to keep
+  // pointing at a world-space target given the head's CURRENT world
+  // transform. Breathing, head micro-movement, nodding, and thinking-tilt
+  // all rotate the head bone earlier in the same frame (Pitfall 1 ordering),
+  // so even a perfectly static target produced perpetual counter-rotation as
+  // the eyes chased a head that never stops subtly moving.
   //
-  // Fix: autoUpdate defaults to OFF here and is only flipped on for the
-  // duration of a deliberate idle glance-away (see the useFrame state
-  // machine below). The rest of the time the eyes stay frozen at bind pose
-  // (forward, at the camera) instead of being recomputed every frame.
+  // Fix: never use target/autoUpdate at all. yaw/pitch are driven directly,
+  // every frame, in the useFrame state machine below (0,0 at rest = looking
+  // forward at the camera, since that's the model's default orientation) —
+  // fully decoupled from head transform, so there's nothing to chase.
   useEffect(() => {
     if (!currentVrm || !currentVrm.lookAt) return;
-
-    if (!enableEyeGaze) {
-      currentVrm.lookAt.target = null;
-      currentVrm.lookAt.autoUpdate = false;
-      gazeTargetRef.current = null;
-      return;
-    }
-
-    const gazeObj = new THREE.Object3D();
-    gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
-    currentVrm.scene.add(gazeObj);
-    gazeTargetRef.current = gazeObj;
-    currentVrm.lookAt.target = gazeObj;
+    currentVrm.lookAt.target = null;
     currentVrm.lookAt.autoUpdate = false;
+    currentVrm.lookAt.reset();
+
+    if (!enableEyeGaze) return;
+
     gazePhaseRef.current = "waiting";
     idleTimeRef.current = 0;
     gazeAwayAmountRef.current = 0;
     gazeLegStartRef.current = 0;
     gazeLegTargetRef.current = 0;
     gazeLegTimeRef.current = 0;
-
-    return () => {
-      currentVrm.scene.remove(gazeObj);
-      if (currentVrm.lookAt) {
-        currentVrm.lookAt.target = null;
-        currentVrm.lookAt.autoUpdate = false;
-      }
-      gazeTargetRef.current = null;
-    };
   }, [currentVrm, enableEyeGaze]);
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {
@@ -1075,26 +1070,20 @@ export function VRMAvatar({
     }
 
     // Idle gaze-away state machine (D-05). Only progresses while
-    // enableEyeGaze is on and the target object exists (see lifecycle effect).
+    // enableEyeGaze is on (see lifecycle effect above for why target/
+    // autoUpdate are never touched — yaw/pitch are driven directly instead).
     //
     // gazeAwayAmountRef is ALWAYS driven by an ease-in-out-cubic "leg" (start
     // value -> target value over some duration) — never teleported/frozen
-    // mid-motion. An earlier version disabled autoUpdate and force-called
-    // lookAt.reset() to make "urgent" resets (listening/speaking/starting)
-    // instant, but that's a real teleport: the eyes jump because autoUpdate
-    // turns off before the system ever computes a centered rotation. Instead,
-    // "urgent" transitions just use a SHORTER leg duration
-    // (GAZE_HARD_RESET_EASE_SECONDS) — still a real, visible glide, just a
-    // fast one — while autoUpdate stays on for the whole leg so the eyes are
-    // continuously (re)computed from the smoothly-moving target, only
-    // freezing once they've actually arrived at center.
+    // mid-motion. "Urgent" transitions (starting/listening/speaking) just use
+    // a SHORTER leg duration (GAZE_HARD_RESET_EASE_SECONDS) — still a real,
+    // visible glide, just a fast one.
     //
     // Whenever the desired target (0 or 1) changes — glance triggered, glance
     // naturally finished, interrupted mid-flight by a status change, or a
     // hard reset — a fresh leg is re-based FROM THE CURRENT AMOUNT, so
     // there's never a discontinuity even if retargeted before a leg finishes.
-    if (enableEyeGaze && gazeTargetRef.current && currentVrm.lookAt) {
-      const gazeObj = gazeTargetRef.current;
+    if (enableEyeGaze && currentVrm.lookAt) {
       const isUrgent =
         chatStatus === "starting" || chatStatus === "listening" || chatStatus === "speaking";
 
@@ -1109,10 +1098,12 @@ export function VRMAvatar({
         if (idleTimeRef.current >= IDLE_GAZE_DELAY_SECONDS) {
           gazePhaseRef.current = "away";
           gazeDwellTimeRef.current = 0;
-          const angle = Math.random() * Math.PI * 2;
+          // Random peak yaw/pitch (in degrees) for this glance, each within
+          // its own small max — see the GAZE_*_MAX_DEG comment above for why
+          // these stay deliberately small.
           gazeAwayOffsetRef.current = {
-            x: Math.cos(angle) * (0.35 + Math.random() * 0.2),
-            y: Math.sin(angle) * 0.15 - 0.05,
+            x: (Math.random() * 2 - 1) * GAZE_YAW_MAX_DEG,
+            y: (Math.random() * 2 - 1) * GAZE_PITCH_MAX_DEG,
           };
         }
       } else if (gazePhaseRef.current === "away") {
@@ -1142,19 +1133,8 @@ export function VRMAvatar({
       gazeAwayAmountRef.current =
         gazeLegStartRef.current + (gazeLegTargetRef.current - gazeLegStartRef.current) * legT;
 
-      if (gazeLegTargetRef.current === 0 && gazeAwayAmountRef.current < 0.003) {
-        gazeAwayAmountRef.current = 0;
-        currentVrm.lookAt.autoUpdate = false;
-        gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
-      } else {
-        currentVrm.lookAt.autoUpdate = true;
-        const amount = gazeAwayAmountRef.current;
-        gazeObj.position.set(
-          GAZE_CENTER.x + gazeAwayOffsetRef.current.x * amount,
-          GAZE_CENTER.y + gazeAwayOffsetRef.current.y * amount,
-          GAZE_CENTER.z
-        );
-      }
+      currentVrm.lookAt.yaw = gazeAwayOffsetRef.current.x * gazeAwayAmountRef.current;
+      currentVrm.lookAt.pitch = gazeAwayOffsetRef.current.y * gazeAwayAmountRef.current;
     }
 
     // Apply expressions from the hook with smooth lerping

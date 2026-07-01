@@ -181,9 +181,17 @@ const headQuatY = new THREE.Quaternion();
 // effect) rather than perpetually re-chasing breathing/head-jitter.
 const IDLE_GAZE_DELAY_SECONDS = 6;
 const GAZE_EASE_SECONDS = 1.1;
-const GAZE_EASE_TAU = GAZE_EASE_SECONDS / 3;
 const GAZE_HOLD_SECONDS = 1.4;
 const GAZE_CENTER = { x: 0, y: 1.6, z: 2.0 };
+
+// Ease-in-out (slow start, fast middle, slow finish) rather than exponential
+// decay — pure exponential decay has its LARGEST step on the very first
+// frame after retargeting, which for a short, small-amplitude glance reads
+// as "snap into position, then a long imperceptible crawl" instead of a
+// genuinely smooth motion.
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 // Full close+open blink cycle duration — was implicitly ~0.12s (frame-count based).
 const BLINK_DURATION_SECONDS = 0.35;
@@ -425,6 +433,13 @@ export function VRMAvatar({
   const gazeDwellTimeRef = useRef(0);
   const gazeAwayAmountRef = useRef(0);
   const gazeAwayOffsetRef = useRef({ x: 0, y: 0 });
+  /** Amount value captured at the start of the current ease-in-out leg — lets a
+   *  leg be re-based mid-flight (glance interrupted, or naturally finished)
+   *  without a discontinuity, since the new leg always eases FROM wherever the
+   *  amount actually is, not from an assumed 0 or 1. */
+  const gazeLegStartRef = useRef(0);
+  const gazeLegTargetRef = useRef(0);
+  const gazeLegTimeRef = useRef(0);
 
   // ── Procedural life layer ──
   // Micro-expression scheduler refs
@@ -900,6 +915,9 @@ export function VRMAvatar({
     gazePhaseRef.current = "waiting";
     idleTimeRef.current = 0;
     gazeAwayAmountRef.current = 0;
+    gazeLegStartRef.current = 0;
+    gazeLegTargetRef.current = 0;
+    gazeLegTimeRef.current = 0;
 
     return () => {
       currentVrm.scene.remove(gazeObj);
@@ -1052,17 +1070,30 @@ export function VRMAvatar({
     // Idle gaze-away state machine (D-05). Only progresses while
     // enableEyeGaze is on and the target object exists (see lifecycle effect).
     //
-    // gazeAwayAmountRef eases toward a 0/1 target via exponential smoothing
-    // rather than a fixed-duration timer per leg — that means if a glance is
-    // interrupted mid-flight (e.g. the user starts talking while the eyes are
-    // away), the return-to-center always eases smoothly from whatever the
-    // CURRENT amount is, with no discontinuity. A duration-based per-leg timer
-    // would jump when interrupted, since "time already spent in the leg"
-    // doesn't correspond to "how far the interrupted leg actually got."
+    // gazeAwayAmountRef is driven by an ease-in-out-cubic "leg" (start value
+    // -> target value over GAZE_EASE_SECONDS), NOT plain exponential decay.
+    // Exponential decay has its LARGEST step on the very first frame after
+    // retargeting, which for a short, small-amplitude glance reads as "snap
+    // into position, then an imperceptible crawl" rather than genuinely
+    // smooth motion. Whenever the desired target (0 or 1) changes — glance
+    // triggered, glance naturally finished, or interrupted mid-flight by a
+    // status change — a fresh leg is re-based FROM THE CURRENT AMOUNT, so
+    // there's never a discontinuity even if retargeted before a leg finishes.
     if (enableEyeGaze && gazeTargetRef.current && currentVrm.lookAt) {
       const gazeObj = gazeTargetRef.current;
+      let hardReset = false;
 
-      if (chatStatus !== "ready") {
+      if (chatStatus === "listening" || chatStatus === "speaking") {
+        // Hard, instant reset (no easing window): the user needs full,
+        // immediate eye contact the moment the AI is listening to or
+        // speaking to them — unlike the "thinking" pause below, there's no
+        // acceptable transition period where the eyes could still be
+        // drifting back from a prior glance.
+        idleTimeRef.current = 0;
+        gazePhaseRef.current = "waiting";
+        hardReset = true;
+      } else if (chatStatus !== "ready") {
+        // e.g. "thinking" — cancel the cycle but ease back rather than snap.
         idleTimeRef.current = 0;
         gazePhaseRef.current = "waiting";
       } else if (gazePhaseRef.current === "waiting") {
@@ -1084,22 +1115,38 @@ export function VRMAvatar({
         }
       }
 
-      const targetAmount = gazePhaseRef.current === "away" ? 1 : 0;
-      const smoothing = 1 - Math.exp(-delta / GAZE_EASE_TAU);
-      gazeAwayAmountRef.current += (targetAmount - gazeAwayAmountRef.current) * smoothing;
-
-      if (targetAmount === 0 && gazeAwayAmountRef.current < 0.003) {
+      if (hardReset) {
         gazeAwayAmountRef.current = 0;
+        gazeLegStartRef.current = 0;
+        gazeLegTargetRef.current = 0;
+        gazeLegTimeRef.current = GAZE_EASE_SECONDS;
         currentVrm.lookAt.autoUpdate = false;
         gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
       } else {
-        currentVrm.lookAt.autoUpdate = true;
-        const amount = gazeAwayAmountRef.current;
-        gazeObj.position.set(
-          GAZE_CENTER.x + gazeAwayOffsetRef.current.x * amount,
-          GAZE_CENTER.y + gazeAwayOffsetRef.current.y * amount,
-          GAZE_CENTER.z
-        );
+        const desiredTarget = gazePhaseRef.current === "away" ? 1 : 0;
+        if (desiredTarget !== gazeLegTargetRef.current) {
+          gazeLegTargetRef.current = desiredTarget;
+          gazeLegStartRef.current = gazeAwayAmountRef.current;
+          gazeLegTimeRef.current = 0;
+        }
+        gazeLegTimeRef.current += delta;
+        const legT = easeInOutCubic(Math.min(gazeLegTimeRef.current / GAZE_EASE_SECONDS, 1));
+        gazeAwayAmountRef.current =
+          gazeLegStartRef.current + (gazeLegTargetRef.current - gazeLegStartRef.current) * legT;
+
+        if (gazeLegTargetRef.current === 0 && gazeAwayAmountRef.current < 0.003) {
+          gazeAwayAmountRef.current = 0;
+          currentVrm.lookAt.autoUpdate = false;
+          gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
+        } else {
+          currentVrm.lookAt.autoUpdate = true;
+          const amount = gazeAwayAmountRef.current;
+          gazeObj.position.set(
+            GAZE_CENTER.x + gazeAwayOffsetRef.current.x * amount,
+            GAZE_CENTER.y + gazeAwayOffsetRef.current.y * amount,
+            GAZE_CENTER.z
+          );
+        }
       }
     }
 

@@ -1084,12 +1084,12 @@ export function VRMAvatar({
       const gazeObj = gazeTargetRef.current;
       let hardReset = false;
 
-      if (chatStatus === "listening" || chatStatus === "speaking") {
+      if (chatStatus === "starting" || chatStatus === "listening" || chatStatus === "speaking") {
         // Hard, instant reset (no easing window): the user needs full,
-        // immediate eye contact the moment the AI is listening to or
-        // speaking to them — unlike the "thinking" pause below, there's no
-        // acceptable transition period where the eyes could still be
-        // drifting back from a prior glance.
+        // immediate eye contact the moment the session is starting or the AI
+        // is listening to or speaking to them — unlike the "thinking" pause
+        // below, there's no acceptable transition period where the eyes
+        // could still be drifting from a prior glance.
         idleTimeRef.current = 0;
         gazePhaseRef.current = "waiting";
         hardReset = true;
@@ -1123,6 +1123,18 @@ export function VRMAvatar({
         gazeLegTimeRef.current = GAZE_EASE_SECONDS;
         currentVrm.lookAt.autoUpdate = false;
         gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
+        // Merely disabling autoUpdate does NOT re-center already-applied eye
+        // rotation — VRMLookAt.update() only re-applies yaw/pitch to the
+        // bones/blendshapes when its internal _needsUpdate flag is set (by
+        // reset(), lookAt(), or the yaw/pitch setters). Without calling
+        // reset() here, the eyes stay frozen at whatever off-center rotation
+        // they had the instant autoUpdate flips off — which is exactly why
+        // this reset previously had no visible effect. reset() zeroes
+        // yaw/pitch and flags _needsUpdate; the upcoming currentVrm.update()
+        // call later this same frame actually applies it. Called every frame
+        // while a hard-reset status is active (not just on entry) so nothing
+        // else can leave the eyes off-center during it.
+        currentVrm.lookAt.reset();
       } else {
         const desiredTarget = gazePhaseRef.current === "away" ? 1 : 0;
         if (desiredTarget !== gazeLegTargetRef.current) {

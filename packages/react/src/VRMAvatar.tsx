@@ -561,6 +561,19 @@ export function VRMAvatar({
         mixerRef.current.stopAllAction();
         mixerRef.current = null;
         currentActionRef.current = null;
+        // Phase 11 fix: baseActionRef/upperActionRef MUST also be cleared here.
+        // React Strict Mode (Next.js dev default) double-invokes effects with
+        // cleanups — mount, cleanup, mount again — even on the very first render.
+        // The base-lower action's OWN effect only ever creates it once, guarded
+        // by `if (... || baseActionRef.current) return;`. If that first creation
+        // raced ahead of Strict Mode's simulated remount here, the guard sees a
+        // non-null baseActionRef and never rebinds it to the NEW mixer created
+        // above — permanently orphaning it against a discarded, no-longer-updated
+        // mixer. Its .time then never advances again (frozen lower body/spine)
+        // while the upper body keeps animating normally, producing an incoherent,
+        // "weirdly bending" torso even at idle rest (checkpoint feedback).
+        baseActionRef.current = null;
+        upperActionRef.current = null;
       }
     };
   }, [currentVrm]);

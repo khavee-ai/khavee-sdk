@@ -701,6 +701,55 @@ export function VRMAvatar({
       }
     }
 
+    // ── Wave-4: Nodding (listening state) ──
+    if (enableHeadMovement && currentVrm.humanoid) {
+      // Nod timer (only ticks during listening; reset on exit)
+      if (chatStatus === "listening") {
+        nextNodTimeRef.current -= delta;
+        if (!nodActiveRef.current && nextNodTimeRef.current <= 0) {
+          nodActiveRef.current = true;
+          nodProgressRef.current = 0;
+          const r = Math.random();
+          // SHORT 40%, LONG 40%, LONG_P 20%
+          nodTypeRef.current = r < 0.4 ? 0 : r < 0.8 ? 1 : 2;
+          nodDurationRef.current =
+            nodTypeRef.current === 0 ? 0.3 : nodTypeRef.current === 1 ? 0.5 : 0.6;
+          nextNodTimeRef.current = Math.random() * 2 + 2;
+        }
+      } else if (!nodActiveRef.current) {
+        nextNodTimeRef.current = Math.random() * 2 + 2;
+      }
+
+      // Apply active nod
+      if (nodActiveRef.current) {
+        nodProgressRef.current += delta / nodDurationRef.current;
+        if (nodProgressRef.current >= 1) {
+          nodProgressRef.current = 1;
+          nodActiveRef.current = false;
+        }
+        const t = nodProgressRef.current;
+        const headBoneNod = currentVrm.humanoid.getNormalizedBoneNode("head" as any);
+        if (headBoneNod) {
+          let nodX = 0;
+          let nodY = 0;
+          if (nodTypeRef.current === 0) {
+            nodX = Math.sin(t * Math.PI) * 0.022; // SHORT: one dip
+          } else if (nodTypeRef.current === 1) {
+            nodX = Math.sin(t * Math.PI * 2) * 0.038; // LONG: two cycles
+          } else {
+            nodX = Math.sin(t * Math.PI * 2) * 0.038; // LONG_P: two cycles
+            nodY = thinkingTiltDirectionRef.current * Math.sin(t * Math.PI) * 0.012; // + upswing
+          }
+          headQuatX.setFromAxisAngle(scratchX, nodX);
+          headBoneNod.quaternion.multiply(headQuatX);
+          if (nodY !== 0) {
+            headQuatY.setFromAxisAngle(scratchY, nodY);
+            headBoneNod.quaternion.multiply(headQuatY);
+          }
+        }
+      }
+    }
+
     // Eye gaze: drifting lookAt target (D-05)
     if (enableEyeGaze && gazeTargetRef.current && currentVrm.humanoid) {
       gazeTimeRef.current += delta;

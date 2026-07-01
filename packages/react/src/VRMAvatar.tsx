@@ -549,7 +549,7 @@ export function VRMAvatar({
 
   // Eye gaze target lifecycle (D-05)
   useEffect(() => {
-    if (!currentVrm || !enableEyeGaze) return;
+    if (!currentVrm || !enableEyeGaze || !currentVrm.lookAt) return;
 
     const gazeObj = new THREE.Object3D();
     gazeObj.position.set(0, 1.6, 2.0); // Base target position
@@ -560,7 +560,9 @@ export function VRMAvatar({
 
     return () => {
       currentVrm.scene.remove(gazeObj);
-      currentVrm.lookAt.target = null;
+      if (currentVrm.lookAt) {
+        currentVrm.lookAt.target = null;
+      }
       gazeTargetRef.current = null;
     };
   }, [currentVrm, enableEyeGaze]);
@@ -586,6 +588,79 @@ export function VRMAvatar({
     // Update animation mixer first (if exists)
     if (mixerRef.current) {
       mixerRef.current.update(delta);
+    }
+
+    // ── Procedural bone deltas (D-04, D-06, D-08) ──
+    // All applied AFTER mixer.update, BEFORE vrm.update (Pitfall 1)
+
+    // Breathing: spine and chest oscillation (D-06)
+    if (enableBreathing && currentVrm.humanoid) {
+      breathTimeRef.current += delta;
+      const offset = Math.sin(breathTimeRef.current * 1.2) * 0.020;
+      breathQuat.setFromAxisAngle(scratchX, offset);
+
+      const spine = currentVrm.humanoid.getNormalizedBoneNode("spine" as any);
+      if (spine) {
+        spine.quaternion.multiply(breathQuat);
+      }
+
+      const chest = currentVrm.humanoid.getNormalizedBoneNode("chest" as any);
+      if (chest) {
+        chest.quaternion.multiply(breathQuat);
+      }
+    }
+
+    // Head micro-movement: two-octave noise (D-06)
+    if (enableHeadMovement && currentVrm.humanoid) {
+      headTimeRef.current += delta;
+      const headX =
+        Math.sin(headTimeRef.current * 0.19) * 0.018 +
+        Math.sin(headTimeRef.current * 0.53) * 0.009;
+      const headY =
+        Math.sin(headTimeRef.current * 0.31) * 0.022 +
+        Math.sin(headTimeRef.current * 0.67) * 0.011;
+
+      headQuatX.setFromAxisAngle(scratchX, headX);
+      headQuatY.setFromAxisAngle(scratchY, headY);
+
+      const head = currentVrm.humanoid.getNormalizedBoneNode("head" as any);
+      if (head) {
+        head.quaternion.multiply(headQuatX).multiply(headQuatY);
+      }
+    }
+
+    // Eye gaze: drifting lookAt target (D-05)
+    if (enableEyeGaze && gazeTargetRef.current && currentVrm.humanoid) {
+      gazeTimeRef.current += delta;
+      const gazeX =
+        Math.sin(gazeTimeRef.current * 0.12) * 0.25 +
+        Math.sin(gazeTimeRef.current * 0.38) * 0.12;
+      const gazeY =
+        1.6 +
+        Math.sin(gazeTimeRef.current * 0.15) * 0.08 +
+        Math.sin(gazeTimeRef.current * 0.42) * 0.04;
+
+      gazeTargetRef.current.position.set(gazeX, gazeY, 2.0);
+      // vrm.lookAt.autoUpdate handles the rest in vrm.update()
+    }
+
+    // Finger curl noise (D-08)
+    if (enableHandGestures && currentVrm.humanoid) {
+      fingerTimeRef.current += delta;
+
+      for (let i = 0; i < allFingerBones.length; i++) {
+        const boneName = allFingerBones[i];
+        const phase = fingerPhases[i % 5];
+        const freq = 0.7 + (i % 3) * 0.17;
+        const offset = Math.sin(fingerTimeRef.current * freq + phase) * 0.018;
+
+        fingerQuat.setFromAxisAngle(scratchX, offset);
+
+        const bone = currentVrm.humanoid.getNormalizedBoneNode(boneName as any);
+        if (bone) {
+          bone.quaternion.multiply(fingerQuat);
+        }
+      }
     }
 
     // Apply expressions from the hook with smooth lerping

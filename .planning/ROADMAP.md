@@ -295,7 +295,8 @@ Plans:
 
 ### v3.0 Avatar Animation System
 
-- [ ] **Phase 10: Avatar Animation Naturalness — Procedural Life Layer** - Add a procedural animation layer to `@khaveeai/react`'s `VRMAvatar` (breathing, head micro-movement, eye gaze shifts, micro-expressions) that runs on top of user-supplied FBX animations, plus built-in `chatStatus`→animation auto-mapping, making the avatar feel continuously alive across all conversation states with zero extra animation files required
+- [x] **Phase 10: Avatar Animation Naturalness — Procedural Life Layer** - Add a procedural animation layer to `@khaveeai/react`'s `VRMAvatar` (breathing, head micro-movement, eye gaze shifts, micro-expressions, nodding, thinking pose, gaze aversion, volume-reactive movement) that runs on top of user-supplied FBX animations, plus built-in `chatStatus`→animation auto-mapping, making the avatar feel continuously alive across all conversation states with zero extra animation files required
+- [ ] **Phase 11: Bone-Masked Upper-Body Animation Layering** - Replace whole-skeleton FBX animation swapping on `chatStatus` change with bone-masked layering — a continuous base clip keeps playing on spine/legs/hips while gesture clips blend only onto upper-body bones — eliminating the full-body snap on every status transition and the head-bone collision with the Phase 10 procedural layer
 
 ### Phase 10: Avatar Animation Naturalness — Procedural Life Layer
 
@@ -321,7 +322,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
 
 (Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other. Phase 8's frontend bundle work can start once Phase 6's REST contract shape is fixed, in parallel with Phase 7, per v2.0 research.)
 
@@ -336,4 +337,17 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
-| 10. Avatar Animation Naturalness — Procedural Life Layer | 0/TBD | Not started | - |
+| 10. Avatar Animation Naturalness — Procedural Life Layer | 4/4 | Complete | 2026-07-01 |
+| 11. Bone-Masked Upper-Body Animation Layering | 0/TBD | Not started | - |
+
+### Phase 11: Bone-Masked Upper-Body Animation Layering
+
+**Goal**: Replace whole-skeleton FBX animation swapping on `chatStatus` change with bone-masked layering: a continuous base/idle clip keeps playing on spine/legs/hips while gesture clips (listening/thinking/speaking variants) blend only onto upper-body bones (arms/shoulders/hands/head). Eliminates the jarring full-body snap on every `chatStatus` transition and the head-bone collision between FBX head motion and the Phase 10 procedural head layer (breathing/nodding/thinking-tilt/gaze).
+**Depends on**: Phase 10 (procedural life layer, chatStatus auto-mapping)
+**Scope boundary**: `packages/react/` only (`VRMAvatar.tsx` and any new animation-blending utility) — `src/app/`, `wordpress-plugin/` are NOT touched
+**Non-goals**: Re-authoring existing demo FBX clips, a full blend-tree/state-machine UI, Avatar Forcing (cross-attention with user signals)
+**Requirements**: TBD
+**Plans**: 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 11 to break down)

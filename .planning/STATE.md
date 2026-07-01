@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: WordPress Plugin
 status: executing
-stopped_at: context exhaustion at 75% (2026-07-07)
-last_updated: "2026-07-07T09:12:18.091Z"
-last_activity: 2026-07-01 -- Phase 10 planning complete
+stopped_at: null
+last_updated: "2026-07-01T10:45:00.000Z"
+last_activity: 2026-07-01 -- Phase 10 executed (4/4 plans complete); Phase 11 added to roadmap
 progress:
-  total_phases: 10
-  completed_phases: 8
-  total_plans: 39
-  completed_plans: 36
-  percent: 92
+  total_phases: 11
+  completed_phases: 9
+  total_plans: 43
+  completed_plans: 40
+  percent: 82
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value (v2.0):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
-**Current focus:** Phase 09 — block-studio-visual-config-chat-lipsync
+**Current focus:** Phase 11 — bone-masked-upper-body-animation-layering (not yet planned)
 
 ## Current Position
 
-Phase: 09 (block-studio-visual-config-chat-lipsync) — EXECUTING
-Plan: 1 of 6
-Status: Ready to execute
-Last activity: 2026-07-01 -- Phase 10 planning complete
+Phase: 11 (bone-masked-upper-body-animation-layering) — NOT PLANNED
+Plan: 0 of TBD
+Status: Ready to plan (`/gsd-plan-phase 11`)
+Last activity: 2026-07-01 -- Phase 10 executed (4/4 plans complete); Phase 11 added to roadmap
 
-Progress: [██████████] 100%
+Progress: [██████████] 100% (Phase 10)
 
 ## Performance Metrics
 
@@ -79,6 +79,10 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 None yet.
+
+### Roadmap Evolution
+
+- Phase 11 added: Bone-Masked Upper-Body Animation Layering — replace whole-skeleton FBX swap on `chatStatus` change with bone-masked layering (base clip on spine/legs/hips, gesture clips blended only onto upper-body bones). Motivated by user feedback that Phase 10's hard-swap animation switching "feels stupid" and can collide with the Phase 10 procedural head layer on head-heavy FBX clips. Depends on Phase 10.
 
 ### Blockers/Concerns
 

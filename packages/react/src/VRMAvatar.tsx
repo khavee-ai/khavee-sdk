@@ -377,6 +377,21 @@ export function VRMAvatar({
    *  distinguish status-driven keys (bone-masked path) from developer animate('custom') calls
    *  (whole-skeleton path, D-04). */
   const statusDrivenKeyRef = useRef<string | null>(null);
+  /** Previous `isBoneMaskingActive()` result — lets the weight-coordination effect tell
+   *  "just re-entered masked mode from the custom whole-skeleton path" (needs an instant
+   *  weight restore) apart from "already in masked mode, switching gestures" (must NOT
+   *  touch weight, or it cancels the in-flight fadeIn/fadeOut — see setEffectiveWeight fix). */
+  const prevMaskingActiveRef = useRef(false);
+  /** Bumped every time `statusDrivenKeyRef.current` is (re)assigned. React bails out of
+   *  re-rendering when `animate(targetKey)` sets `currentAnimation` to a value it already
+   *  holds (e.g. the very first "ready" -> "idle" transition, since "idle" is
+   *  KhaveeProvider's default) — so the masking-dependent effects below, which only
+   *  depend on `currentAnimation`/`boneMaskedClips`, would never re-run to notice that
+   *  `statusDrivenKeyRef` just changed. This counter is real state, so incrementing it
+   *  always triggers a re-render, forcing those effects to re-evaluate
+   *  `isBoneMaskingActive()` on every status-driven pick, not just ones that also happen
+   *  to change `currentAnimation`'s value. */
+  const [statusDrivenEpoch, setStatusDrivenEpoch] = useState(0);
 
   // chatStatus auto-mapping refs
   /** Tracks the previous chatStatus to guard against redundant animation triggers. */
@@ -597,6 +612,14 @@ export function VRMAvatar({
         // Phase 11 (Open Q1/A1): mark this key as status-driven so it takes the
         // bone-masked upper path instead of the D-04 whole-skeleton custom path.
         statusDrivenKeyRef.current = pick;
+        // Only bump the epoch when `pick` won't actually change `currentAnimation`
+        // (React bails out of re-rendering on a same-value setState, which would
+        // otherwise leave the masking-dependent effects unaware this ref changed).
+        // Bumping it unconditionally — even when the key IS changing — forces an
+        // extra, premature re-render where statusDrivenKeyRef has already moved on
+        // but currentAnimation/context hasn't propagated yet, producing one frame
+        // of inconsistent state that corrupted the crossfade weight coordination.
+        if (pick === currentAnimation) setStatusDrivenEpoch((e) => e + 1);
         animate(pick);
       }
 
@@ -621,6 +644,9 @@ export function VRMAvatar({
               if (matchedKey) {
                 // Phase 11 (Open Q1/A1): keyword-matched picks are status-driven too.
                 statusDrivenKeyRef.current = matchedKey;
+                // See the epoch-bump note above the speaking-variant pick — only needed
+                // when the key isn't actually changing.
+                if (matchedKey === currentAnimation) setStatusDrivenEpoch((e) => e + 1);
                 animate(matchedKey);
                 currentSpeakingAnimRef.current = matchedKey;
               }
@@ -639,6 +665,10 @@ export function VRMAvatar({
       if (animKeys.includes(targetKey)) {
         // Phase 11 (Open Q1/A1): the else-branch targetKey (idle/listening/thinking) is status-driven.
         statusDrivenKeyRef.current = targetKey;
+        // See the epoch-bump note above the speaking-variant pick — only needed
+        // when the key isn't actually changing (e.g. the very first "ready" -> "idle"
+        // transition, since "idle" is already KhaveeProvider's default).
+        if (targetKey === currentAnimation) setStatusDrivenEpoch((e) => e + 1);
         animate(targetKey);
       }
     }
@@ -711,8 +741,9 @@ export function VRMAvatar({
     // never get (re)applied once the mixer actually exists, leaving the
     // avatar stuck in its raw bind pose. boneMaskedClips is also included
     // (Phase 11) so the whole-skeleton gate above re-evaluates once masked
-    // clips arrive asynchronously.
-  }, [currentAnimation, processedClips, boneMaskedClips]);
+    // clips arrive asynchronously. statusDrivenEpoch forces re-evaluation on
+    // same-value status picks that React would otherwise bail out of.
+  }, [currentAnimation, processedClips, boneMaskedClips, statusDrivenEpoch]);
 
   // Upper-layer crossfade effect (Phase 11, D-02/D-05/D-06): drives upperActionRef
   // between idle-upper and the current status-driven gesture's upper-filtered clip.
@@ -750,10 +781,30 @@ export function VRMAvatar({
     // when a custom whole-skeleton key is authoritative, cede weight to 0 so the
     // unfiltered custom clip's hips/spine/leg tracks don't fight the always-on
     // base-lower action's PropertyMixers. Use setEffectiveWeight, not .stop() (Open Q2/A2).
+    //
+    // IMPORTANT: setEffectiveWeight() calls THREE's AnimationAction.stopFading()
+    // internally, cancelling any in-flight fadeIn/fadeOut interpolant and snapping
+    // weight to the given value immediately. Calling it unconditionally on
+    // upperActionRef every time this effect fires — including right after scheduling
+    // a fadeIn() a few lines above on that SAME action — cancelled every upper-layer
+    // crossfade before it could animate, so gesture transitions just snapped instead
+    // of blending (checkpoint feedback). Only touch weight here for the two binary
+    // on/off transitions (entering/leaving the custom whole-skeleton path); leave it
+    // alone while masking stays active across a gesture-to-gesture switch so the
+    // fadeIn/fadeOut scheduled above can actually run.
     const maskingActive = isBoneMaskingActive();
     baseActionRef.current?.setEffectiveWeight(maskingActive ? 1 : 0);
-    upperActionRef.current?.setEffectiveWeight(maskingActive ? 1 : 0);
-  }, [currentAnimation, boneMaskedClips]);
+    if (!maskingActive) {
+      // Custom whole-skeleton key is authoritative — cede weight immediately.
+      upperActionRef.current?.setEffectiveWeight(0);
+    } else if (!prevMaskingActiveRef.current) {
+      // Just returned from the custom whole-skeleton path — restore full weight.
+      // This recovers from a fully-zeroed weight, it is not interrupting an
+      // in-flight gesture crossfade, so an instant snap is correct here.
+      upperActionRef.current?.setEffectiveWeight(1);
+    }
+    prevMaskingActiveRef.current = maskingActive;
+  }, [currentAnimation, boneMaskedClips, statusDrivenEpoch]);
 
   useEffect(() => {
     if (!currentVrm || !scene) return;

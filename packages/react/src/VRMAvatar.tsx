@@ -402,7 +402,6 @@ export function VRMAvatar({
   // Procedural animation time refs
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
-  const gazeTargetRef = useRef<THREE.Object3D | null>(null);
 
   // ── Procedural life layer ──
   // Micro-expression scheduler refs
@@ -844,25 +843,27 @@ export function VRMAvatar({
     });
   }, [scene, currentVrm, setVrm]);
 
-  // Eye gaze target lifecycle (D-05)
+  // Eye gaze (D-05, final): NOT driven dynamically at all.
+  //
+  // Root cause of the persistent "eyes still moving" reports: vrm.lookAt is a
+  // *compensation* system — every vrm.update() call it recomputes eye rotation
+  // from scratch to keep pointing at the target given the head's CURRENT world
+  // transform. Breathing, head micro-movement, nodding, and thinking-tilt all
+  // rotate the head bone earlier in the same frame (Pitfall 1 ordering), so a
+  // perfectly static target still produces perpetual counter-rotation in the
+  // eyes as they chase a head that never stops subtly moving. Locking the
+  // target's position (this file's prior fix) could never have solved that —
+  // the target was never the moving part.
+  //
+  // Fix: never assign a lookAt target and explicitly disable autoUpdate, so
+  // vrm.update() never touches eye rotation. Eyes stay at bind pose, which
+  // already faces forward at the camera because that's the model's default
+  // orientation — "looking at the user" via static pose, not live tracking.
   useEffect(() => {
-    if (!currentVrm || !enableEyeGaze || !currentVrm.lookAt) return;
-
-    const gazeObj = new THREE.Object3D();
-    gazeObj.position.set(0, 1.6, 2.0); // Base target position
-    currentVrm.scene.add(gazeObj);
-    gazeTargetRef.current = gazeObj;
-    currentVrm.lookAt.target = gazeObj;
-    currentVrm.lookAt.autoUpdate = true;
-
-    return () => {
-      currentVrm.scene.remove(gazeObj);
-      if (currentVrm.lookAt) {
-        currentVrm.lookAt.target = null;
-      }
-      gazeTargetRef.current = null;
-    };
-  }, [currentVrm, enableEyeGaze]);
+    if (!currentVrm || !currentVrm.lookAt) return;
+    currentVrm.lookAt.target = null;
+    currentVrm.lookAt.autoUpdate = false;
+  }, [currentVrm]);
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {
     if (!currentVrm?.expressionManager) return;
@@ -1002,20 +1003,9 @@ export function VRMAvatar({
       }
     }
 
-    // Eye gaze (D-05, simplified): permanently locked on the user/camera.
-    // No drift, no periodic glance-away — every prior attempt at "occasional
-    // subtle movement" still read as visibly wandering per user feedback.
-    if (enableEyeGaze && gazeTargetRef.current && currentVrm.humanoid) {
-      gazeTargetRef.current.position.set(0, 1.6, 2.0);
-      // Defensive re-assertion every frame: if anything (a VRM internal reset,
-      // a re-render racing the init effect, etc.) ever clears lookAt.target,
-      // self-heal instead of silently falling back to autonomous eye movement.
-      if (currentVrm.lookAt && currentVrm.lookAt.target !== gazeTargetRef.current) {
-        currentVrm.lookAt.target = gazeTargetRef.current;
-        currentVrm.lookAt.autoUpdate = true;
-      }
-      // vrm.lookAt.autoUpdate handles the rest in vrm.update()
-    }
+    // Eye gaze: intentionally not driven here. See the lifecycle effect above
+    // for why (lookAt.autoUpdate is permanently disabled) — the eyes stay at
+    // bind pose and are never recomputed per frame.
 
     // Apply expressions from the hook with smooth lerping
     Object.entries(expressions).forEach(([name, value]) => {

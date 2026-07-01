@@ -657,6 +657,11 @@ export function VRMAvatar({
   useFrame((_, delta) => {
     if (!currentVrm?.expressionManager) return;
 
+    // ── Wave-4: Volume-reactive head movement scaling ──
+    // Falls back to 1 when realtimeProvider is null or chatStatus isn't 'speaking'.
+    const rawVolume = realtimeProvider?.currentVolume ?? 0;
+    const volumeFactor = chatStatus === "speaking" ? 1 + Math.min(rawVolume, 1) * 0.45 : 1;
+
     // Update animation mixer first (if exists)
     if (mixerRef.current) {
       mixerRef.current.update(delta);
@@ -686,11 +691,13 @@ export function VRMAvatar({
     if (enableHeadMovement && currentVrm.humanoid) {
       headTimeRef.current += delta;
       const headX =
-        Math.sin(headTimeRef.current * 0.19) * 0.018 +
-        Math.sin(headTimeRef.current * 0.53) * 0.009;
+        (Math.sin(headTimeRef.current * 0.19) * 0.018 +
+          Math.sin(headTimeRef.current * 0.53) * 0.009) *
+        volumeFactor;
       const headY =
-        Math.sin(headTimeRef.current * 0.31) * 0.022 +
-        Math.sin(headTimeRef.current * 0.67) * 0.011;
+        (Math.sin(headTimeRef.current * 0.31) * 0.022 +
+          Math.sin(headTimeRef.current * 0.67) * 0.011) *
+        volumeFactor;
 
       headQuatX.setFromAxisAngle(scratchX, headX);
       headQuatY.setFromAxisAngle(scratchY, headY);

@@ -339,22 +339,25 @@ useEffect(() => {
 | A1 | Speaking-variant and keyword-matched animation keys selected *within* the existing `chatStatus` auto-mapping effect (not just the four literal status names) should also go through the new bone-masked upper-layer path, not the old whole-skeleton path | Architecture Patterns, Open Questions | If wrong, speaking-turn variety picks would still full-body-snap, only partially fixing the jarring-swap complaint the phase exists to solve. This is presented as a recommendation, not confirmed with the user in CONTEXT.md — flagged for planner/discuss-phase follow-up. |
 | A2 | Setting `baseActionRef`/`upperActionRef` weight to `0` (rather than `.stop()`) is the correct way to cede control during a D-04 whole-skeleton custom animation | Common Pitfalls (Pitfall 2) | If wrong (e.g. `.stop()` is actually needed to avoid some other side effect), the recommended coordination code would need adjustment; this specific interaction is not covered by any three.js official doc found and is inferred from reading `AnimationAction.setEffectiveWeight()`/`_updateWeight()` source. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does bone masking apply to ALL animation keys selected inside the `chatStatus` auto-mapping effect, or only to the four literal status-name keys?**
    - What we know: D-04 says masking applies to "the four status-mapped keys' auto-triggered transitions... via the existing `chatStatus` auto-mapping effect." That same effect also picks random speak/talk/gesture variants and keyword-matched keys (e.g. `"agree"`, `"nod"`) when `chatStatus === "speaking"`.
    - What's unclear: Whether a variant/keyword pick (a key name that isn't literally `"speaking"`) should be treated as "status-driven" (bone-masked) or "custom" (whole-skeleton, D-04 exemption) — both readings of D-04's wording are plausible.
    - Recommendation: Treat any key selected *from within* the chatStatus auto-mapping effect as status-driven/bone-masked (this research's Assumption A1), since the entire phase's goal is eliminating the full-body snap during status transitions, and variant/keyword picks are still status-transition-triggered, not developer-invoked. Confirm with user during planning/discuss-phase if this reading is contested.
+   - RESOLVED (11-02-PLAN.md): YES — every key selected from within the chatStatus auto-mapping effect (including speaking variants and keyword-matched picks, not only the four literal status names) is bone-masked via the upper-body path. Provenance is tracked with `statusDrivenKeyRef` (Assumption A1 confirmed).
 
 2. **How should the base-lower/upper actions coordinate with the D-04 whole-skeleton exemption path to avoid the cross-path bone conflict (Pitfall 2)?**
    - What we know: The conflict is real and confirmed via source-level reading of `PropertyMixer` accumulation — it is not a theoretical concern.
    - What's unclear: CONTEXT.md's decisions do not mention this interaction at all; it is an emergent consequence of layering the new mechanism into an existing component that still has an unmodified whole-skeleton path.
    - Recommendation: Add an explicit weight-zeroing coordination step (Pitfall 2's fix) as a required task in the plan, not an optional nice-to-have — without it, any developer who uses a non-status custom animation key will see broken lower-body motion.
+   - RESOLVED (11-02-PLAN.md): `setEffectiveWeight` cross-path weight coordination is a REQUIRED task (Task 2, step 4), not optional — base/upper action weights are zeroed while a custom whole-skeleton key is authoritative and restored to 1 for status-driven keys.
 
 3. **Should `currentAnimation` (the shared context value from `useKhavee()`) still reflect the active upper-body gesture key for status-driven transitions, given the whole-skeleton effect at line 489 will no longer be the thing driving the mixer for those keys?**
    - What we know: `animate()` in `KhaveeProvider.tsx` is a simple `setCurrentAnimation(name)` — a single flat state slot currently serves both the whole-skeleton effect's input AND any app-level UI that displays "current animation."
    - What's unclear: If status-driven transitions bypass the whole-skeleton effect entirely (recommended, to avoid double-driving bones), does `currentAnimation` still need to be updated for observability, or does a new context field need to be added?
    - Recommendation: Keep calling `animate(key)` for its state-tracking side effect (so `currentAnimation` stays observable) but branch the *mixer-driving* logic separately based on whether the key is a status-mapped key — i.e., decouple "what value does `currentAnimation` show" from "which effect actually drives the mixer." Confirm this doesn't conflict with any existing demo-app usage of `currentAnimation` during planning.
+   - RESOLVED (11-02-PLAN.md): the auto-mapping effect keeps calling `animate(key)` so `currentAnimation` stays observable, while the mixer-driving logic is decoupled — status keys are driven by the new base-lower + upper-layer path and the whole-skeleton effect early-returns for them.
 
 ## Environment Availability
 

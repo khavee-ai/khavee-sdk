@@ -165,6 +165,25 @@ export interface AnimationConfig {
   [name: string]: string; // URL to FBX or GLB file! SDK handles loading & remapping
 }
 
+// Used only when no `animations` prop is passed at all — pass your own
+// `animations` prop (even a partial one won't merge with this; it's all-or-
+// nothing) to override. NOTE: these URLs currently resolve against this
+// repo's own demo app public/ folder, not a portable "ships with the npm
+// package" asset story yet — that needs a real hosting decision (CDN vs. a
+// postinstall copy step) before third-party consumers of @khaveeai/react can
+// rely on this working out of the box.
+const DEFAULT_ANIMATIONS: AnimationConfig = {
+  idle: "/models/animations/Idle.fbx",
+  // Placeholder pending a real greeting clip — auto-plays once on
+  // chatStatus === "starting" via the existing generic key-lookup (no
+  // special-casing needed: "starting" is just another status-driven key).
+  starting: "/models/animations/Idle.fbx",
+  listening: "/models/animations/Idle.fbx",
+  thinking: "/models/animations/Idle.fbx",
+  speaking: "/models/animations/talking.fbx",
+  speaking2: "/models/animations/talking1.fbx",
+};
+
 // ── Module-level scratch objects (avoid per-frame GC) ──
 const scratchX = new THREE.Vector3(1, 0, 0);
 const scratchY = new THREE.Vector3(0, 1, 0);
@@ -252,6 +271,24 @@ const gestureKeywords: [RegExp, string[]][] = [
   [/\bi\b|\bฉัน\b|\bผม\b|\bme\b/i, ["self", "chest", "point"]],
   [/\bthink\b|\bคิด\b|\bbelieve\b|\bfeel\b/i, ["think", "ponder", "wonder"]],
 ];
+
+// ── Variant families (D-13) ──
+// Lets a single logical status (idle/listening/thinking/speaking/starting)
+// have multiple animation files that the SDK randomly cycles between,
+// instead of requiring a new `AnimationConfig` shape (string | string[]).
+// Deliberately reuses the naming convention the codebase's existing
+// speaking-variant picker already establishes: provide extra numbered keys
+// ("idle2", "idle3", "speaking2", ...) alongside the base key, and they're
+// treated as interchangeable variants of that status. This keeps
+// AnimationConfig exactly as simple as it's always been (flat string map) —
+// no array-typed config, no changes to the clip-loading pipeline at all.
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function getVariantFamily(baseKey: string, animKeys: string[]): string[] {
+  const pattern = new RegExp(`^${escapeRegExp(baseKey)}\\d*$`);
+  return animKeys.filter((k) => pattern.test(k));
+}
 
 // Internal component to load FBX and GLB animation files
 function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
@@ -419,6 +456,12 @@ export function VRMAvatar({
   enableMicroExpressions = true,
   ...props
 }: VRMAvatarProps) {
+  // D-13: fall back to the SDK's bundled default set when no `animations`
+  // prop is passed at all, so a beginner gets working idle/speaking/etc.
+  // animations with zero configuration — pass your own `animations` prop to
+  // fully override (partial overrides aren't merged; it's all-or-nothing,
+  // matching how every other prop-driven config in this component works).
+  const effectiveAnimations = animations ?? DEFAULT_ANIMATIONS;
   const { setVrm, expressions, currentAnimation, animate, chatStatus, realtimeProvider } = useKhavee();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
@@ -458,19 +501,24 @@ export function VRMAvatar({
   const upperCrossfadeActiveRef = useRef(false);
   const upperCrossfadeTimeRef = useRef(0);
   const upperCrossfadeDurationRef = useRef(0.3);
+  /** D-13: the literal status base (e.g. "idle", "speaking") the upper layer is
+   *  currently driven by, regardless of which specific family member
+   *  (statusDrivenKeyRef) is playing right now. Lets the on-loop-finished
+   *  handler know which family to re-roll within. */
+  const activeFamilyBaseRef = useRef<string | null>(null);
 
   // chatStatus auto-mapping refs
   /** Tracks the previous chatStatus to guard against redundant animation triggers. */
   const prevChatStatusRef = useRef<ChatStatus | null>(null);
-  /** Stale-closure guard: always holds the latest animations prop reference (Pitfall 3). */
-  const animationsRef = useRef<AnimationConfig | undefined>(animations);
+  /** Stale-closure guard: always holds the latest effective animations config (Pitfall 3). */
+  const animationsRef = useRef<AnimationConfig | undefined>(effectiveAnimations);
   /** Remembers the speaking animation variant chosen for the current speaking turn. */
   const currentSpeakingAnimRef = useRef<string | null>(null);
 
-  // Sync animationsRef whenever the animations prop changes (Pitfall 3 stale-closure guard).
+  // Sync animationsRef whenever the effective animations config changes (Pitfall 3 stale-closure guard).
   useEffect(() => {
-    animationsRef.current = animations;
-  }, [animations]);
+    animationsRef.current = effectiveAnimations;
+  }, [effectiveAnimations]);
 
   // Blinking system
   const [blinkState, setBlinkState] = useState(0);
@@ -521,12 +569,11 @@ export function VRMAvatar({
   const currentVrm = parsed?.userData.vrm as VRM | undefined;
 
   // SDK automatically loads FBX and GLB files from URLs!
-  const loadedAnimations = useAnimationFiles(animations);
+  const loadedAnimations = useAnimationFiles(effectiveAnimations);
 
   // Process and remap animations automatically - SDK handles EVERYTHING!
   const processedClips = useMemo(() => {
     if (
-      !animations ||
       !currentVrm ||
       Object.keys(loadedAnimations).length === 0
     ) {
@@ -668,6 +715,52 @@ export function VRMAvatar({
     };
   }, [currentVrm]);
 
+  // D-13: variant re-roll on loop finish. THREE's AnimationMixer dispatches a
+  // 'loop' event (not per-action — on the mixer itself) every time ANY active
+  // action wraps back to its start; AnimationAction._updateTime is where this
+  // actually gets dispatched, distinct from the LoopOnce-only 'finished' event.
+  // When the upper layer's current action loops AND it belongs to a family
+  // with more than one member (e.g. "speaking"/"speaking2", or "idle"/"idle2"),
+  // pick a different member and crossfade to it via the same D-12 mechanism —
+  // this is what makes "speaking1 -> speaking1 ends -> speaking2 -> repeat"
+  // work without needing a fixed timer, since it's driven by the actual clip
+  // boundary rather than a guessed duration.
+  //
+  // Re-registered whenever boneMaskedClips changes (not just currentVrm) so
+  // the closure over boneMaskedClips/animationsRef never goes stale after a
+  // new animations prop or a newly-processed clip set.
+  useEffect(() => {
+    if (!mixerRef.current || !boneMaskedClips) return;
+
+    function handleLoop(event: { action: THREE.AnimationAction }) {
+      if (event.action !== upperActionRef.current) return;
+      if (upperCrossfadeActiveRef.current) return; // already mid-transition
+      const familyBase = activeFamilyBaseRef.current;
+      if (!familyBase) return;
+
+      const animKeys = Object.keys(animationsRef.current || {});
+      const family =
+        familyBase === "speaking"
+          ? animKeys.filter((key) => /speak|talk|gesture/i.test(key))
+          : getVariantFamily(familyBase, animKeys);
+      if (family.length <= 1) return;
+
+      const candidates = family.filter((k) => k !== statusDrivenKeyRef.current);
+      if (candidates.length === 0) return;
+      const nextKey = candidates[Math.floor(Math.random() * candidates.length)];
+      const nextClip = boneMaskedClips?.upperByKey[nextKey];
+      if (!nextClip) return;
+
+      statusDrivenKeyRef.current = nextKey;
+      startUpperCrossfade(nextClip);
+    }
+
+    mixerRef.current.addEventListener("loop", handleLoop as any);
+    return () => {
+      mixerRef.current?.removeEventListener("loop", handleLoop as any);
+    };
+  }, [boneMaskedClips]);
+
   // Add processed clips to existing mixer when they become available
   useEffect(() => {
     if (mixerRef.current && processedClips.length > 0) {
@@ -715,6 +808,10 @@ export function VRMAvatar({
         // Phase 11 (Open Q1/A1): mark this key as status-driven so it takes the
         // bone-masked upper path instead of the D-04 whole-skeleton custom path.
         statusDrivenKeyRef.current = pick;
+        // D-13: remember the family base so the mixer 'loop' listener can
+        // re-roll a different speak/talk/gesture variant if this one finishes
+        // a full pass while still speaking (see that listener for why).
+        activeFamilyBaseRef.current = "speaking";
         // Only bump the epoch when `pick` won't actually change `currentAnimation`
         // (React bails out of re-rendering on a same-value setState, which would
         // otherwise leave the masking-dependent effects unaware this ref changed).
@@ -747,6 +844,11 @@ export function VRMAvatar({
               if (matchedKey) {
                 // Phase 11 (Open Q1/A1): keyword-matched picks are status-driven too.
                 statusDrivenKeyRef.current = matchedKey;
+                // D-13: keyword picks aren't part of a numbered family by
+                // convention, but setting the base to the matched key itself
+                // is a safe no-op default (getVariantFamily just returns
+                // itself if no numbered siblings exist).
+                activeFamilyBaseRef.current = matchedKey;
                 // See the epoch-bump note above the speaking-variant pick — only needed
                 // when the key isn't actually changing.
                 if (matchedKey === currentAnimation) setStatusDrivenEpoch((e) => e + 1);
@@ -764,18 +866,61 @@ export function VRMAvatar({
       // D-01: 'idle' is the animation key convention for chatStatus === 'ready'
       // (ChatStatus has no 'idle' value — the animation key name and the status differ).
       const targetKey = chatStatus === "ready" ? "idle" : chatStatus;
-      // D-03: if no matching key exists, do nothing — never throw.
-      if (animKeys.includes(targetKey)) {
+      // D-13: pick randomly among "targetKey", "targetKey2", "targetKey3", ...
+      // instead of always the literal targetKey — generalizes the speaking
+      // variant-picker above to every other status (idle/listening/thinking/
+      // starting/stopped). Falls back to just [targetKey] itself when no
+      // numbered siblings exist, so this is a strict superset of the old
+      // `animKeys.includes(targetKey)` behavior (D-03: still does nothing,
+      // never throws, when even the base key doesn't exist).
+      const family = getVariantFamily(targetKey, animKeys);
+      if (family.length > 0) {
+        const pick = family[Math.floor(Math.random() * family.length)];
         // Phase 11 (Open Q1/A1): the else-branch targetKey (idle/listening/thinking) is status-driven.
-        statusDrivenKeyRef.current = targetKey;
+        statusDrivenKeyRef.current = pick;
+        activeFamilyBaseRef.current = targetKey;
         // See the epoch-bump note above the speaking-variant pick — only needed
         // when the key isn't actually changing (e.g. the very first "ready" -> "idle"
         // transition, since "idle" is already KhaveeProvider's default).
-        if (targetKey === currentAnimation) setStatusDrivenEpoch((e) => e + 1);
-        animate(targetKey);
+        if (pick === currentAnimation) setStatusDrivenEpoch((e) => e + 1);
+        animate(pick);
       }
     }
   }, [chatStatus, animate, realtimeProvider]);
+
+  // D-12/D-13: kicks off (or no-ops) a crossfade to newClip on the upper layer.
+  // Factored out of the crossfade effect so the SAME logic can be triggered
+  // either by a real status/key change (the effect below) or by a same-status
+  // variant re-roll when the currently-playing clip finishes a loop pass (the
+  // mixer 'loop' listener, D-13). Returns true if a real transition (cold-start
+  // or crossfade) was kicked off, false if newClip was already playing.
+  function startUpperCrossfade(newClip: THREE.AnimationClip): boolean {
+    if (!mixerRef.current || !currentVrm) return false;
+    const newAction = mixerRef.current.clipAction(newClip);
+    if (newAction === upperActionRef.current) return false;
+
+    if (!upperActionRef.current) {
+      // First-ever activation: snap to weight 1 immediately (no fade), matching
+      // the whole-skeleton effect's cold-start handling (Pitfall 1).
+      newAction.reset().play();
+      upperCrossfadeActiveRef.current = false;
+      upperOutgoingActionRef.current = null;
+    } else {
+      const poseDistance = measureUpperPoseDistance(currentVrm, newClip);
+      upperCrossfadeDurationRef.current = THREE.MathUtils.clamp(
+        0.25 + (poseDistance / Math.PI) * 0.55,
+        0.25,
+        0.8
+      );
+      upperCrossfadeTimeRef.current = 0;
+      upperOutgoingActionRef.current = upperActionRef.current;
+      newAction.reset().play();
+      newAction.setEffectiveWeight(0);
+      upperCrossfadeActiveRef.current = true;
+    }
+    upperActionRef.current = newAction;
+    return true;
+  }
 
   // Phase 11 (D-01/D-02/D-04/D-05): is currentAnimation a status-driven key with a
   // maskable upper-body clip available? When true, the bone-masked base-lower +
@@ -904,31 +1049,10 @@ export function VRMAvatar({
       return;
     }
 
-    const newUpperAction = mixerRef.current.clipAction(upperClip);
     // Tracks whether a fade was scheduled THIS pass — code review WR-01.
-    let fadeScheduledThisPass = false;
-
-    if (!upperActionRef.current) {
-      // First-ever activation: snap to weight 1 immediately (no fadeIn), matching
-      // the whole-skeleton effect's cold-start handling (Pitfall 1).
-      newUpperAction.reset().play();
-      upperCrossfadeActiveRef.current = false;
-      upperOutgoingActionRef.current = null;
-    } else if (upperActionRef.current !== newUpperAction) {
-      const poseDistance = measureUpperPoseDistance(currentVrm, upperClip);
-      upperCrossfadeDurationRef.current = THREE.MathUtils.clamp(
-        0.25 + (poseDistance / Math.PI) * 0.55,
-        0.25,
-        0.8
-      );
-      upperCrossfadeTimeRef.current = 0;
-      upperOutgoingActionRef.current = upperActionRef.current;
-      newUpperAction.reset().play();
-      newUpperAction.setEffectiveWeight(0);
-      upperCrossfadeActiveRef.current = true;
-      fadeScheduledThisPass = true;
-    }
-    upperActionRef.current = newUpperAction;
+    // startUpperCrossfade() no-ops (returns false) when upperClip is already
+    // playing, which correctly means "no fade scheduled" here too.
+    const fadeScheduledThisPass = startUpperCrossfade(upperClip);
 
     // Only restore-to-1 when recovering from the custom whole-skeleton path AND no
     // fade was just scheduled this pass (code review WR-01): if a custom animate()

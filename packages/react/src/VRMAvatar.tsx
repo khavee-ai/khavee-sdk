@@ -1012,18 +1012,39 @@ export function VRMAvatar({
     // during speech. Runs only while speaking; the phase resets to 0 on exit
     // so each speaking turn starts from a clean, zero-amplitude point (no pop
     // on entry/exit, since sin(0) = 0).
+    //
+    // Uses its own volume scalar (armVolumeFactor), NOT the shared
+    // volumeFactor used for head jitter — that one has a high floor (>= 1x,
+    // tuned for a barely-perceptible head wobble), so reusing it here made
+    // the arms move almost the same regardless of actual speech loudness; it
+    // read as "slightly livelier idle," not "talking." armVolumeFactor has a
+    // much lower floor and higher ceiling so quiet vs. loud speech visibly
+    // differ, and the base amplitudes are large enough to read clearly
+    // against a relaxed idle pose (elbow flex is one-directional — only ever
+    // bends further from resting-straight, never hyperextends backward).
     if (currentVrm.humanoid && chatStatus === "speaking") {
       armSwayTimeRef.current += delta;
+      const armVolumeFactor = 0.35 + Math.min(rawVolume, 1) * 1.15;
+
       const swayLeft =
-        (Math.sin(armSwayTimeRef.current * 0.9) * 0.05 +
-          Math.sin(armSwayTimeRef.current * 1.7) * 0.02) *
-        volumeFactor;
+        (Math.sin(armSwayTimeRef.current * 0.9) * 0.14 +
+          Math.sin(armSwayTimeRef.current * 1.7) * 0.05) *
+        armVolumeFactor;
       const swayRight =
-        (Math.sin(armSwayTimeRef.current * 0.9 + Math.PI * 0.6) * 0.05 +
-          Math.sin(armSwayTimeRef.current * 1.7 + Math.PI * 0.3) * 0.02) *
-        volumeFactor;
-      const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.03 * volumeFactor;
-      const liftRight = Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.03 * volumeFactor;
+        (Math.sin(armSwayTimeRef.current * 0.9 + Math.PI * 0.6) * 0.14 +
+          Math.sin(armSwayTimeRef.current * 1.7 + Math.PI * 0.3) * 0.05) *
+        armVolumeFactor;
+      const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.08 * armVolumeFactor;
+      const liftRight =
+        Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.08 * armVolumeFactor;
+      const elbowLeft =
+        (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.2) * 0.5 + 0.5) *
+        0.22 *
+        armVolumeFactor;
+      const elbowRight =
+        (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.9) * 0.5 + 0.5) *
+        0.22 *
+        armVolumeFactor;
 
       const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
       if (leftUpperArm) {
@@ -1036,6 +1057,16 @@ export function VRMAvatar({
         armQuatZ.setFromAxisAngle(scratchZ, -swayRight);
         armQuatX.setFromAxisAngle(scratchX, liftRight);
         rightUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
+      }
+      const leftLowerArm = currentVrm.humanoid.getNormalizedBoneNode("leftLowerArm" as any);
+      if (leftLowerArm) {
+        armQuatX.setFromAxisAngle(scratchX, elbowLeft);
+        leftLowerArm.quaternion.multiply(armQuatX);
+      }
+      const rightLowerArm = currentVrm.humanoid.getNormalizedBoneNode("rightLowerArm" as any);
+      if (rightLowerArm) {
+        armQuatX.setFromAxisAngle(scratchX, elbowRight);
+        rightLowerArm.quaternion.multiply(armQuatX);
       }
     } else {
       armSwayTimeRef.current = 0;

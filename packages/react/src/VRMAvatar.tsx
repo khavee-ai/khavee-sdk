@@ -173,6 +173,21 @@ const breathQuat = new THREE.Quaternion();
 const headQuatX = new THREE.Quaternion();
 const headQuatY = new THREE.Quaternion();
 
+// ── Idle gaze-away (D-05) ──
+// Only while chatStatus === "ready" and continuously idle for this long does
+// the avatar glance subtly away, then smoothly return. lookAt.autoUpdate is
+// only enabled for the duration of the glance itself — the rest of the time
+// it stays off, so the eyes stay frozen at bind pose (see the lifecycle
+// effect) rather than perpetually re-chasing breathing/head-jitter.
+const IDLE_GAZE_DELAY_SECONDS = 6;
+const GAZE_EASE_SECONDS = 1.1;
+const GAZE_EASE_TAU = GAZE_EASE_SECONDS / 3;
+const GAZE_HOLD_SECONDS = 1.4;
+const GAZE_CENTER = { x: 0, y: 1.6, z: 2.0 };
+
+// Full close+open blink cycle duration — was implicitly ~0.12s (frame-count based).
+const BLINK_DURATION_SECONDS = 0.35;
+
 // ── Wave-4: Keyword gesture override ──
 // Fixed regex patterns mapped to candidate animation-key substrings.
 // Regexes are module-level constants — never built from user input (T-10-04-B).
@@ -402,6 +417,14 @@ export function VRMAvatar({
   // Procedural animation time refs
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
+
+  // Idle gaze-away state (D-05)
+  const gazeTargetRef = useRef<THREE.Object3D | null>(null);
+  const idleTimeRef = useRef(0);
+  const gazePhaseRef = useRef<"waiting" | "away">("waiting");
+  const gazeDwellTimeRef = useRef(0);
+  const gazeAwayAmountRef = useRef(0);
+  const gazeAwayOffsetRef = useRef({ x: 0, y: 0 });
 
   // ── Procedural life layer ──
   // Micro-expression scheduler refs
@@ -843,27 +866,50 @@ export function VRMAvatar({
     });
   }, [scene, currentVrm, setVrm]);
 
-  // Eye gaze (D-05, final): NOT driven dynamically at all.
+  // Eye gaze target lifecycle (D-05).
   //
-  // Root cause of the persistent "eyes still moving" reports: vrm.lookAt is a
-  // *compensation* system — every vrm.update() call it recomputes eye rotation
-  // from scratch to keep pointing at the target given the head's CURRENT world
-  // transform. Breathing, head micro-movement, nodding, and thinking-tilt all
-  // rotate the head bone earlier in the same frame (Pitfall 1 ordering), so a
-  // perfectly static target still produces perpetual counter-rotation in the
-  // eyes as they chase a head that never stops subtly moving. Locking the
-  // target's position (this file's prior fix) could never have solved that —
-  // the target was never the moving part.
+  // Root cause of the earlier persistent "eyes still moving" reports:
+  // vrm.lookAt is a *compensation* system — every vrm.update() call it
+  // recomputes eye rotation from scratch to keep pointing at the target given
+  // the head's CURRENT world transform. Breathing, head micro-movement,
+  // nodding, and thinking-tilt all rotate the head bone earlier in the same
+  // frame (Pitfall 1 ordering), so even a perfectly static target produced
+  // perpetual counter-rotation as the eyes chased a head that never stops
+  // subtly moving.
   //
-  // Fix: never assign a lookAt target and explicitly disable autoUpdate, so
-  // vrm.update() never touches eye rotation. Eyes stay at bind pose, which
-  // already faces forward at the camera because that's the model's default
-  // orientation — "looking at the user" via static pose, not live tracking.
+  // Fix: autoUpdate defaults to OFF here and is only flipped on for the
+  // duration of a deliberate idle glance-away (see the useFrame state
+  // machine below). The rest of the time the eyes stay frozen at bind pose
+  // (forward, at the camera) instead of being recomputed every frame.
   useEffect(() => {
     if (!currentVrm || !currentVrm.lookAt) return;
-    currentVrm.lookAt.target = null;
+
+    if (!enableEyeGaze) {
+      currentVrm.lookAt.target = null;
+      currentVrm.lookAt.autoUpdate = false;
+      gazeTargetRef.current = null;
+      return;
+    }
+
+    const gazeObj = new THREE.Object3D();
+    gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
+    currentVrm.scene.add(gazeObj);
+    gazeTargetRef.current = gazeObj;
+    currentVrm.lookAt.target = gazeObj;
     currentVrm.lookAt.autoUpdate = false;
-  }, [currentVrm]);
+    gazePhaseRef.current = "waiting";
+    idleTimeRef.current = 0;
+    gazeAwayAmountRef.current = 0;
+
+    return () => {
+      currentVrm.scene.remove(gazeObj);
+      if (currentVrm.lookAt) {
+        currentVrm.lookAt.target = null;
+        currentVrm.lookAt.autoUpdate = false;
+      }
+      gazeTargetRef.current = null;
+    };
+  }, [currentVrm, enableEyeGaze]);
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {
     if (!currentVrm?.expressionManager) return;
@@ -1003,9 +1049,59 @@ export function VRMAvatar({
       }
     }
 
-    // Eye gaze: intentionally not driven here. See the lifecycle effect above
-    // for why (lookAt.autoUpdate is permanently disabled) — the eyes stay at
-    // bind pose and are never recomputed per frame.
+    // Idle gaze-away state machine (D-05). Only progresses while
+    // enableEyeGaze is on and the target object exists (see lifecycle effect).
+    //
+    // gazeAwayAmountRef eases toward a 0/1 target via exponential smoothing
+    // rather than a fixed-duration timer per leg — that means if a glance is
+    // interrupted mid-flight (e.g. the user starts talking while the eyes are
+    // away), the return-to-center always eases smoothly from whatever the
+    // CURRENT amount is, with no discontinuity. A duration-based per-leg timer
+    // would jump when interrupted, since "time already spent in the leg"
+    // doesn't correspond to "how far the interrupted leg actually got."
+    if (enableEyeGaze && gazeTargetRef.current && currentVrm.lookAt) {
+      const gazeObj = gazeTargetRef.current;
+
+      if (chatStatus !== "ready") {
+        idleTimeRef.current = 0;
+        gazePhaseRef.current = "waiting";
+      } else if (gazePhaseRef.current === "waiting") {
+        idleTimeRef.current += delta;
+        if (idleTimeRef.current >= IDLE_GAZE_DELAY_SECONDS) {
+          gazePhaseRef.current = "away";
+          gazeDwellTimeRef.current = 0;
+          const angle = Math.random() * Math.PI * 2;
+          gazeAwayOffsetRef.current = {
+            x: Math.cos(angle) * (0.35 + Math.random() * 0.2),
+            y: Math.sin(angle) * 0.15 - 0.05,
+          };
+        }
+      } else if (gazePhaseRef.current === "away") {
+        gazeDwellTimeRef.current += delta;
+        if (gazeDwellTimeRef.current >= GAZE_EASE_SECONDS + GAZE_HOLD_SECONDS) {
+          gazePhaseRef.current = "waiting";
+          idleTimeRef.current = 0;
+        }
+      }
+
+      const targetAmount = gazePhaseRef.current === "away" ? 1 : 0;
+      const smoothing = 1 - Math.exp(-delta / GAZE_EASE_TAU);
+      gazeAwayAmountRef.current += (targetAmount - gazeAwayAmountRef.current) * smoothing;
+
+      if (targetAmount === 0 && gazeAwayAmountRef.current < 0.003) {
+        gazeAwayAmountRef.current = 0;
+        currentVrm.lookAt.autoUpdate = false;
+        gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
+      } else {
+        currentVrm.lookAt.autoUpdate = true;
+        const amount = gazeAwayAmountRef.current;
+        gazeObj.position.set(
+          GAZE_CENTER.x + gazeAwayOffsetRef.current.x * amount,
+          GAZE_CENTER.y + gazeAwayOffsetRef.current.y * amount,
+          GAZE_CENTER.z
+        );
+      }
+    }
 
     // Apply expressions from the hook with smooth lerping
     Object.entries(expressions).forEach(([name, value]) => {
@@ -1027,7 +1123,9 @@ export function VRMAvatar({
 
       // Handle blink animation
       if (isBlinking.current) {
-        blinkAnimationRef.current += 0.15;
+        // Frame-rate independent: full close+open cycle takes BLINK_DURATION_SECONDS
+        // (was a fixed +0.15/frame, i.e. ~0.12s at 60fps — read as an abrupt flicker).
+        blinkAnimationRef.current += delta / BLINK_DURATION_SECONDS;
         if (blinkAnimationRef.current >= 1) {
           isBlinking.current = false;
           setBlinkState(0);

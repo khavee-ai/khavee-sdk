@@ -8,6 +8,7 @@ import { lerp } from "three/src/math/MathUtils.js";
 import type { ChatStatus } from "@khaveeai/core";
 import { useKhavee } from "./KhaveeProvider";
 import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
+import { filterClipTracksByBoneSet, BASE_LOWER_BONES, UPPER_BONES } from "./utils/filterClipTracksByBoneSet";
 
 // ── Per-instance VRM loading (bypasses drei's useGLTF global cache) ──
 //
@@ -354,6 +355,17 @@ export function VRMAvatar({
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
 
+  // Bone-masked layering refs (Phase 11)
+  /** Always-on lower-body (hips/spine/legs) action — never swapped on chatStatus transitions (D-01). */
+  const baseActionRef = useRef<THREE.AnimationAction | null>(null);
+  /** Upper-body (chest/neck/head/arms) action — crossfades between idle-upper and gesture clips (D-02). */
+  const upperActionRef = useRef<THREE.AnimationAction | null>(null);
+  /** Provenance: the last animation key selected from WITHIN the chatStatus auto-mapping effect
+   *  (including speaking variants + keyword-matched picks, per resolved Open Q1/A1). Used to
+   *  distinguish status-driven keys (bone-masked path) from developer animate('custom') calls
+   *  (whole-skeleton path, D-04). */
+  const statusDrivenKeyRef = useRef<string | null>(null);
+
   // chatStatus auto-mapping refs
   /** Tracks the previous chatStatus to guard against redundant animation triggers. */
   const prevChatStatusRef = useRef<ChatStatus | null>(null);
@@ -473,6 +485,35 @@ export function VRMAvatar({
     return clips;
   }, [loadedAnimations, currentVrm]);
 
+  // Derive bone-masked base-lower + per-key upper-body sub-clips from processedClips
+  // (Phase 11, D-01/D-02). Memoized on [processedClips, currentVrm] — MUST NOT be
+  // recomputed in render body or useFrame (Pitfall 3: AnimationClip UUID churn leaks
+  // AnimationAction/PropertyMixer pairs and breaks crossfade continuity every render).
+  const boneMaskedClips = useMemo(() => {
+    if (!currentVrm || processedClips.length === 0) {
+      return null;
+    }
+
+    const idleClip = processedClips.find((c) => c?.name === "idle");
+    const baseLower = idleClip
+      ? filterClipTracksByBoneSet(idleClip, currentVrm, BASE_LOWER_BONES, "base-lower")
+      : null;
+
+    const upperByKey: Record<string, THREE.AnimationClip> = {};
+    processedClips.forEach((clip) => {
+      if (!clip) return;
+      const upperClip = filterClipTracksByBoneSet(clip, currentVrm, UPPER_BONES, `${clip.name}-upper`);
+      // D-05/Pitfall 5 fallback: zero matched tracks means this clip's node names never
+      // appeared in the resolved set (non-Mixamo GLB, arbitrary bone names) — mark
+      // unmaskable so the caller falls back to the existing whole-skeleton path.
+      if (upperClip.tracks.length > 0) {
+        upperByKey[clip.name] = upperClip;
+      }
+    });
+
+    return { baseLower, upperByKey };
+  }, [processedClips, currentVrm]);
+
   // Initialize animation mixer and maintain animation state
   useEffect(() => {
     if (currentVrm?.scene && !mixerRef.current) {
@@ -513,6 +554,17 @@ export function VRMAvatar({
     }
   }, [processedClips]);
 
+  // Base-lower action: created once, always playing at weight 1, never swapped
+  // (Phase 11, D-01). No fadeIn on first-ever activation — mirrors the existing
+  // whole-skeleton effect's cold-start handling to avoid a bind-pose ghost (Pitfall 1).
+  useEffect(() => {
+    if (!mixerRef.current || !boneMaskedClips?.baseLower || baseActionRef.current) return;
+
+    const action = mixerRef.current.clipAction(boneMaskedClips.baseLower);
+    action.reset().play();
+    baseActionRef.current = action;
+  }, [boneMaskedClips]);
+
   // chatStatus → animation auto-mapping (D-01, D-02, D-03)
   // Runs only on a real chatStatus transition; early-returns if the status is unchanged
   // (Pitfall 5: prevents re-triggering on every render while already in a given state).
@@ -530,6 +582,9 @@ export function VRMAvatar({
       if (variants.length > 0) {
         const pick = variants[Math.floor(Math.random() * variants.length)];
         currentSpeakingAnimRef.current = pick;
+        // Phase 11 (Open Q1/A1): mark this key as status-driven so it takes the
+        // bone-masked upper path instead of the D-04 whole-skeleton custom path.
+        statusDrivenKeyRef.current = pick;
         animate(pick);
       }
 
@@ -552,6 +607,8 @@ export function VRMAvatar({
                 k.toLowerCase().includes(matchedCandidate)
               );
               if (matchedKey) {
+                // Phase 11 (Open Q1/A1): keyword-matched picks are status-driven too.
+                statusDrivenKeyRef.current = matchedKey;
                 animate(matchedKey);
                 currentSpeakingAnimRef.current = matchedKey;
               }
@@ -568,6 +625,8 @@ export function VRMAvatar({
       const targetKey = chatStatus === "ready" ? "idle" : chatStatus;
       // D-03: if no matching key exists, do nothing — never throw.
       if (animKeys.includes(targetKey)) {
+        // Phase 11 (Open Q1/A1): the else-branch targetKey (idle/listening/thinking) is status-driven.
+        statusDrivenKeyRef.current = targetKey;
         animate(targetKey);
       }
     }

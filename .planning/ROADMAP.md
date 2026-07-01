@@ -338,7 +338,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Avatar Animation Naturalness — Procedural Life Layer | 4/4 | Complete | 2026-07-01 |
-| 11. Bone-Masked Upper-Body Animation Layering | 0/2 | Not started | - |
+| 11. Bone-Masked Upper-Body Animation Layering | 1/2 | In Progress|  |
 
 ### Phase 11: Bone-Masked Upper-Body Animation Layering
 
@@ -352,7 +352,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 Plans:
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — filterClipTracksByBoneSet utility + BASE_LOWER_BONES/UPPER_BONES bone-split constants (D-01/D-02); pure track-filtering sibling of remapMixamoAnimationToVrm (BONE-01)
+- [x] 11-01-PLAN.md — filterClipTracksByBoneSet utility + BASE_LOWER_BONES/UPPER_BONES bone-split constants (D-01/D-02); pure track-filtering sibling of remapMixamoAnimationToVrm (BONE-01)
 
 **Wave 2** *(blocked on Wave 1 — imports the utility)*
 

@@ -174,11 +174,12 @@ const headQuatX = new THREE.Quaternion();
 const headQuatY = new THREE.Quaternion();
 
 // ── Idle gaze-away (D-05) ──
-// Only while chatStatus === "ready" and continuously idle for this long does
-// the avatar glance subtly away, then smoothly return. lookAt.autoUpdate is
-// only enabled for the duration of the glance itself — the rest of the time
-// it stays off, so the eyes stay frozen at bind pose (see the lifecycle
-// effect) rather than perpetually re-chasing breathing/head-jitter.
+// Only while chatStatus is "ready" or "stopped" (both are idle-eligible) and
+// continuously idle for this long does the avatar glance subtly away, then
+// smoothly return. lookAt.autoUpdate is only enabled for the duration of the
+// glance itself — the rest of the time it stays off, so the eyes stay frozen
+// at bind pose (see the lifecycle effect) rather than perpetually re-chasing
+// breathing/head-jitter.
 const IDLE_GAZE_DELAY_SECONDS = 6;
 const GAZE_EASE_SECONDS = 1.1;
 const GAZE_HOLD_SECONDS = 1.4;
@@ -1092,7 +1093,7 @@ export function VRMAvatar({
         idleTimeRef.current = 0;
         gazePhaseRef.current = "waiting";
         hardReset = true;
-      } else if (chatStatus !== "ready") {
+      } else if (chatStatus !== "ready" && chatStatus !== "stopped") {
         // e.g. "thinking" — cancel the cycle but ease back rather than snap.
         idleTimeRef.current = 0;
         gazePhaseRef.current = "waiting";

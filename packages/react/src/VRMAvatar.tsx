@@ -169,68 +169,9 @@ export interface AnimationConfig {
 const scratchX = new THREE.Vector3(1, 0, 0);
 const scratchY = new THREE.Vector3(0, 1, 0);
 
-const scratchZ = new THREE.Vector3(0, 0, 1);
-
 const breathQuat = new THREE.Quaternion();
 const headQuatX = new THREE.Quaternion();
 const headQuatY = new THREE.Quaternion();
-const armQuatX = new THREE.Quaternion();
-const armQuatZ = new THREE.Quaternion();
-
-// ── Speaking gesture poses (D-11) ──
-// Named shoulder/elbow offset targets (radians) the speaking gesture layer
-// crossfades between, rather than one continuous sine sway — a single
-// oscillation always looks like "swaying," never like a gesture, because
-// gestures have distinct SHAPES (a raised hand, an open palm, a small
-// point) that a smooth wave can't produce. "neutral" is deliberately
-// included in the pool so arms occasionally rest, matching natural gesture
-// rhythm (gesture, pause, gesture) instead of constant motion.
-interface ArmPoseOffset {
-  sway: number; // rotation around Z (shoulder swing forward/back)
-  lift: number; // rotation around X (shoulder raise/lower)
-  elbow: number; // flexion magnitude, one-directional — see ELBOW_Z_MIX below
-  // for why this is applied on a mix of X and Z rather than a single axis.
-}
-interface GesturePose {
-  left: ArmPoseOffset;
-  right: ArmPoseOffset;
-}
-const GESTURE_POSES: GesturePose[] = [
-  { left: { sway: 0, lift: 0, elbow: 0 }, right: { sway: 0, lift: 0, elbow: 0 } }, // neutral
-  {
-    left: { sway: 0.1, lift: 0.06, elbow: 0.3 },
-    right: { sway: -0.08, lift: 0.05, elbow: 0.24 },
-  }, // raised slight
-  {
-    left: { sway: 0.2, lift: -0.02, elbow: 0.12 },
-    right: { sway: -0.2, lift: -0.02, elbow: 0.12 },
-  }, // open, arms spread
-  {
-    left: { sway: 0.03, lift: 0, elbow: 0.1 },
-    right: { sway: -0.24, lift: 0.09, elbow: 0.5 },
-  }, // small point (right)
-  {
-    left: { sway: -0.24, lift: 0.09, elbow: 0.5 },
-    right: { sway: 0.03, lift: 0, elbow: 0.1 },
-  }, // small point (left) — mirror of above
-  {
-    left: { sway: 0.26, lift: 0.11, elbow: 0.38 },
-    right: { sway: -0.26, lift: 0.11, elbow: 0.38 },
-  }, // emphatic, wide
-];
-// Elbow flexion is applied as a mix of X and Z rotation rather than betting
-// on a single axis: normalized-bone axis conventions for a given VRM model
-// aren't verified from code alone, and a rotation on the wrong single axis
-// mostly just twists the forearm around its own length (barely visible)
-// instead of visibly hinging it. Mixing two axes makes a visible bend far
-// more likely regardless of which one is the model's "true" flexion axis.
-const ELBOW_Z_MIX = 0.55;
-// The elbow starts moving ELBOW_LAG_FRACTION of the way into the shoulder's
-// transition and catches up by the same deadline — natural gesture
-// follow-through (the hand/forearm trails the shoulder's lead) instead of
-// every joint moving in perfect synchronized lockstep, which reads as
-// mechanical no matter how correct the pose shapes themselves are.
-const ELBOW_LAG_FRACTION = 0.35;
 
 // ── Idle gaze-away (D-05) ──
 // Only while chatStatus is "ready" or "stopped" (both are idle-eligible) and
@@ -262,8 +203,6 @@ const GAZE_HOLD_SECONDS = 3.9; // ease-out + hold ≈ 5s total time spent lookin
 const GAZE_YAW_MAX_DEG = 7; // peak horizontal deflection — small enough to avoid range-map saturation
 const GAZE_PITCH_MAX_DEG = 3; // peak vertical deflection
 
-const ARM_SWAY_FADE_SECONDS = 0.45; // fade the whole speaking arm-sway effect in/out over this long
-
 // Ease-in-out (slow start, fast middle, slow finish) rather than exponential
 // decay — pure exponential decay has its LARGEST step on the very first
 // frame after retargeting, which for a short, small-amplitude glance reads
@@ -271,6 +210,34 @@ const ARM_SWAY_FADE_SECONDS = 0.45; // fade the whole speaking arm-sway effect i
 // genuinely smooth motion.
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// ── Upper-body crossfade duration (D-12) ──
+// Independently-authored Mixamo clips (idle vs. a downloaded talking/gesture
+// clip) can differ by 60-90 degrees at the shoulder — a fixed 0.3s crossfade
+// that works fine for a small pose gap looks like an abrupt swing for a
+// large one. Measuring the actual gap and stretching the fade duration for
+// bigger transitions gives the blend more time to read as motion rather than
+// a snap, for whatever specific clips get plugged in — it isn't a
+// substitute for picking well-matched clips, but it's the code-side lever
+// that helps regardless of which clips are chosen.
+const POSE_DISTANCE_BONES = ["chest", "leftShoulder", "rightShoulder", "leftUpperArm", "rightUpperArm"];
+const scratchQuatA = new THREE.Quaternion();
+
+function measureUpperPoseDistance(vrm: VRM, clip: THREE.AnimationClip): number {
+  let maxAngle = 0;
+  for (const boneName of POSE_DISTANCE_BONES) {
+    const node = vrm.humanoid?.getNormalizedBoneNode(boneName as any);
+    if (!node) continue;
+    const track = clip.tracks.find(
+      (t) => t.name.split(".")[0] === node.name && t.name.endsWith(".quaternion")
+    );
+    if (!track || track.values.length < 4) continue;
+    scratchQuatA.set(track.values[0], track.values[1], track.values[2], track.values[3]);
+    const angle = node.quaternion.angleTo(scratchQuatA);
+    if (angle > maxAngle) maxAngle = angle;
+  }
+  return maxAngle; // radians
 }
 
 // Full close+open blink cycle duration — was implicitly ~0.12s (frame-count based).
@@ -482,6 +449,15 @@ export function VRMAvatar({
    *  `isBoneMaskingActive()` on every status-driven pick, not just ones that also happen
    *  to change `currentAnimation`'s value. */
   const [statusDrivenEpoch, setStatusDrivenEpoch] = useState(0);
+  /** Manual eased crossfade for upperActionRef (D-12), replacing THREE's built-in
+   *  fadeIn()/fadeOut() for THIS specific transition only (the cross-path weight
+   *  coordination above is untouched). THREE's fade is a linear weight ramp
+   *  between two keyframes — see the crossfade effect below for why that isn't
+   *  enough on its own for independently-authored Mixamo clips. */
+  const upperOutgoingActionRef = useRef<THREE.AnimationAction | null>(null);
+  const upperCrossfadeActiveRef = useRef(false);
+  const upperCrossfadeTimeRef = useRef(0);
+  const upperCrossfadeDurationRef = useRef(0.3);
 
   // chatStatus auto-mapping refs
   /** Tracks the previous chatStatus to guard against redundant animation triggers. */
@@ -505,22 +481,6 @@ export function VRMAvatar({
   // Procedural animation time refs
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
-  /** Fades the whole speaking gesture effect in/out over ARM_SWAY_FADE_SECONDS
-   *  instead of snapping to full/zero amplitude the instant chatStatus flips. */
-  const armSwayWeightRef = useRef(0);
-  const armSwayWeightStartRef = useRef(0);
-  const armSwayWeightTargetRef = useRef(0);
-  const armSwayWeightTimeRef = useRef(0);
-  /** Speaking gesture-pose crossfade (D-11): eases between named poses from
-   *  GESTURE_POSES instead of one continuous sine sway — see the block
-   *  itself for why. */
-  const gesturePoseIndexRef = useRef(0);
-  const gesturePoseFromRef = useRef<GesturePose>(GESTURE_POSES[0]);
-  const gesturePoseToRef = useRef<GesturePose>(GESTURE_POSES[0]);
-  const gesturePoseTimeRef = useRef(0);
-  const gesturePoseDurationRef = useRef(0.9);
-  const gesturePoseHoldRef = useRef(2);
-  const gesturePoseHoldingRef = useRef(false);
 
   // Idle gaze-away state (D-05)
   const idleTimeRef = useRef(0);
@@ -700,6 +660,10 @@ export function VRMAvatar({
         // "weirdly bending" torso even at idle rest (checkpoint feedback).
         baseActionRef.current = null;
         upperActionRef.current = null;
+        // D-12: orphaned outgoing/in-flight crossfade state would otherwise
+        // reference an action bound to this discarded mixer.
+        upperOutgoingActionRef.current = null;
+        upperCrossfadeActiveRef.current = false;
       }
     };
   }, [currentVrm]);
@@ -884,12 +848,23 @@ export function VRMAvatar({
     // same-value status picks that React would otherwise bail out of.
   }, [currentAnimation, processedClips, boneMaskedClips, statusDrivenEpoch]);
 
-  // Upper-layer crossfade effect (Phase 11, D-02/D-05/D-06): drives upperActionRef
-  // between idle-upper and the current status-driven gesture's upper-filtered clip.
-  // Reuses the exact 0.3s fade pattern from the whole-skeleton effect above, scoped
-  // to upper-only clips.
+  // Upper-layer crossfade effect (Phase 11, D-02/D-05/D-06, D-12): drives
+  // upperActionRef between idle-upper and the current status-driven gesture's
+  // upper-filtered clip.
+  //
+  // D-12: the actual weight ramp (0->1 / 1->0) is driven manually in useFrame
+  // above via upperCrossfadeActiveRef, NOT via THREE's built-in fadeIn()/
+  // fadeOut(). Two reasons:
+  //   1. THREE's fade is a hard-coded LINEAR weight ramp between two
+  //      keyframes (see AnimationAction._scheduleFading) — no way to apply
+  //      an eased curve without bypassing it entirely.
+  //   2. Independently-authored Mixamo clips can have a large pose gap at
+  //      the shoulder; a fixed duration that looks fine for a small gap
+  //      looks like an abrupt swing for a large one. Measuring the gap
+  //      (measureUpperPoseDistance) and stretching the duration for bigger
+  //      transitions gives the blend more time to read as motion.
   useEffect(() => {
-    if (!mixerRef.current || !boneMaskedClips) return;
+    if (!mixerRef.current || !boneMaskedClips || !currentVrm) return;
 
     // Cross-path weight coordination (Phase 11, Pitfall 2 / Open Q2 — REQUIRED):
     // when bone-masking is active, the base action is authoritative (weight 1);
@@ -906,7 +881,12 @@ export function VRMAvatar({
     baseActionRef.current?.setEffectiveWeight(maskingActive ? 1 : 0);
     if (!maskingActive) {
       // Custom whole-skeleton key is authoritative — cede weight immediately.
+      // Also cancel any in-flight D-12 crossfade: otherwise the useFrame
+      // driver would overwrite this instant cede back to an eased value on
+      // the very next frame, fighting the custom path for control.
       upperActionRef.current?.setEffectiveWeight(0);
+      upperCrossfadeActiveRef.current = false;
+      upperOutgoingActionRef.current = null;
     }
 
     // D-05: fall back to idle-upper whenever no gesture status is active or the
@@ -932,33 +912,38 @@ export function VRMAvatar({
       // First-ever activation: snap to weight 1 immediately (no fadeIn), matching
       // the whole-skeleton effect's cold-start handling (Pitfall 1).
       newUpperAction.reset().play();
+      upperCrossfadeActiveRef.current = false;
+      upperOutgoingActionRef.current = null;
     } else if (upperActionRef.current !== newUpperAction) {
-      upperActionRef.current.fadeOut(0.3);
-      newUpperAction.reset().fadeIn(0.3).play();
+      const poseDistance = measureUpperPoseDistance(currentVrm, upperClip);
+      upperCrossfadeDurationRef.current = THREE.MathUtils.clamp(
+        0.25 + (poseDistance / Math.PI) * 0.55,
+        0.25,
+        0.8
+      );
+      upperCrossfadeTimeRef.current = 0;
+      upperOutgoingActionRef.current = upperActionRef.current;
+      newUpperAction.reset().play();
+      newUpperAction.setEffectiveWeight(0);
+      upperCrossfadeActiveRef.current = true;
       fadeScheduledThisPass = true;
     }
     upperActionRef.current = newUpperAction;
 
-    // IMPORTANT: setEffectiveWeight() calls THREE's AnimationAction.stopFading()
-    // internally, cancelling any in-flight fadeIn/fadeOut interpolant and snapping
-    // weight to the given value immediately. Calling it unconditionally here —
-    // including right after scheduling a fadeIn() a few lines above on that SAME
-    // action — cancelled every upper-layer crossfade before it could animate, so
-    // gesture transitions just snapped instead of blending (checkpoint feedback).
-    //
     // Only restore-to-1 when recovering from the custom whole-skeleton path AND no
     // fade was just scheduled this pass (code review WR-01): if a custom animate()
     // call is immediately followed by a DIFFERENT gesture than whatever was active
     // before it (e.g. idle -> dance -> listening), `newUpperAction` is a fresh action
-    // whose own fadeIn already governs its weight from 0 — forcing it to 1 here would
-    // cancel that fade and produce an instant pop instead of a 0.3s crossfade. When the
-    // upper action identity DIDN'T change (e.g. idle -> dance -> idle, same action),
-    // no fade was scheduled to bring weight back up, so the instant snap is correct.
+    // whose own D-12 crossfade already governs its weight from 0 — forcing it to 1
+    // here would cancel that and produce an instant pop instead of an eased blend.
+    // When the upper action identity DIDN'T change (e.g. idle -> dance -> idle, same
+    // action), no crossfade was scheduled to bring weight back up, so the instant
+    // snap is correct.
     if (maskingActive && !prevMaskingActiveRef.current && !fadeScheduledThisPass) {
       upperActionRef.current?.setEffectiveWeight(1);
     }
     prevMaskingActiveRef.current = maskingActive;
-  }, [currentAnimation, boneMaskedClips, statusDrivenEpoch]);
+  }, [currentAnimation, boneMaskedClips, statusDrivenEpoch, currentVrm]);
 
   useEffect(() => {
     if (!currentVrm || !scene) return;
@@ -1031,6 +1016,22 @@ export function VRMAvatar({
     const rawVolume = realtimeProvider?.currentVolume ?? 0;
     const volumeFactor = chatStatus === "speaking" ? 1 + Math.min(rawVolume, 1) * 0.45 : 1;
 
+    // Manual eased upper-body crossfade driver (D-12). Runs BEFORE mixer.update()
+    // so this frame's blend reflects the freshest weight. See the crossfade
+    // effect (where upperCrossfadeActiveRef gets set) for why this replaces
+    // THREE's built-in fadeIn()/fadeOut() for this specific transition.
+    if (upperCrossfadeActiveRef.current) {
+      upperCrossfadeTimeRef.current += delta;
+      const t = Math.min(upperCrossfadeTimeRef.current / upperCrossfadeDurationRef.current, 1);
+      const easedT = easeInOutCubic(t);
+      upperActionRef.current?.setEffectiveWeight(easedT);
+      upperOutgoingActionRef.current?.setEffectiveWeight(1 - easedT);
+      if (t >= 1) {
+        upperCrossfadeActiveRef.current = false;
+        upperOutgoingActionRef.current = null;
+      }
+    }
+
     // Update animation mixer first (if exists)
     if (mixerRef.current) {
       mixerRef.current.update(delta);
@@ -1074,126 +1075,6 @@ export function VRMAvatar({
       const head = currentVrm.humanoid.getNormalizedBoneNode("head" as any);
       if (head) {
         head.quaternion.multiply(headQuatX).multiply(headQuatY);
-      }
-    }
-
-    // Speaking gesture-pose crossfade (D-11): the point of this layer is to
-    // make "talking" read as alive/expressive rather than as a scripted
-    // full-body gesture clip swap — the same problem breathing and
-    // head-movement already solve for the idle case, just applied to the
-    // arms during speech.
-    //
-    // Eases between named poses from GESTURE_POSES rather than driving one
-    // continuous sine wave (an earlier version of this layer): a single
-    // oscillation always reads as "swaying," never as gesturing, because
-    // real gestures have distinct SHAPES (a raised hand, an open palm, a
-    // small point), not a smooth repeating wave. It's also not driven by
-    // rawVolume/currentVolume — TTS voices are loudness-compressed within an
-    // utterance and don't have the quiet/loud swings that would give that
-    // signal much to react to.
-    //
-    // The whole effect is scaled by armSwayWeightRef, an eased leg (same
-    // technique as the gaze system) that fades in/out over
-    // ARM_SWAY_FADE_SECONDS instead of snapping to full/zero amplitude the
-    // instant chatStatus flips — without this, starting a new sentence
-    // (idle -> speaking) or finishing one (speaking -> idle) applied a
-    // sudden, non-zero rotation delta in a single frame, which read as the
-    // arm "snapping" into or out of the gesture.
-    {
-      const armSwayTarget = chatStatus === "speaking" ? 1 : 0;
-      if (armSwayTarget !== armSwayWeightTargetRef.current) {
-        armSwayWeightTargetRef.current = armSwayTarget;
-        armSwayWeightStartRef.current = armSwayWeightRef.current;
-        armSwayWeightTimeRef.current = 0;
-      }
-      armSwayWeightTimeRef.current += delta;
-      const weightT = easeInOutCubic(
-        Math.min(armSwayWeightTimeRef.current / ARM_SWAY_FADE_SECONDS, 1)
-      );
-      armSwayWeightRef.current =
-        armSwayWeightStartRef.current +
-        (armSwayWeightTargetRef.current - armSwayWeightStartRef.current) * weightT;
-
-      // Gesture-pose scheduler: only advances while actually speaking, so a
-      // new speaking turn resumes wherever the previous one left off in the
-      // cycle rather than always restarting from "neutral." Interruption is
-      // handled entirely by armSwayWeightRef above — whatever pose is
-      // currently interpolated just gets scaled toward zero, so there's
-      // nothing extra to special-case here.
-      if (chatStatus === "speaking") {
-        if (gesturePoseHoldingRef.current) {
-          gesturePoseHoldRef.current -= delta;
-          if (gesturePoseHoldRef.current <= 0) {
-            gesturePoseFromRef.current = gesturePoseToRef.current;
-            let nextIndex = Math.floor(Math.random() * GESTURE_POSES.length);
-            if (nextIndex === gesturePoseIndexRef.current) {
-              nextIndex = (nextIndex + 1) % GESTURE_POSES.length;
-            }
-            gesturePoseIndexRef.current = nextIndex;
-            gesturePoseToRef.current = GESTURE_POSES[nextIndex];
-            gesturePoseTimeRef.current = 0;
-            gesturePoseDurationRef.current = 0.7 + Math.random() * 0.4;
-            gesturePoseHoldingRef.current = false;
-          }
-        } else {
-          gesturePoseTimeRef.current += delta;
-          if (gesturePoseTimeRef.current >= gesturePoseDurationRef.current) {
-            gesturePoseHoldingRef.current = true;
-            gesturePoseHoldRef.current = 1.2 + Math.random() * 1.8;
-          }
-        }
-      }
-
-      if (currentVrm.humanoid && armSwayWeightRef.current > 0.001) {
-        const rawProgress = Math.min(
-          gesturePoseTimeRef.current / gesturePoseDurationRef.current,
-          1
-        );
-        const poseT = gesturePoseHoldingRef.current ? 1 : easeInOutCubic(rawProgress);
-        // Elbow follow-through: starts ELBOW_LAG_FRACTION into the shoulder's
-        // transition, then covers the remaining span — trails the shoulder's
-        // lead instead of moving in perfect lockstep with it.
-        const elbowProgress = gesturePoseHoldingRef.current
-          ? 1
-          : Math.max(rawProgress - ELBOW_LAG_FRACTION, 0) / (1 - ELBOW_LAG_FRACTION);
-        const elbowT = easeInOutCubic(Math.min(elbowProgress, 1));
-
-        const from = gesturePoseFromRef.current;
-        const to = gesturePoseToRef.current;
-        const weight = armSwayWeightRef.current;
-
-        const lerpOffset = (a: number, b: number, t: number) => (a + (b - a) * t) * weight;
-        const swayLeft = lerpOffset(from.left.sway, to.left.sway, poseT);
-        const swayRight = lerpOffset(from.right.sway, to.right.sway, poseT);
-        const liftLeft = lerpOffset(from.left.lift, to.left.lift, poseT);
-        const liftRight = lerpOffset(from.right.lift, to.right.lift, poseT);
-        const elbowLeft = lerpOffset(from.left.elbow, to.left.elbow, elbowT);
-        const elbowRight = lerpOffset(from.right.elbow, to.right.elbow, elbowT);
-
-        const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
-        if (leftUpperArm) {
-          armQuatZ.setFromAxisAngle(scratchZ, swayLeft);
-          armQuatX.setFromAxisAngle(scratchX, liftLeft);
-          leftUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
-        }
-        const rightUpperArm = currentVrm.humanoid.getNormalizedBoneNode("rightUpperArm" as any);
-        if (rightUpperArm) {
-          armQuatZ.setFromAxisAngle(scratchZ, swayRight);
-          armQuatX.setFromAxisAngle(scratchX, liftRight);
-          rightUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
-        }
-        const leftLowerArm = currentVrm.humanoid.getNormalizedBoneNode("leftLowerArm" as any);
-        if (leftLowerArm) {
-          armQuatX.setFromAxisAngle(scratchX, elbowLeft * (1 - ELBOW_Z_MIX));
-          armQuatZ.setFromAxisAngle(scratchZ, elbowLeft * ELBOW_Z_MIX);
-          leftLowerArm.quaternion.multiply(armQuatX).multiply(armQuatZ);
-        }
-        const rightLowerArm = currentVrm.humanoid.getNormalizedBoneNode("rightLowerArm" as any);
-        if (rightLowerArm) {
-          armQuatX.setFromAxisAngle(scratchX, elbowRight * (1 - ELBOW_Z_MIX));
-          armQuatZ.setFromAxisAngle(scratchZ, elbowRight * ELBOW_Z_MIX);
-          rightLowerArm.quaternion.multiply(armQuatX).multiply(armQuatZ);
-        }
       }
     }
 

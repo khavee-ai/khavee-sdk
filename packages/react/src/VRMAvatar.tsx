@@ -1007,6 +1007,13 @@ export function VRMAvatar({
     // subtle movement" still read as visibly wandering per user feedback.
     if (enableEyeGaze && gazeTargetRef.current && currentVrm.humanoid) {
       gazeTargetRef.current.position.set(0, 1.6, 2.0);
+      // Defensive re-assertion every frame: if anything (a VRM internal reset,
+      // a re-render racing the init effect, etc.) ever clears lookAt.target,
+      // self-heal instead of silently falling back to autonomous eye movement.
+      if (currentVrm.lookAt && currentVrm.lookAt.target !== gazeTargetRef.current) {
+        currentVrm.lookAt.target = gazeTargetRef.current;
+        currentVrm.lookAt.autoUpdate = true;
+      }
       // vrm.lookAt.autoUpdate handles the rest in vrm.update()
     }
 

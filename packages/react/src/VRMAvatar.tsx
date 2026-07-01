@@ -1005,46 +1005,52 @@ export function VRMAvatar({
       }
     }
 
-    // Speaking arm/shoulder sway: audio-reactive, continuous. The point of
-    // this layer is to make "talking" read as driven by voice rather than as
+    // Speaking arm/shoulder sway: continuous, naturally varying. The point of
+    // this layer is to make "talking" read as alive/expressive rather than as
     // a scripted full-body gesture clip swap — the same problem breathing and
     // head-movement already solve for the idle case, just applied to the arms
     // during speech. Runs only while speaking; the phase resets to 0 on exit
     // so each speaking turn starts from a clean, zero-amplitude point (no pop
     // on entry/exit, since sin(0) = 0).
     //
-    // Uses its own volume scalar (armVolumeFactor), NOT the shared
-    // volumeFactor used for head jitter — that one has a high floor (>= 1x,
-    // tuned for a barely-perceptible head wobble), so reusing it here made
-    // the arms move almost the same regardless of actual speech loudness; it
-    // read as "slightly livelier idle," not "talking." armVolumeFactor has a
-    // much lower floor and higher ceiling so quiet vs. loud speech visibly
-    // differ, and the base amplitudes are large enough to read clearly
-    // against a relaxed idle pose (elbow flex is one-directional — only ever
-    // bends further from resting-straight, never hyperextends backward).
+    // NOT driven by rawVolume/currentVolume: TTS voices are loudness-
+    // compressed within an utterance — they don't have real quiet/loud
+    // swings the way emphatic human speech does, so a volume-scaled version
+    // of this just behaved like a binary "speaking vs. paused" gate rather
+    // than the expressive variation that was the actual goal. Instead,
+    // armIntensity is a slow envelope built from two incommensurate
+    // frequencies (0.35 and 0.13 rad/s don't share a short common period),
+    // so it drifts between calmer and more animated stretches over several
+    // seconds without ever feeling like an obviously repeating loop or
+    // depending on an audio signal that isn't actually that expressive.
     if (currentVrm.humanoid && chatStatus === "speaking") {
       armSwayTimeRef.current += delta;
-      const armVolumeFactor = 0.35 + Math.min(rawVolume, 1) * 1.15;
+      const armIntensity = THREE.MathUtils.clamp(
+        0.65 + Math.sin(armSwayTimeRef.current * 0.35) * 0.25 +
+          Math.sin(armSwayTimeRef.current * 0.13 + 1.7) * 0.15,
+        0.3,
+        1.05
+      );
 
       const swayLeft =
         (Math.sin(armSwayTimeRef.current * 0.9) * 0.14 +
           Math.sin(armSwayTimeRef.current * 1.7) * 0.05) *
-        armVolumeFactor;
+        armIntensity;
       const swayRight =
         (Math.sin(armSwayTimeRef.current * 0.9 + Math.PI * 0.6) * 0.14 +
           Math.sin(armSwayTimeRef.current * 1.7 + Math.PI * 0.3) * 0.05) *
-        armVolumeFactor;
-      const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.08 * armVolumeFactor;
+        armIntensity;
+      const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.08 * armIntensity;
       const liftRight =
-        Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.08 * armVolumeFactor;
+        Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.08 * armIntensity;
       const elbowLeft =
         (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.2) * 0.5 + 0.5) *
         0.22 *
-        armVolumeFactor;
+        armIntensity;
       const elbowRight =
         (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.9) * 0.5 + 0.5) *
         0.22 *
-        armVolumeFactor;
+        armIntensity;
 
       const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
       if (leftUpperArm) {

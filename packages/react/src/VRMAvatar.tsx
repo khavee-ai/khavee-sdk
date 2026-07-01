@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lerp } from "three/src/math/MathUtils.js";
+import type { ChatStatus } from "@khaveeai/core";
 import { useKhavee } from "./KhaveeProvider";
 import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
 
@@ -277,10 +278,23 @@ export function VRMAvatar({
   enableBlinking = true,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, animate } = useKhavee();
+  const { setVrm, expressions, currentAnimation, animate, chatStatus } = useKhavee();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
+
+  // chatStatus auto-mapping refs
+  /** Tracks the previous chatStatus to guard against redundant animation triggers. */
+  const prevChatStatusRef = useRef<ChatStatus | null>(null);
+  /** Stale-closure guard: always holds the latest animations prop reference (Pitfall 3). */
+  const animationsRef = useRef<AnimationConfig | undefined>(animations);
+  /** Remembers the speaking animation variant chosen for the current speaking turn. */
+  const currentSpeakingAnimRef = useRef<string | null>(null);
+
+  // Sync animationsRef whenever the animations prop changes (Pitfall 3 stale-closure guard).
+  useEffect(() => {
+    animationsRef.current = animations;
+  }, [animations]);
 
   // Blinking system
   const [blinkState, setBlinkState] = useState(0);

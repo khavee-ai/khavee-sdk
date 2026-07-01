@@ -136,8 +136,6 @@ export interface VRMAvatarProps {
   enableHeadMovement?: boolean;
   /** Enable drifting eye gaze behavior. Default: true */
   enableEyeGaze?: boolean;
-  /** Enable subtle finger curl noise. Default: true */
-  enableHandGestures?: boolean;
   /** Enable status-based micro-expressions (idle/listening/thinking). Default: true */
   enableMicroExpressions?: boolean;
 }
@@ -174,29 +172,6 @@ const scratchY = new THREE.Vector3(0, 1, 0);
 const breathQuat = new THREE.Quaternion();
 const headQuatX = new THREE.Quaternion();
 const headQuatY = new THREE.Quaternion();
-const fingerQuat = new THREE.Quaternion();
-
-// Finger proximal bone names (camelCase per CLAUDE.md)
-const leftFingerBones = [
-  "leftThumbProximal",
-  "leftIndexProximal",
-  "leftMiddleProximal",
-  "leftRingProximal",
-  "leftLittleProximal",
-];
-
-const rightFingerBones = [
-  "rightThumbProximal",
-  "rightIndexProximal",
-  "rightMiddleProximal",
-  "rightRingProximal",
-  "rightLittleProximal",
-];
-
-const allFingerBones = [...leftFingerBones, ...rightFingerBones];
-
-// Phase offsets for per-finger variety (0–1 range)
-const fingerPhases = [0, 1.1, 2.3, 0.7, 1.9];
 
 // ── Wave-4: Keyword gesture override ──
 // Fixed regex patterns mapped to candidate animation-key substrings.
@@ -285,7 +260,6 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param enableBreathing - Enable subtle breathing motion (spine/chest oscillation). Default: true
  * @param enableHeadMovement - Enable natural head micro-movement. Default: true
  * @param enableEyeGaze - Enable drifting eye gaze behavior. Default: true
- * @param enableHandGestures - Enable subtle finger curl noise. Default: true
  * @param enableMicroExpressions - Enable status-based micro-expressions (idle/listening/thinking). Default: true
  *
  * @example
@@ -372,7 +346,6 @@ export function VRMAvatar({
   enableBreathing = true,
   enableHeadMovement = true,
   enableEyeGaze = true,
-  enableHandGestures = true,
   enableMicroExpressions = true,
   ...props
 }: VRMAvatarProps) {
@@ -430,7 +403,6 @@ export function VRMAvatar({
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
   const gazeTimeRef = useRef(0);
-  const fingerTimeRef = useRef(0);
   const gazeTargetRef = useRef<THREE.Object3D | null>(null);
 
   // ── Procedural life layer ──
@@ -1103,25 +1075,6 @@ export function VRMAvatar({
       // Force reset on exit from thinking
       aversionPhaseRef.current = 0;
       aversionTimerRef.current = Math.random() * 3 + 4;
-    }
-
-    // Finger curl noise (D-08)
-    if (enableHandGestures && currentVrm.humanoid) {
-      fingerTimeRef.current += delta;
-
-      for (let i = 0; i < allFingerBones.length; i++) {
-        const boneName = allFingerBones[i];
-        const phase = fingerPhases[i % 5];
-        const freq = 0.7 + (i % 3) * 0.17;
-        const offset = Math.sin(fingerTimeRef.current * freq + phase) * 0.018;
-
-        fingerQuat.setFromAxisAngle(scratchX, offset);
-
-        const bone = currentVrm.humanoid.getNormalizedBoneNode(boneName as any);
-        if (bone) {
-          bone.quaternion.multiply(fingerQuat);
-        }
-      }
     }
 
     // Apply expressions from the hook with smooth lerping

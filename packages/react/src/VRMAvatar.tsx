@@ -177,6 +177,47 @@ const headQuatY = new THREE.Quaternion();
 const armQuatX = new THREE.Quaternion();
 const armQuatZ = new THREE.Quaternion();
 
+// ── Speaking gesture poses (D-11) ──
+// Named shoulder/elbow offset targets (radians) the speaking gesture layer
+// crossfades between, rather than one continuous sine sway — a single
+// oscillation always looks like "swaying," never like a gesture, because
+// gestures have distinct SHAPES (a raised hand, an open palm, a small
+// point) that a smooth wave can't produce. "neutral" is deliberately
+// included in the pool so arms occasionally rest, matching natural gesture
+// rhythm (gesture, pause, gesture) instead of constant motion.
+interface ArmPoseOffset {
+  sway: number; // rotation around Z (shoulder swing forward/back)
+  lift: number; // rotation around X (shoulder raise/lower)
+  elbow: number; // rotation around X, one-directional (flexion only)
+}
+interface GesturePose {
+  left: ArmPoseOffset;
+  right: ArmPoseOffset;
+}
+const GESTURE_POSES: GesturePose[] = [
+  { left: { sway: 0, lift: 0, elbow: 0 }, right: { sway: 0, lift: 0, elbow: 0 } }, // neutral
+  {
+    left: { sway: 0.1, lift: 0.06, elbow: 0.18 },
+    right: { sway: -0.08, lift: 0.05, elbow: 0.14 },
+  }, // raised slight
+  {
+    left: { sway: 0.2, lift: -0.02, elbow: 0.06 },
+    right: { sway: -0.2, lift: -0.02, elbow: 0.06 },
+  }, // open, arms spread
+  {
+    left: { sway: 0.03, lift: 0, elbow: 0.06 },
+    right: { sway: -0.24, lift: 0.09, elbow: 0.3 },
+  }, // small point (right)
+  {
+    left: { sway: -0.24, lift: 0.09, elbow: 0.3 },
+    right: { sway: 0.03, lift: 0, elbow: 0.06 },
+  }, // small point (left) — mirror of above
+  {
+    left: { sway: 0.26, lift: 0.11, elbow: 0.22 },
+    right: { sway: -0.26, lift: 0.11, elbow: 0.22 },
+  }, // emphatic, wide
+];
+
 // ── Idle gaze-away (D-05) ──
 // Only while chatStatus is "ready" or "stopped" (both are idle-eligible) and
 // continuously idle for this long does the avatar glance subtly away, then
@@ -450,20 +491,22 @@ export function VRMAvatar({
   // Procedural animation time refs
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
-  const armSwayTimeRef = useRef(0);
-  /** Fades the whole arm-sway effect in/out over ARM_SWAY_FADE_SECONDS instead
-   *  of snapping to full/zero amplitude the instant chatStatus flips. */
+  /** Fades the whole speaking gesture effect in/out over ARM_SWAY_FADE_SECONDS
+   *  instead of snapping to full/zero amplitude the instant chatStatus flips. */
   const armSwayWeightRef = useRef(0);
   const armSwayWeightStartRef = useRef(0);
   const armSwayWeightTargetRef = useRef(0);
   const armSwayWeightTimeRef = useRef(0);
-  /** Occasional emphasis burst — a brief, larger sway pulse on top of the
-   *  steady sway, at a random interval while speaking. Same scheduler shape
-   *  as the listening-state nod (nextNodTimeRef/nodActiveRef/etc.) below. */
-  const armBurstActiveRef = useRef(false);
-  const armBurstProgressRef = useRef(0);
-  const armBurstDurationRef = useRef(1.0);
-  const nextArmBurstTimeRef = useRef(5);
+  /** Speaking gesture-pose crossfade (D-11): eases between named poses from
+   *  GESTURE_POSES instead of one continuous sine sway — see the block
+   *  itself for why. */
+  const gesturePoseIndexRef = useRef(0);
+  const gesturePoseFromRef = useRef<GesturePose>(GESTURE_POSES[0]);
+  const gesturePoseToRef = useRef<GesturePose>(GESTURE_POSES[0]);
+  const gesturePoseTimeRef = useRef(0);
+  const gesturePoseDurationRef = useRef(0.9);
+  const gesturePoseHoldRef = useRef(2);
+  const gesturePoseHoldingRef = useRef(false);
 
   // Idle gaze-away state (D-05)
   const idleTimeRef = useRef(0);
@@ -1020,28 +1063,26 @@ export function VRMAvatar({
       }
     }
 
-    // Speaking arm/shoulder sway: continuous, naturally varying. The point of
-    // this layer is to make "talking" read as alive/expressive rather than as
-    // a scripted full-body gesture clip swap — the same problem breathing and
-    // head-movement already solve for the idle case, just applied to the arms
-    // during speech.
+    // Speaking gesture-pose crossfade (D-11): the point of this layer is to
+    // make "talking" read as alive/expressive rather than as a scripted
+    // full-body gesture clip swap — the same problem breathing and
+    // head-movement already solve for the idle case, just applied to the
+    // arms during speech.
     //
-    // NOT driven by rawVolume/currentVolume: TTS voices are loudness-
-    // compressed within an utterance — they don't have real quiet/loud
-    // swings the way emphatic human speech does, so a volume-scaled version
-    // of this just behaved like a binary "speaking vs. paused" gate rather
-    // than the expressive variation that was the actual goal. Instead,
-    // armIntensity is a slow envelope built from two incommensurate
-    // frequencies (0.35 and 0.13 rad/s don't share a short common period),
-    // so it drifts between calmer and more animated stretches over several
-    // seconds without ever feeling like an obviously repeating loop or
-    // depending on an audio signal that isn't actually that expressive.
+    // Eases between named poses from GESTURE_POSES rather than driving one
+    // continuous sine wave (an earlier version of this layer): a single
+    // oscillation always reads as "swaying," never as gesturing, because
+    // real gestures have distinct SHAPES (a raised hand, an open palm, a
+    // small point), not a smooth repeating wave. It's also not driven by
+    // rawVolume/currentVolume — TTS voices are loudness-compressed within an
+    // utterance and don't have the quiet/loud swings that would give that
+    // signal much to react to.
     //
-    // The whole effect is additionally scaled by armSwayWeightRef, an eased
-    // leg (same technique as the gaze system) that fades in/out over
+    // The whole effect is scaled by armSwayWeightRef, an eased leg (same
+    // technique as the gaze system) that fades in/out over
     // ARM_SWAY_FADE_SECONDS instead of snapping to full/zero amplitude the
     // instant chatStatus flips — without this, starting a new sentence
-    // (going idle -> speaking) or finishing one (speaking -> idle) applied a
+    // (idle -> speaking) or finishing one (speaking -> idle) applied a
     // sudden, non-zero rotation delta in a single frame, which read as the
     // arm "snapping" into or out of the gesture.
     {
@@ -1059,65 +1100,53 @@ export function VRMAvatar({
         armSwayWeightStartRef.current +
         (armSwayWeightTargetRef.current - armSwayWeightStartRef.current) * weightT;
 
-      // Emphasis burst scheduler: only ticks/triggers while actually
-      // speaking (mirrors the listening-nod scheduler's reset-while-inactive
-      // pattern), but a burst already in flight is allowed to finish playing
-      // out — its own smooth sin(progress * PI) shape means it can't pop,
-      // and the overall armSwayWeightRef fade-out (above) already handles
-      // bringing everything smoothly to zero if speaking ends mid-burst.
-      let armBurstBoost = 0;
+      // Gesture-pose scheduler: only advances while actually speaking, so a
+      // new speaking turn resumes wherever the previous one left off in the
+      // cycle rather than always restarting from "neutral." Interruption is
+      // handled entirely by armSwayWeightRef above — whatever pose is
+      // currently interpolated just gets scaled toward zero, so there's
+      // nothing extra to special-case here.
       if (chatStatus === "speaking") {
-        nextArmBurstTimeRef.current -= delta;
-        if (!armBurstActiveRef.current && nextArmBurstTimeRef.current <= 0) {
-          armBurstActiveRef.current = true;
-          armBurstProgressRef.current = 0;
-          armBurstDurationRef.current = 0.8 + Math.random() * 0.6;
-          nextArmBurstTimeRef.current = 4 + Math.random() * 5;
+        if (gesturePoseHoldingRef.current) {
+          gesturePoseHoldRef.current -= delta;
+          if (gesturePoseHoldRef.current <= 0) {
+            gesturePoseFromRef.current = gesturePoseToRef.current;
+            let nextIndex = Math.floor(Math.random() * GESTURE_POSES.length);
+            if (nextIndex === gesturePoseIndexRef.current) {
+              nextIndex = (nextIndex + 1) % GESTURE_POSES.length;
+            }
+            gesturePoseIndexRef.current = nextIndex;
+            gesturePoseToRef.current = GESTURE_POSES[nextIndex];
+            gesturePoseTimeRef.current = 0;
+            gesturePoseDurationRef.current = 0.7 + Math.random() * 0.4;
+            gesturePoseHoldingRef.current = false;
+          }
+        } else {
+          gesturePoseTimeRef.current += delta;
+          if (gesturePoseTimeRef.current >= gesturePoseDurationRef.current) {
+            gesturePoseHoldingRef.current = true;
+            gesturePoseHoldRef.current = 1.2 + Math.random() * 1.8;
+          }
         }
-      } else if (!armBurstActiveRef.current) {
-        nextArmBurstTimeRef.current = 4 + Math.random() * 5;
-      }
-      if (armBurstActiveRef.current) {
-        armBurstProgressRef.current += delta / armBurstDurationRef.current;
-        if (armBurstProgressRef.current >= 1) {
-          armBurstProgressRef.current = 1;
-          armBurstActiveRef.current = false;
-        }
-        armBurstBoost = Math.sin(armBurstProgressRef.current * Math.PI) * 0.8;
       }
 
       if (currentVrm.humanoid && armSwayWeightRef.current > 0.001) {
-        armSwayTimeRef.current += delta;
-        const armIntensity =
-          THREE.MathUtils.clamp(
-            0.65 +
-              Math.sin(armSwayTimeRef.current * 0.35) * 0.25 +
-              Math.sin(armSwayTimeRef.current * 0.13 + 1.7) * 0.15,
-            0.3,
-            1.05
-          ) *
-          (1 + armBurstBoost) *
-          armSwayWeightRef.current;
+        const poseT = gesturePoseHoldingRef.current
+          ? 1
+          : easeInOutCubic(
+              Math.min(gesturePoseTimeRef.current / gesturePoseDurationRef.current, 1)
+            );
+        const from = gesturePoseFromRef.current;
+        const to = gesturePoseToRef.current;
+        const weight = armSwayWeightRef.current;
 
-        const swayLeft =
-          (Math.sin(armSwayTimeRef.current * 0.9) * 0.14 +
-            Math.sin(armSwayTimeRef.current * 1.7) * 0.05) *
-          armIntensity;
-        const swayRight =
-          (Math.sin(armSwayTimeRef.current * 0.9 + Math.PI * 0.6) * 0.14 +
-            Math.sin(armSwayTimeRef.current * 1.7 + Math.PI * 0.3) * 0.05) *
-          armIntensity;
-        const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.08 * armIntensity;
-        const liftRight =
-          Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.08 * armIntensity;
-        const elbowLeft =
-          (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.2) * 0.5 + 0.5) *
-          0.22 *
-          armIntensity;
-        const elbowRight =
-          (Math.sin(armSwayTimeRef.current * 0.7 + Math.PI * 0.9) * 0.5 + 0.5) *
-          0.22 *
-          armIntensity;
+        const lerpOffset = (a: number, b: number) => (a + (b - a) * poseT) * weight;
+        const swayLeft = lerpOffset(from.left.sway, to.left.sway);
+        const swayRight = lerpOffset(from.right.sway, to.right.sway);
+        const liftLeft = lerpOffset(from.left.lift, to.left.lift);
+        const liftRight = lerpOffset(from.right.lift, to.right.lift);
+        const elbowLeft = lerpOffset(from.left.elbow, to.left.elbow);
+        const elbowRight = lerpOffset(from.right.elbow, to.right.elbow);
 
         const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
         if (leftUpperArm) {
@@ -1127,7 +1156,7 @@ export function VRMAvatar({
         }
         const rightUpperArm = currentVrm.humanoid.getNormalizedBoneNode("rightUpperArm" as any);
         if (rightUpperArm) {
-          armQuatZ.setFromAxisAngle(scratchZ, -swayRight);
+          armQuatZ.setFromAxisAngle(scratchZ, swayRight);
           armQuatX.setFromAxisAngle(scratchX, liftRight);
           rightUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
         }
@@ -1141,8 +1170,6 @@ export function VRMAvatar({
           armQuatX.setFromAxisAngle(scratchX, elbowRight);
           rightLowerArm.quaternion.multiply(armQuatX);
         }
-      } else {
-        armSwayTimeRef.current = 0;
       }
     }
 

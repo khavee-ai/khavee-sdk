@@ -293,10 +293,30 @@ Plans:
 
 **UI hint**: yes
 
+### v3.0 Avatar Animation System
+
+- [ ] **Phase 10: Avatar Animation Naturalness — Procedural Life Layer** - Add a procedural animation layer to `@khaveeai/react`'s `VRMAvatar` (breathing, head micro-movement, eye gaze shifts, micro-expressions) that runs on top of user-supplied FBX animations, plus built-in `chatStatus`→animation auto-mapping, making the avatar feel continuously alive across all conversation states with zero extra animation files required
+
+### Phase 10: Avatar Animation Naturalness — Procedural Life Layer
+
+**Goal**: `VRMAvatar` in `@khaveeai/react` gains a procedural life layer that makes the avatar feel alive at all times — breathing, natural head movement, eye gaze shifts, and subtle micro-expressions — layered on top of user-supplied FBX animations. The component also auto-maps `chatStatus` to animation names so developers get sensible defaults without manual wiring. Everything is opt-in/out per feature with sane defaults. Only `packages/react/` and `packages/core/` (for new types, if needed) are touched.
+**Depends on**: Phase 1 (core types), `@khaveeai/react` as implemented through Phase 8
+**Scope boundary**: SDK packages only — `src/app/`, `wordpress-plugin/` are NOT touched
+**Success Criteria** (what must be TRUE):
+
+  1. `VRMAvatar` plays a procedural breathing animation (gentle spine/chest bone oscillation) with no FBX file required, configurable amplitude and speed, enabled by default
+  2. `VRMAvatar` performs subtle random head micro-movements (small X/Y rotation offsets on the head bone, driven by smooth noise) during any active state, making the avatar appear to be listening/thinking rather than frozen
+  3. `VRMAvatar` shifts its gaze direction (left-eye/right-eye VRM bones or lookAt) naturally and randomly during idle and listening, with smooth interpolation
+  4. `VRMAvatar` performs random micro-expressions (e.g. slight smile, subtle brow raise at low intensity ≤0.2) between blinks during idle, creating perceived personality without dramatic emotional swings
+  5. When `chatStatus` changes (idle / listening / thinking / speaking), `VRMAvatar` automatically switches to an animation named after that status if it exists in the `animations` prop (e.g. `{idle:..., listening:..., thinking:..., speaking:...}`), with a smooth crossfade — developer opts out by not providing those keys
+  6. All procedural layers (breathing, head movement, gaze, micro-expressions) are individually togglable via props with sensible defaults, and each layer works additively on top of any playing FBX animation without fighting it
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
 
 (Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other. Phase 8's frontend bundle work can start once Phase 6's REST contract shape is fixed, in parallel with Phase 7, per v2.0 research.)
 
@@ -311,3 +331,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
+| 10. Avatar Animation Naturalness — Procedural Life Layer | 0/TBD | Not started | - |

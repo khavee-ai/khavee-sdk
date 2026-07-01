@@ -117,6 +117,10 @@ interface VRMAvatarProps {
   scale?: [number, number, number];
   animations?: AnimationConfig;
   enableBlinking?: boolean;
+  enableBreathing?: boolean;
+  enableHeadMovement?: boolean;
+  enableEyeGaze?: boolean;
+  enableHandGestures?: boolean;
 }
 
 /**
@@ -143,6 +147,37 @@ interface VRMAvatarProps {
 export interface AnimationConfig {
   [name: string]: string; // URL to FBX or GLB file! SDK handles loading & remapping
 }
+
+// ── Module-level scratch objects (avoid per-frame GC) ──
+const scratchX = new THREE.Vector3(1, 0, 0);
+const scratchY = new THREE.Vector3(0, 1, 0);
+
+const breathQuat = new THREE.Quaternion();
+const headQuatX = new THREE.Quaternion();
+const headQuatY = new THREE.Quaternion();
+const fingerQuat = new THREE.Quaternion();
+
+// Finger proximal bone names (camelCase per CLAUDE.md)
+const leftFingerBones = [
+  "leftThumbProximal",
+  "leftIndexProximal",
+  "leftMiddleProximal",
+  "leftRingProximal",
+  "leftLittleProximal",
+];
+
+const rightFingerBones = [
+  "rightThumbProximal",
+  "rightIndexProximal",
+  "rightMiddleProximal",
+  "rightRingProximal",
+  "rightLittleProximal",
+];
+
+const allFingerBones = [...leftFingerBones, ...rightFingerBones];
+
+// Phase offsets for per-finger variety (0–1 range)
+const fingerPhases = [0, 1.1, 2.3, 0.7, 1.9];
 
 // Internal component to load FBX and GLB animation files
 function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
@@ -276,6 +311,10 @@ export function VRMAvatar({
   scale = [1, 1, 1],
   animations,
   enableBlinking = true,
+  enableBreathing = true,
+  enableHeadMovement = true,
+  enableEyeGaze = true,
+  enableHandGestures = true,
   ...props
 }: VRMAvatarProps) {
   const { setVrm, expressions, currentAnimation, animate, chatStatus } = useKhavee();
@@ -301,6 +340,13 @@ export function VRMAvatar({
   const nextBlinkTime = useRef(Date.now() + 2000 + Math.random() * 3000);
   const isBlinking = useRef(false);
   const blinkAnimationRef = useRef(0);
+
+  // Procedural animation time refs
+  const breathTimeRef = useRef(0);
+  const headTimeRef = useRef(0);
+  const gazeTimeRef = useRef(0);
+  const fingerTimeRef = useRef(0);
+  const gazeTargetRef = useRef<THREE.Object3D | null>(null);
 
 
   const parsed = useLoadVRM(src);

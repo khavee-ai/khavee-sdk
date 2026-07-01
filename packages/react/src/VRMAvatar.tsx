@@ -1009,18 +1009,24 @@ export function VRMAvatar({
       }
     }
 
-    // Eye gaze: drifting lookAt target (D-05)
+    // Eye gaze: drifting lookAt target (D-05), held steady on the user while speaking
     if (enableEyeGaze && gazeTargetRef.current && currentVrm.humanoid) {
       gazeTimeRef.current += delta;
-      const gazeX =
-        Math.sin(gazeTimeRef.current * 0.12) * 0.25 +
-        Math.sin(gazeTimeRef.current * 0.38) * 0.12;
-      const gazeY =
-        1.6 +
-        Math.sin(gazeTimeRef.current * 0.15) * 0.08 +
-        Math.sin(gazeTimeRef.current * 0.42) * 0.04;
 
-      gazeTargetRef.current.position.set(gazeX, gazeY, 2.0);
+      if (chatStatus === "speaking") {
+        // Hold direct eye contact with the user/camera while talking — no drift.
+        gazeTargetRef.current.position.set(0, 1.6, 2.0);
+      } else {
+        const gazeX =
+          Math.sin(gazeTimeRef.current * 0.12) * 0.25 +
+          Math.sin(gazeTimeRef.current * 0.38) * 0.12;
+        const gazeY =
+          1.6 +
+          Math.sin(gazeTimeRef.current * 0.15) * 0.08 +
+          Math.sin(gazeTimeRef.current * 0.42) * 0.04;
+
+        gazeTargetRef.current.position.set(gazeX, gazeY, 2.0);
+      }
       // vrm.lookAt.autoUpdate handles the rest in vrm.update()
     }
 

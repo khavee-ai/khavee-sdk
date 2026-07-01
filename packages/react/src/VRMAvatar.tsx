@@ -166,31 +166,6 @@ export interface AnimationConfig {
   [name: string]: string; // URL to FBX or GLB file! SDK handles loading & remapping
 }
 
-export interface VRMAvatarProps {
-  /** URL or path to the VRM model file (.vrm) */
-  src: string;
-  /** Position in 3D space [x, y, z]. Default: [0, 0, 0] */
-  position?: [number, number, number];
-  /** Rotation in radians [x, y, z]. Default: [0, Math.PI, 0] */
-  rotation?: [number, number, number];
-  /** Scale [x, y, z]. Default: [1, 1, 1] */
-  scale?: [number, number, number];
-  /** Optional animation configuration using URLs to FBX or GLB files */
-  animations?: AnimationConfig;
-  /** Enable natural blinking animations. Default: true */
-  enableBlinking?: boolean;
-  /** Enable subtle breathing motion (spine/chest oscillation). Default: true */
-  enableBreathing?: boolean;
-  /** Enable natural head micro-movement. Default: true */
-  enableHeadMovement?: boolean;
-  /** Enable drifting eye gaze behavior. Default: true */
-  enableEyeGaze?: boolean;
-  /** Enable subtle finger curl noise. Default: true */
-  enableHandGestures?: boolean;
-  /** Enable status-based micro-expressions (idle/listening/thinking). Default: true */
-  enableMicroExpressions?: boolean;
-}
-
 // ── Module-level scratch objects (avoid per-frame GC) ──
 const scratchX = new THREE.Vector3(1, 0, 0);
 const scratchY = new THREE.Vector3(0, 1, 0);
@@ -322,7 +297,6 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  *       position={[0, -1, 0]}
  *       scale={[1.5, 1.5, 1.5]}
  *       enableBlinking={true}
- *       enableTalkingAnimations={true}
  *     />
  *   );
  * }

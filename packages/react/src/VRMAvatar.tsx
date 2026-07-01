@@ -188,7 +188,8 @@ const armQuatZ = new THREE.Quaternion();
 interface ArmPoseOffset {
   sway: number; // rotation around Z (shoulder swing forward/back)
   lift: number; // rotation around X (shoulder raise/lower)
-  elbow: number; // rotation around X, one-directional (flexion only)
+  elbow: number; // flexion magnitude, one-directional — see ELBOW_Z_MIX below
+  // for why this is applied on a mix of X and Z rather than a single axis.
 }
 interface GesturePose {
   left: ArmPoseOffset;
@@ -197,26 +198,39 @@ interface GesturePose {
 const GESTURE_POSES: GesturePose[] = [
   { left: { sway: 0, lift: 0, elbow: 0 }, right: { sway: 0, lift: 0, elbow: 0 } }, // neutral
   {
-    left: { sway: 0.1, lift: 0.06, elbow: 0.18 },
-    right: { sway: -0.08, lift: 0.05, elbow: 0.14 },
+    left: { sway: 0.1, lift: 0.06, elbow: 0.3 },
+    right: { sway: -0.08, lift: 0.05, elbow: 0.24 },
   }, // raised slight
   {
-    left: { sway: 0.2, lift: -0.02, elbow: 0.06 },
-    right: { sway: -0.2, lift: -0.02, elbow: 0.06 },
+    left: { sway: 0.2, lift: -0.02, elbow: 0.12 },
+    right: { sway: -0.2, lift: -0.02, elbow: 0.12 },
   }, // open, arms spread
   {
-    left: { sway: 0.03, lift: 0, elbow: 0.06 },
-    right: { sway: -0.24, lift: 0.09, elbow: 0.3 },
+    left: { sway: 0.03, lift: 0, elbow: 0.1 },
+    right: { sway: -0.24, lift: 0.09, elbow: 0.5 },
   }, // small point (right)
   {
-    left: { sway: -0.24, lift: 0.09, elbow: 0.3 },
-    right: { sway: 0.03, lift: 0, elbow: 0.06 },
+    left: { sway: -0.24, lift: 0.09, elbow: 0.5 },
+    right: { sway: 0.03, lift: 0, elbow: 0.1 },
   }, // small point (left) — mirror of above
   {
-    left: { sway: 0.26, lift: 0.11, elbow: 0.22 },
-    right: { sway: -0.26, lift: 0.11, elbow: 0.22 },
+    left: { sway: 0.26, lift: 0.11, elbow: 0.38 },
+    right: { sway: -0.26, lift: 0.11, elbow: 0.38 },
   }, // emphatic, wide
 ];
+// Elbow flexion is applied as a mix of X and Z rotation rather than betting
+// on a single axis: normalized-bone axis conventions for a given VRM model
+// aren't verified from code alone, and a rotation on the wrong single axis
+// mostly just twists the forearm around its own length (barely visible)
+// instead of visibly hinging it. Mixing two axes makes a visible bend far
+// more likely regardless of which one is the model's "true" flexion axis.
+const ELBOW_Z_MIX = 0.55;
+// The elbow starts moving ELBOW_LAG_FRACTION of the way into the shoulder's
+// transition and catches up by the same deadline — natural gesture
+// follow-through (the hand/forearm trails the shoulder's lead) instead of
+// every joint moving in perfect synchronized lockstep, which reads as
+// mechanical no matter how correct the pose shapes themselves are.
+const ELBOW_LAG_FRACTION = 0.35;
 
 // ── Idle gaze-away (D-05) ──
 // Only while chatStatus is "ready" or "stopped" (both are idle-eligible) and
@@ -1131,22 +1145,30 @@ export function VRMAvatar({
       }
 
       if (currentVrm.humanoid && armSwayWeightRef.current > 0.001) {
-        const poseT = gesturePoseHoldingRef.current
+        const rawProgress = Math.min(
+          gesturePoseTimeRef.current / gesturePoseDurationRef.current,
+          1
+        );
+        const poseT = gesturePoseHoldingRef.current ? 1 : easeInOutCubic(rawProgress);
+        // Elbow follow-through: starts ELBOW_LAG_FRACTION into the shoulder's
+        // transition, then covers the remaining span — trails the shoulder's
+        // lead instead of moving in perfect lockstep with it.
+        const elbowProgress = gesturePoseHoldingRef.current
           ? 1
-          : easeInOutCubic(
-              Math.min(gesturePoseTimeRef.current / gesturePoseDurationRef.current, 1)
-            );
+          : Math.max(rawProgress - ELBOW_LAG_FRACTION, 0) / (1 - ELBOW_LAG_FRACTION);
+        const elbowT = easeInOutCubic(Math.min(elbowProgress, 1));
+
         const from = gesturePoseFromRef.current;
         const to = gesturePoseToRef.current;
         const weight = armSwayWeightRef.current;
 
-        const lerpOffset = (a: number, b: number) => (a + (b - a) * poseT) * weight;
-        const swayLeft = lerpOffset(from.left.sway, to.left.sway);
-        const swayRight = lerpOffset(from.right.sway, to.right.sway);
-        const liftLeft = lerpOffset(from.left.lift, to.left.lift);
-        const liftRight = lerpOffset(from.right.lift, to.right.lift);
-        const elbowLeft = lerpOffset(from.left.elbow, to.left.elbow);
-        const elbowRight = lerpOffset(from.right.elbow, to.right.elbow);
+        const lerpOffset = (a: number, b: number, t: number) => (a + (b - a) * t) * weight;
+        const swayLeft = lerpOffset(from.left.sway, to.left.sway, poseT);
+        const swayRight = lerpOffset(from.right.sway, to.right.sway, poseT);
+        const liftLeft = lerpOffset(from.left.lift, to.left.lift, poseT);
+        const liftRight = lerpOffset(from.right.lift, to.right.lift, poseT);
+        const elbowLeft = lerpOffset(from.left.elbow, to.left.elbow, elbowT);
+        const elbowRight = lerpOffset(from.right.elbow, to.right.elbow, elbowT);
 
         const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
         if (leftUpperArm) {
@@ -1162,13 +1184,15 @@ export function VRMAvatar({
         }
         const leftLowerArm = currentVrm.humanoid.getNormalizedBoneNode("leftLowerArm" as any);
         if (leftLowerArm) {
-          armQuatX.setFromAxisAngle(scratchX, elbowLeft);
-          leftLowerArm.quaternion.multiply(armQuatX);
+          armQuatX.setFromAxisAngle(scratchX, elbowLeft * (1 - ELBOW_Z_MIX));
+          armQuatZ.setFromAxisAngle(scratchZ, elbowLeft * ELBOW_Z_MIX);
+          leftLowerArm.quaternion.multiply(armQuatX).multiply(armQuatZ);
         }
         const rightLowerArm = currentVrm.humanoid.getNormalizedBoneNode("rightLowerArm" as any);
         if (rightLowerArm) {
-          armQuatX.setFromAxisAngle(scratchX, elbowRight);
-          rightLowerArm.quaternion.multiply(armQuatX);
+          armQuatX.setFromAxisAngle(scratchX, elbowRight * (1 - ELBOW_Z_MIX));
+          armQuatZ.setFromAxisAngle(scratchZ, elbowRight * ELBOW_Z_MIX);
+          rightLowerArm.quaternion.multiply(armQuatX).multiply(armQuatZ);
         }
       }
     }

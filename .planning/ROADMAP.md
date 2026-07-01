@@ -338,7 +338,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Avatar Animation Naturalness — Procedural Life Layer | 4/4 | Complete | 2026-07-01 |
-| 11. Bone-Masked Upper-Body Animation Layering | 0/TBD | Not started | - |
+| 11. Bone-Masked Upper-Body Animation Layering | 0/2 | Not started | - |
 
 ### Phase 11: Bone-Masked Upper-Body Animation Layering
 
@@ -346,8 +346,14 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 **Depends on**: Phase 10 (procedural life layer, chatStatus auto-mapping)
 **Scope boundary**: `packages/react/` only (`VRMAvatar.tsx` and any new animation-blending utility) — `src/app/`, `wordpress-plugin/` are NOT touched
 **Non-goals**: Re-authoring existing demo FBX clips, a full blend-tree/state-machine UI, Avatar Forcing (cross-attention with user signals)
-**Requirements**: TBD
-**Plans**: 0 plans
+**Requirements**: BONE-01, BONE-02, BONE-03, BONE-04, BONE-05 (planner-assigned, phase-local — no formal REQ IDs were defined for this phase; derived from CONTEXT.md D-01..D-06 + the three resolved RESEARCH open questions)
+**Plans**: 2 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 11 to break down)
+**Wave 1**
+
+- [ ] 11-01-PLAN.md — filterClipTracksByBoneSet utility + BASE_LOWER_BONES/UPPER_BONES bone-split constants (D-01/D-02); pure track-filtering sibling of remapMixamoAnimationToVrm (BONE-01)
+
+**Wave 2** *(blocked on Wave 1 — imports the utility)*
+
+- [ ] 11-02-PLAN.md — VRMAvatar.tsx integration: boneMaskedClips memo + always-on base-lower action + upper-layer 0.3s crossfade (idle-upper ↔ gesture) + status-driven-vs-custom provenance gate + Pitfall-2 setEffectiveWeight coordination + live human-verify checkpoint (BONE-02..BONE-05)

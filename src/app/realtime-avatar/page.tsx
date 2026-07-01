@@ -16,19 +16,19 @@ const openaiProvider = new OpenAIRealtimeProvider({
 // "idle" backs chatStatus === "ready"; "listening"/"thinking"/"speaking" map
 // 1:1 to their chatStatus values.
 //
-// "listening"/"thinking" intentionally reuse the calm idle pose rather than an
-// energetic talking/gesture clip — the procedural layer (nod during listening,
-// head-tilt + gaze-aversion during thinking) is what conveys those states. Using
-// an energetic gesture clip for "thinking" combined with those same procedural
-// effects looked like the torso bending / head spinning erratically.
-// "speaking"/"speaking2" are the only keys that intentionally use energetic
-// talking clips (matched via /speak|talk|gesture/i for variety on each pick).
+// All four map to the same calm idle pose. Discrete Mixamo gesture clips
+// (e.g. talking.fbx) swap between independently-authored poses that can
+// differ by 60-90 degrees at the shoulder/arm — even with crossfading, that
+// reads as an abrupt, robotic swing rather than natural motion. Instead,
+// "speaking" gets its expressiveness from a continuous, audio-reactive
+// procedural arm/shoulder sway (VRMAvatar.tsx) layered on top of this same
+// calm pose, scaled by the live volume from the realtime provider — the
+// motion is driven by voice instead of by swapping to a different clip.
 const animations = {
   idle: '/models/animations/Idle.fbx',
   listening: '/models/animations/Idle.fbx',
   thinking: '/models/animations/Idle.fbx',
-  speaking: '/models/animations/talking.fbx',
-  speaking2: '/models/animations/talking1.fbx',
+  speaking: '/models/animations/Idle.fbx',
 };
 
 function Avatar() {

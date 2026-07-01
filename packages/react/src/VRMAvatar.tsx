@@ -169,9 +169,13 @@ export interface AnimationConfig {
 const scratchX = new THREE.Vector3(1, 0, 0);
 const scratchY = new THREE.Vector3(0, 1, 0);
 
+const scratchZ = new THREE.Vector3(0, 0, 1);
+
 const breathQuat = new THREE.Quaternion();
 const headQuatX = new THREE.Quaternion();
 const headQuatY = new THREE.Quaternion();
+const armQuatX = new THREE.Quaternion();
+const armQuatZ = new THREE.Quaternion();
 
 // ── Idle gaze-away (D-05) ──
 // Only while chatStatus is "ready" or "stopped" (both are idle-eligible) and
@@ -444,6 +448,7 @@ export function VRMAvatar({
   // Procedural animation time refs
   const breathTimeRef = useRef(0);
   const headTimeRef = useRef(0);
+  const armSwayTimeRef = useRef(0);
 
   // Idle gaze-away state (D-05)
   const idleTimeRef = useRef(0);
@@ -998,6 +1003,42 @@ export function VRMAvatar({
       if (head) {
         head.quaternion.multiply(headQuatX).multiply(headQuatY);
       }
+    }
+
+    // Speaking arm/shoulder sway: audio-reactive, continuous. The point of
+    // this layer is to make "talking" read as driven by voice rather than as
+    // a scripted full-body gesture clip swap — the same problem breathing and
+    // head-movement already solve for the idle case, just applied to the arms
+    // during speech. Runs only while speaking; the phase resets to 0 on exit
+    // so each speaking turn starts from a clean, zero-amplitude point (no pop
+    // on entry/exit, since sin(0) = 0).
+    if (currentVrm.humanoid && chatStatus === "speaking") {
+      armSwayTimeRef.current += delta;
+      const swayLeft =
+        (Math.sin(armSwayTimeRef.current * 0.9) * 0.05 +
+          Math.sin(armSwayTimeRef.current * 1.7) * 0.02) *
+        volumeFactor;
+      const swayRight =
+        (Math.sin(armSwayTimeRef.current * 0.9 + Math.PI * 0.6) * 0.05 +
+          Math.sin(armSwayTimeRef.current * 1.7 + Math.PI * 0.3) * 0.02) *
+        volumeFactor;
+      const liftLeft = Math.sin(armSwayTimeRef.current * 0.5) * 0.03 * volumeFactor;
+      const liftRight = Math.sin(armSwayTimeRef.current * 0.5 + Math.PI * 0.4) * 0.03 * volumeFactor;
+
+      const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode("leftUpperArm" as any);
+      if (leftUpperArm) {
+        armQuatZ.setFromAxisAngle(scratchZ, swayLeft);
+        armQuatX.setFromAxisAngle(scratchX, liftLeft);
+        leftUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
+      }
+      const rightUpperArm = currentVrm.humanoid.getNormalizedBoneNode("rightUpperArm" as any);
+      if (rightUpperArm) {
+        armQuatZ.setFromAxisAngle(scratchZ, -swayRight);
+        armQuatX.setFromAxisAngle(scratchX, liftRight);
+        rightUpperArm.quaternion.multiply(armQuatZ).multiply(armQuatX);
+      }
+    } else {
+      armSwayTimeRef.current = 0;
     }
 
     // ── Wave-4: Nodding (listening state) ──

@@ -457,6 +457,13 @@ export function VRMAvatar({
   const armSwayWeightStartRef = useRef(0);
   const armSwayWeightTargetRef = useRef(0);
   const armSwayWeightTimeRef = useRef(0);
+  /** Occasional emphasis burst — a brief, larger sway pulse on top of the
+   *  steady sway, at a random interval while speaking. Same scheduler shape
+   *  as the listening-state nod (nextNodTimeRef/nodActiveRef/etc.) below. */
+  const armBurstActiveRef = useRef(false);
+  const armBurstProgressRef = useRef(0);
+  const armBurstDurationRef = useRef(1.0);
+  const nextArmBurstTimeRef = useRef(5);
 
   // Idle gaze-away state (D-05)
   const idleTimeRef = useRef(0);
@@ -1052,6 +1059,33 @@ export function VRMAvatar({
         armSwayWeightStartRef.current +
         (armSwayWeightTargetRef.current - armSwayWeightStartRef.current) * weightT;
 
+      // Emphasis burst scheduler: only ticks/triggers while actually
+      // speaking (mirrors the listening-nod scheduler's reset-while-inactive
+      // pattern), but a burst already in flight is allowed to finish playing
+      // out — its own smooth sin(progress * PI) shape means it can't pop,
+      // and the overall armSwayWeightRef fade-out (above) already handles
+      // bringing everything smoothly to zero if speaking ends mid-burst.
+      let armBurstBoost = 0;
+      if (chatStatus === "speaking") {
+        nextArmBurstTimeRef.current -= delta;
+        if (!armBurstActiveRef.current && nextArmBurstTimeRef.current <= 0) {
+          armBurstActiveRef.current = true;
+          armBurstProgressRef.current = 0;
+          armBurstDurationRef.current = 0.8 + Math.random() * 0.6;
+          nextArmBurstTimeRef.current = 4 + Math.random() * 5;
+        }
+      } else if (!armBurstActiveRef.current) {
+        nextArmBurstTimeRef.current = 4 + Math.random() * 5;
+      }
+      if (armBurstActiveRef.current) {
+        armBurstProgressRef.current += delta / armBurstDurationRef.current;
+        if (armBurstProgressRef.current >= 1) {
+          armBurstProgressRef.current = 1;
+          armBurstActiveRef.current = false;
+        }
+        armBurstBoost = Math.sin(armBurstProgressRef.current * Math.PI) * 0.8;
+      }
+
       if (currentVrm.humanoid && armSwayWeightRef.current > 0.001) {
         armSwayTimeRef.current += delta;
         const armIntensity =
@@ -1061,7 +1095,9 @@ export function VRMAvatar({
               Math.sin(armSwayTimeRef.current * 0.13 + 1.7) * 0.15,
             0.3,
             1.05
-          ) * armSwayWeightRef.current;
+          ) *
+          (1 + armBurstBoost) *
+          armSwayWeightRef.current;
 
         const swayLeft =
           (Math.sin(armSwayTimeRef.current * 0.9) * 0.14 +

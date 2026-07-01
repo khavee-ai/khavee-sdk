@@ -175,14 +175,17 @@ const headQuatY = new THREE.Quaternion();
 
 // ── Idle gaze-away (D-05) ──
 // Only while chatStatus is "ready" or "stopped" (both are idle-eligible) and
-// continuously idle for this long does the avatar glance subtly away, then
-// smoothly return. lookAt.autoUpdate is only enabled for the duration of the
-// glance itself — the rest of the time it stays off, so the eyes stay frozen
-// at bind pose (see the lifecycle effect) rather than perpetually re-chasing
-// breathing/head-jitter.
-const IDLE_GAZE_DELAY_SECONDS = 6;
+// continuously idle for this long does the avatar glance subtly away. The
+// glance-out is a smooth ease (see easeInOutCubic below); the glance BACK is
+// a deliberate instant snap, like a person's attention quickly refocusing —
+// slow curious drift away, sharp return to eye contact reads more natural
+// than a slow glide back both ways. lookAt.autoUpdate is only enabled while
+// the glance-out is actually easing — the rest of the time it stays off, so
+// the eyes stay frozen at bind pose (see the lifecycle effect) rather than
+// perpetually re-chasing breathing/head-jitter.
+const IDLE_GAZE_DELAY_SECONDS = 10;
 const GAZE_EASE_SECONDS = 1.1;
-const GAZE_HOLD_SECONDS = 1.4;
+const GAZE_HOLD_SECONDS = 3.9; // ease-out + hold ≈ 5s total time spent looking away
 const GAZE_CENTER = { x: 0, y: 1.6, z: 2.0 };
 
 // Ease-in-out (slow start, fast middle, slow finish) rather than exponential
@@ -1113,6 +1116,17 @@ export function VRMAvatar({
         if (gazeDwellTimeRef.current >= GAZE_EASE_SECONDS + GAZE_HOLD_SECONDS) {
           gazePhaseRef.current = "waiting";
           idleTimeRef.current = 0;
+          // Snap back instantly rather than easing (see comment above the
+          // constants). As with the hard-reset branch below, disabling
+          // autoUpdate alone would only freeze the eyes at their current
+          // off-center rotation — reset() is what actually re-centers them.
+          gazeAwayAmountRef.current = 0;
+          gazeLegStartRef.current = 0;
+          gazeLegTargetRef.current = 0;
+          gazeLegTimeRef.current = GAZE_EASE_SECONDS;
+          gazeObj.position.set(GAZE_CENTER.x, GAZE_CENTER.y, GAZE_CENTER.z);
+          currentVrm.lookAt.autoUpdate = false;
+          currentVrm.lookAt.reset();
         }
       }
 

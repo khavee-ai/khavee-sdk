@@ -365,7 +365,7 @@ export function VRMAvatar({
   enableMicroExpressions = true,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, animate, chatStatus } = useKhavee();
+  const { setVrm, expressions, currentAnimation, animate, chatStatus, realtimeProvider } = useKhavee();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
@@ -401,6 +401,24 @@ export function VRMAvatar({
   const microExprTimeRef = useRef(0);
   const nextExprChangeRef = useRef(3 + Math.random() * 5);
   const currentExprTargetsRef = useRef<Record<string, number>>({});
+
+  // ── Wave-4: Nodding ──
+  const nodActiveRef = useRef(false);
+  const nodTypeRef = useRef(0);          // 0=SHORT, 1=LONG, 2=LONG_P
+  const nodProgressRef = useRef(0);      // 0→1 over nodDurationRef
+  const nodDurationRef = useRef(0.3);    // seconds
+  const nextNodTimeRef = useRef(2.5);    // seconds until next nod
+
+  // ── Wave-4: Thinking pose ──
+  const thinkingTiltRef = useRef(0);           // 0 (neutral) → 1 (full tilt), lerped
+  const thinkingTiltDirectionRef = useRef(1);  // +1 or -1, randomised per thinking turn
+
+  // ── Wave-4: Gaze aversion ──
+  const aversionPhaseRef = useRef<0 | 1 | 2 | 3>(0); // 0=idle, 1=averting, 2=hold, 3=returning
+  const aversionProgressRef = useRef(0);
+  const aversionHoldTimerRef = useRef(0);
+  const aversionTimerRef = useRef(4.5);
+  const aversionTargetXRef = useRef(0);
 
 
   const parsed = useLoadVRM(src);

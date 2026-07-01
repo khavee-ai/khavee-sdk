@@ -53,22 +53,21 @@ function Avatar() {
         chatStatus: <b>{chatStatus}</b>
       </div>
       <Canvas
-        camera={{ position: [0, 1.4, 3], fov: 35 }}
+        camera={{ position: [0, 1.4, 3], fov: 20 }}
         dpr={[1, 2]}
-        shadows
         gl={{ antialias: true }}
       >
-        {/* Soft ambient fill so unlit areas never go pure black */}
-        <hemisphereLight args={['#dceeff', '#403830', 0.55]} />
-        {/* Key light — main directional light, slightly warm, from front-upper */}
-        <directionalLight position={[2, 4, 3]} intensity={1.8} color="#fff4e6" />
-        {/* Fill light — softer, opposite side, cooler, to reduce harsh shadow contrast */}
-        <directionalLight position={[-3, 2, 2]} intensity={0.5} color="#cfe0ff" />
-        {/* Rim/back light — separates the avatar's silhouette from the dark background */}
-        <directionalLight position={[0, 3, -3]} intensity={0.9} color="#e6f0ff" />
-        {/* Realistic ambient reflections on VRM materials */}
-        <Environment preset="city" environmentIntensity={0.4} />
-        <VRMAvatar src="/models/male.vrm" animations={animations} />
+        {/* VRM avatars use MToon toon-shading, not PBR — strong multi-directional
+            rigs and environment reflections read as harsh/plasticky on that
+            material. Soft look = bright even ambient doing most of the work,
+            plus one gentle light for just enough shape definition. */}
+        <hemisphereLight args={['#fff6ea', '#3a3630', 1.1]} />
+        <ambientLight intensity={0.35} color="#fff2e0" />
+        <directionalLight position={[1, 3, 3]} intensity={0.45} color="#fff4e6" />
+        {/* Very low-intensity ambient environment for a touch of soft reflection,
+            without introducing harsh specular highlights. */}
+        <Environment preset="apartment" environmentIntensity={0.12} />
+        <VRMAvatar src="/models/female/blue-female.vrm" position={[0,1,0]} animations={animations} />
         <OrbitControls target={[0, 1.2, 0]} />
       </Canvas>
     </div>

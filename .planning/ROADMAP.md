@@ -311,7 +311,12 @@ Plans:
   5. When `chatStatus` changes (idle / listening / thinking / speaking), `VRMAvatar` automatically switches to an animation named after that status if it exists in the `animations` prop (e.g. `{idle:..., listening:..., thinking:..., speaking:...}`), with a smooth crossfade — developer opts out by not providing those keys
   6. All procedural layers (breathing, head movement, gaze, micro-expressions) are individually togglable via props with sensible defaults, and each layer works additively on top of any playing FBX animation without fighting it
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — chatStatus→animation auto-mapping + speaking-variety random picker
+- [ ] 10-02-PLAN.md — Procedural life layer: breathing, head movement, eye gaze (lookAt), finger curl noise
+- [ ] 10-03-PLAN.md — Micro-expression scheduler + props/JSDoc finalization + barrel export check
 
 ## Progress
 

@@ -138,6 +138,12 @@ export interface VRMAvatarProps {
   enableEyeGaze?: boolean;
   /** Enable status-based micro-expressions (idle/listening/thinking). Default: true */
   enableMicroExpressions?: boolean;
+  /** Enable built-in keyword-heuristic conversational emotion detection (D-14),
+   *  which drives the "happy"/"sad" expression presets automatically. Set to
+   *  false if you're driving those same expressions yourself (e.g. via a
+   *  RealtimeTool like createEmotionTool from @khaveeai/core) — otherwise the
+   *  two would fight over the same expression values every frame. Default: true */
+  enableEmotionDetection?: boolean;
 }
 
 /**
@@ -471,6 +477,7 @@ export function VRMAvatar({
   enableHeadMovement = true,
   enableEyeGaze = true,
   enableMicroExpressions = true,
+  enableEmotionDetection = true,
   ...props
 }: VRMAvatarProps) {
   // D-13: fall back to the SDK's bundled default set when no `animations`
@@ -884,6 +891,11 @@ export function VRMAvatar({
       }
 
       // D-14: re-evaluate conversational emotion on each new speaking turn.
+      // Gated on enableEmotionDetection — when the consumer is driving
+      // "happy"/"sad" themselves (e.g. a RealtimeTool that understands tone
+      // regardless of language, unlike this keyword heuristic), this must
+      // stay off or the two would fight over the same expression values.
+      //
       // Checks both the last user message and the last assistant message —
       // a well-behaved AI stays polite even while the user is hostile, so
       // "the user is fighting with it" wouldn't show up if only the
@@ -892,15 +904,17 @@ export function VRMAvatar({
       // important signal to surface. No match on either → leave whatever
       // emotion was already active (an on-topic reply mid-argument
       // shouldn't reset to neutral early; the decay timer below owns that).
-      const lastUser = [...msgs].reverse().find((m) => m.role === "user");
-      const emotionText = `${lastUser?.text ?? ""} ${lastAI?.text ?? ""}`;
-      if (EMOTION_SAD_PATTERN.test(emotionText)) {
-        emotionRef.current = "sad";
-      } else if (EMOTION_HAPPY_PATTERN.test(emotionText)) {
-        emotionRef.current = "happy";
+      if (enableEmotionDetection) {
+        const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+        const emotionText = `${lastUser?.text ?? ""} ${lastAI?.text ?? ""}`;
+        if (EMOTION_SAD_PATTERN.test(emotionText)) {
+          emotionRef.current = "sad";
+        } else if (EMOTION_HAPPY_PATTERN.test(emotionText)) {
+          emotionRef.current = "happy";
+        }
+        // Actively speaking (or about to) — not counting down to neutral.
+        emotionDecayRemainingRef.current = null;
       }
-      // Actively speaking (or about to) — not counting down to neutral.
-      emotionDecayRemainingRef.current = null;
     } else {
       // Clear the remembered speaking variant when leaving the speaking state.
       currentSpeakingAnimRef.current = null;
@@ -908,7 +922,11 @@ export function VRMAvatar({
       // rather than resetting immediately — the detected emotion should
       // visibly linger for a bit rather than snapping back to neutral the
       // instant a turn ends.
-      if (emotionRef.current !== "neutral" && emotionDecayRemainingRef.current === null) {
+      if (
+        enableEmotionDetection &&
+        emotionRef.current !== "neutral" &&
+        emotionDecayRemainingRef.current === null
+      ) {
         emotionDecayRemainingRef.current = EMOTION_DECAY_SECONDS;
       }
       // D-01: 'idle' is the animation key convention for chatStatus === 'ready'
@@ -1401,15 +1419,22 @@ export function VRMAvatar({
     // never a hard snap, consistent with the rest of this file's animation
     // philosophy (see D-05/D-11/D-12's extensive prior history of exactly
     // this kind of pop being the recurring bug).
-    if (emotionDecayRemainingRef.current !== null) {
-      emotionDecayRemainingRef.current -= delta;
-      if (emotionDecayRemainingRef.current <= 0) {
-        emotionRef.current = "neutral";
-        emotionDecayRemainingRef.current = null;
+    //
+    // Gated on enableEmotionDetection: when off, "happy"/"sad" are left
+    // entirely to the "Apply expressions from the hook" block above, so an
+    // externally-driven source (e.g. a RealtimeTool via setExpression) isn't
+    // fought over every frame by this heuristic.
+    if (enableEmotionDetection) {
+      if (emotionDecayRemainingRef.current !== null) {
+        emotionDecayRemainingRef.current -= delta;
+        if (emotionDecayRemainingRef.current <= 0) {
+          emotionRef.current = "neutral";
+          emotionDecayRemainingRef.current = null;
+        }
       }
+      lerpExpression("happy", emotionRef.current === "happy" ? 1 : 0, delta * 4);
+      lerpExpression("sad", emotionRef.current === "sad" ? 1 : 0, delta * 4);
     }
-    lerpExpression("happy", emotionRef.current === "happy" ? 1 : 0, delta * 4);
-    lerpExpression("sad", emotionRef.current === "sad" ? 1 : 0, delta * 4);
 
     // Blinking system
     if (enableBlinking) {

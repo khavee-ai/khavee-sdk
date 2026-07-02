@@ -1,16 +1,60 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Environment, OrbitControls } from '@react-three/drei';
 import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
-import { KhaveeProvider, VRMAvatar, useRealtime } from '@khaveeai/react';
+import { KhaveeProvider, VRMAvatar, useRealtime, useKhavee } from '@khaveeai/react';
+import { createEmotionTool, type ConversationEmotion } from '@khaveeai/core';
+
+// The provider is instantiated at module scope (outside React), but the
+// emotion tool's `execute` needs to reach `setMultipleExpressions`, which
+// only exists inside the KhaveeProvider tree via useKhavee(). This ref is
+// the bridge: the tool always calls whatever's in `.current`, and the
+// EmotionBridge component below (mounted inside the provider) keeps it
+// pointed at the live setter. The tool itself must still be passed into
+// `tools` here at construction time — that's what gets its schema sent to
+// OpenAI's session; registering it later via registerFunction() would only
+// wire up local dispatch, not tell the model the tool exists at all.
+const emotionBridge: { current: (emotion: ConversationEmotion) => void } = {
+  current: () => {},
+};
+
+const emotionTool = createEmotionTool({
+  onEmotion: (emotion) => emotionBridge.current(emotion),
+});
 
 const openaiProvider = new OpenAIRealtimeProvider({
   useProxy: true,
   proxyEndpoint: '/api/negotiate',
   voice: 'shimmer',
-  instructions: 'You are a helpful AI assistant. Be conversational and friendly.',
+  instructions:
+    'You are a helpful AI assistant. Be conversational and friendly. ' +
+    'Whenever you notice the emotional tone of the conversation shift — the user seems happy or pleased, ' +
+    'or the user seems upset, hostile, or is arguing with you — call the report_emotion tool with your read of it. ' +
+    'Call it again with "neutral" once the tone returns to normal.',
+  tools: [emotionTool],
 });
+
+// Mounted inside KhaveeProvider so it can reach setMultipleExpressions and
+// keep the module-scope emotionBridge pointed at the current one.
+function EmotionBridge() {
+  const { setMultipleExpressions } = useKhavee();
+
+  useEffect(() => {
+    emotionBridge.current = (emotion) => {
+      setMultipleExpressions({
+        happy: emotion === 'happy' ? 1 : 0,
+        sad: emotion === 'sad' ? 1 : 0,
+      });
+    };
+    return () => {
+      emotionBridge.current = () => {};
+    };
+  }, [setMultipleExpressions]);
+
+  return null;
+}
 
 // Animation keys follow the chatStatus auto-mapping convention (Phase 11):
 // "idle" backs chatStatus === "ready"; "listening"/"thinking"/"speaking" map
@@ -26,7 +70,7 @@ const openaiProvider = new OpenAIRealtimeProvider({
 const animations = {
   idle: '/models/animations/Idle.fbx',
   listening: '/models/animations/Idle.fbx',
-  thinking: '/models/animations/Idle.fbx',
+  thinking: '/models/animations/talking1.fbx',
   speaking: '/models/animations/talking.fbx',
 };
 
@@ -66,7 +110,12 @@ function Avatar() {
         {/* Very low-intensity ambient environment for a touch of soft reflection,
             without introducing harsh specular highlights. */}
         <Environment preset="apartment" environmentIntensity={0.12} />
-        <VRMAvatar src="/models/female/blue-female.vrm" position={[0,1,0]} animations={animations} />
+        <VRMAvatar
+          src="/models/female/blue-female.vrm"
+          position={[0,1,0]}
+          animations={animations}
+          enableEmotionDetection={false}
+        />
         <OrbitControls target={[0, 1.2, 0]} />
       </Canvas>
     </div>
@@ -81,6 +130,7 @@ function RealtimeChat() {
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">VRM Avatar — OpenAI Realtime Voice</h1>
 
+        <EmotionBridge />
         <Avatar />
 
         <div className="flex gap-4 my-6">

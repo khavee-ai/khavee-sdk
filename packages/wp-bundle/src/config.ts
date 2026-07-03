@@ -150,6 +150,12 @@ export interface KhaveeAvatarConfig {
   chatShow?: boolean;
   /** Chat panel placement relative to the avatar canvas. Default "beside". */
   chatPlacement?: "beside" | "below";
+  /**
+   * When true, render the site-wide floating launcher/panel layout instead
+   * of the inline embed layout. containerWidth/Height/fullWidth are ignored
+   * in this mode — the panel has fixed 360x520 sizing.
+   */
+  floating?: boolean;
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────

@@ -41,6 +41,12 @@
  * (React's CSS-property stringification prevents CSS injection — no innerHTML
  * path). bgImageUrl originates from wp_get_attachment_url (int-cast attachment
  * ID in PHP — no free-form URL).
+ *
+ * Quick task 260704-77n (FLOAT-01): when config.floating is true, AppRoot
+ * renders FloatingWidget (./floating/FloatingWidget) instead of the inline
+ * embed layout — containerStyle is not applied in that branch. AvatarScene
+ * is exported so FloatingWidget can reuse it inside its own avatar area,
+ * still nested inside the same KhaveeProvider constructed below.
  */
 import { useState, type CSSProperties } from "react";
 import type { Root } from "react-dom/client";
@@ -53,6 +59,7 @@ import { ChatBox } from "./ui/ChatBox";
 import { ControlBar } from "./ui/ControlBar";
 import { resolveSceneDefaults, IDLE_ANIMATION_URL } from "./config";
 import type { KhaveeAvatarConfig } from "./config";
+import { FloatingWidget } from "./floating/FloatingWidget";
 
 // Re-export so index.ts:17 `import type { KhaveeAvatarConfig } from "./mount"` continues to work.
 export type { KhaveeAvatarConfig } from "./config";
@@ -69,7 +76,7 @@ export type { KhaveeAvatarConfig } from "./config";
 // Lip-sync (STUDIO-04): no new code here. VRMAvatar inside KhaveeProvider means
 // useRealtime auto-wires onAudioData → RealtimeAudioAnalyzer →
 // setMultipleExpressions. useRealtime.ts and VRMAvatar.tsx are UNCHANGED.
-function AvatarScene({ config }: { config: KhaveeAvatarConfig }) {
+export function AvatarScene({ config }: { config: KhaveeAvatarConfig }) {
   const scene = resolveSceneDefaults(config);
   const avatarUrl = config.avatarUrl ?? "";
   // avatarScale is a uniform multiplier; VRMAvatar accepts an [x, y, z] tuple.
@@ -124,6 +131,14 @@ function AppRoot({
   const placement = config.chatPlacement ?? "beside";
   const chatEnabled = config.chatShow === true;
   const [isChatOpen, setIsChatOpen] = useState(chatEnabled);
+
+  // Site-wide floating launcher/panel layout (FLOAT-01) replaces the inline
+  // embed layout entirely — containerStyle (width/height/background) is
+  // deliberately NOT applied here; FloatingWidget owns its own fixed 360x520
+  // panel sizing via CSS (styles.css khaveeai-floating- rules).
+  if (config.floating === true) {
+    return <FloatingWidget config={config} />;
+  }
 
   return (
     <div className="khaveeai-root" style={containerStyle}>

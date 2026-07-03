@@ -10,6 +10,7 @@ namespace Khavee\Plugin;
 
 use Khavee\Plugin\Admin\SettingsPage;
 use Khavee\Plugin\ConfigSource\WpOptionsConfigSource;
+use Khavee\Plugin\ConfigSource\PlatformConfigSource;
 use Khavee\Plugin\TokenProvider\OpenAiDirectTokenProvider;
 use Khavee\Plugin\RateLimit\RateLimiter;
 use Khavee\Plugin\Rest\SessionController;
@@ -57,7 +58,15 @@ final class Plugin {
 		);
 		$update_checker->getVcsApi()->enableReleaseAssets();
 
-		$config_source  = new WpOptionsConfigSource();
+		// Quick-260703-slv: PlatformConfigSource wraps WpOptionsConfigSource
+		// so a configured Khavee Platform API key overlays mapped fields
+		// (voice, instructions, avatar_url, light_intensity, background)
+		// on top of the WP-admin config — "platform always wins" when a
+		// key is set, with a silent fallback to the wrapped source on any
+		// failure. This is the ONLY composition-root change; SessionController/
+		// AvatarRenderer/AvatarBlock/SettingsPage all keep depending on
+		// ConfigSourceInterface and need no edits.
+		$config_source  = new PlatformConfigSource( new WpOptionsConfigSource() );
 		$token_provider = new OpenAiDirectTokenProvider();
 		$rate_limiter   = new RateLimiter();
 

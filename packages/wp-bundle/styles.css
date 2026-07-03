@@ -34,10 +34,11 @@
   background: rgba(30, 30, 30, 0.55);
 }
 
-/* Purple palette (matches .khaveeai-chat__send / user bubble gradient —
+/* Purple palette (matches .khaveeai-chat__send / user bubble —
    restyled 2026-07-03 from the earlier blue #2271b1 to stay consistent with
-   the pixel-matched ChatBox palette). Pill shape (border-radius:999px) to
-   match khavee-app's rounded HeroUI buttons instead of the old sharp 4px. */
+   the pixel-matched ChatBox palette; flattened to solid 2026-07-04, no
+   gradient/shadow anywhere in this file). Pill shape (border-radius:999px)
+   to match khavee-app's rounded HeroUI buttons instead of the old sharp 4px. */
 .khaveeai-cta-button {
   font-family: inherit;
   font-size: 16px;
@@ -47,13 +48,13 @@
   padding: 10px 24px;
   border: none;
   border-radius: 999px;
-  background: linear-gradient(to bottom right, #5a16eb, #9880ff);
+  background: #6929ff;
   color: #ffffff;
   cursor: pointer;
 }
 
 .khaveeai-cta-button:hover:not(:disabled) {
-  background: linear-gradient(to bottom right, #4a10c4, #8770e8);
+  background: #5a16eb;
 }
 
 .khaveeai-cta-button:disabled {
@@ -62,7 +63,7 @@
 }
 
 .khaveeai-cta-button--retry {
-  background: linear-gradient(to bottom right, #5a16eb, #9880ff);
+  background: #6929ff;
   margin-left: 8px;
 }
 
@@ -239,10 +240,10 @@
   max-width: 80%;
 }
 
-/* User: right-aligned, violet gradient, tail bottom-right (6px corner) */
+/* User: right-aligned, solid purple, tail bottom-right (6px corner) */
 .khaveeai-chat__bubble--user {
   align-self: flex-end;
-  background: linear-gradient(to bottom right, #5a16eb, #9880ff);
+  background: #6929ff;
   color: #ffffff;
   border-radius: 24px 24px 6px 24px;
 }

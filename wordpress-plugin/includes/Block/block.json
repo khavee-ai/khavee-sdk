@@ -67,6 +67,10 @@
 			"type": "string",
 			"default": ""
 		},
+		"cameraRotationY": {
+			"type": "number",
+			"default": 0
+		},
 		"chatShow": {
 			"type": "boolean",
 			"default": false
@@ -76,5 +80,6 @@
 			"default": ""
 		}
 	},
-	"editorScript": ["file:../../assets/editor.js", "khaveeai-preview"]
+	"editorScript": ["file:../../assets/editor.js", "khaveeai-preview"],
+	"editorStyle": "khaveeai-preview-style"
 }

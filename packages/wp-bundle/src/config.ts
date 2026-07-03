@@ -14,6 +14,29 @@
  * (tighter framing consistent with the preset vectors).
  */
 
+// ── Idle animation asset ──────────────────────────────────────────────────────
+
+/**
+ * Absolute URL of the bundled idle animation (build/animations/idle.fbx),
+ * resolved from the currently-executing <script> tag's own src rather than
+ * a hardcoded/PHP-injected path — portable across install paths/domains
+ * with zero PHP wiring, matching how the SAME bundle already self-locates
+ * relative to whichever plugins/ directory it was loaded from.
+ *
+ * `document.currentScript` is only valid synchronously during a script's
+ * OWN initial evaluation, so this is captured once at module-init time
+ * (this runs as part of the single esbuild IIFE's top-level pass, at the
+ * same moment for every module in the bundle — safe to capture here).
+ *
+ * Only VRMAvatar (MToon/VRM) takes an `animations` prop; GLBAvatar uses
+ * animations embedded in the GLB file itself and needs no external URL
+ * (see GLBAvatar.tsx's own docs).
+ */
+export const IDLE_ANIMATION_URL: string | undefined =
+  typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
+    ? new URL("animations/idle.fbx", document.currentScript.src).href
+    : undefined;
+
 // ── Camera presets ────────────────────────────────────────────────────────────
 
 /**
@@ -120,10 +143,40 @@ export interface KhaveeAvatarConfig {
   avatarOffsetY?: number;
   /** Camera preset key. Default "front". */
   cameraPreset?: CameraPreset;
+  /** Horizontal camera orbit, in degrees, applied on top of the preset's
+   * base position. 0 = the preset's own angle, positive = orbit right. */
+  cameraRotationY?: number;
   /** When true, display the chat text panel alongside the avatar. */
   chatShow?: boolean;
   /** Chat panel placement relative to the avatar canvas. Default "beside". */
   chatPlacement?: "beside" | "below";
+}
+
+// ── Camera orbit helper ───────────────────────────────────────────────────────
+
+/**
+ * Rotates `position` around `target` on the Y axis by `degrees`, preserving
+ * the original height and radius — used by the "Camera rotation" slider
+ * (a UI dragger, not mouse-drag orbiting on the canvas — Gutenberg's own
+ * block-selection click-capture layer intercepts a plain single-gesture
+ * canvas drag before OrbitControls ever sees it, so a dedicated slider is
+ * the reliable control surface here).
+ */
+function orbitAroundTarget(
+  position: [number, number, number],
+  target: [number, number, number],
+  degrees: number
+): [number, number, number] {
+  const rad = (degrees * Math.PI) / 180;
+  const dx = position[0] - target[0];
+  const dz = position[2] - target[2];
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return [
+    target[0] + dx * cos + dz * sin,
+    position[1],
+    target[2] - dx * sin + dz * cos,
+  ];
 }
 
 // ── Scene default resolver ────────────────────────────────────────────────────
@@ -143,15 +196,28 @@ export interface KhaveeAvatarConfig {
  * @returns Resolved scene values ready to pass to Canvas / VRMAvatar props.
  */
 export function resolveSceneDefaults(c: KhaveeAvatarConfig) {
-  const preset = c.cameraPreset ?? "front";
+  // `||` (not `??`): editor.js's camera-preset SelectControl uses "" (not
+  // undefined) for its "(using global default)" option, and "" isn't a key
+  // in CAMERA_PRESETS — `??` wouldn't catch it, causing every block with an
+  // unset preset (i.e. every block on first insert) to crash here (fix for
+  // "preview never updates" bug, debugged 2026-07-02).
+  const preset = (c.cameraPreset || "front") as CameraPreset;
+  const basePosition = CAMERA_PRESETS[preset].position;
+  const cameraTarget = CAMERA_PRESETS[preset].target;
+  const rotationDeg = c.cameraRotationY ?? 0;
+  const cameraPosition =
+    rotationDeg === 0
+      ? basePosition
+      : orbitAroundTarget(basePosition, cameraTarget, rotationDeg);
   return {
     lightIntensity: c.lightIntensity ?? LIGHT_INTENSITY.default,
     avatarScale: c.avatarScale ?? 1.0,
     avatarOffsetX: c.avatarOffsetX ?? 0.0,
     avatarOffsetY: c.avatarOffsetY ?? 0.0,
     cameraPreset: preset,
-    cameraPosition: CAMERA_PRESETS[preset].position,
-    cameraTarget: CAMERA_PRESETS[preset].target,
+    cameraRotationY: rotationDeg,
+    cameraPosition,
+    cameraTarget,
     /** fov=20 matches khavee-app PreviewModel.tsx:61 (consistent with preset vectors). */
     cameraFov: 20,
     /** Ambient intensity — matches Phase-8 mount.tsx:59 hardcoded value. */

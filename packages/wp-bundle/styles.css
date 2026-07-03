@@ -34,18 +34,26 @@
   background: rgba(30, 30, 30, 0.55);
 }
 
+/* Purple palette (matches .khaveeai-chat__send / user bubble gradient —
+   restyled 2026-07-03 from the earlier blue #2271b1 to stay consistent with
+   the pixel-matched ChatBox palette). Pill shape (border-radius:999px) to
+   match khavee-app's rounded HeroUI buttons instead of the old sharp 4px. */
 .khaveeai-cta-button {
   font-family: inherit;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
   min-height: 44px;
-  padding: 8px 16px;
+  padding: 10px 24px;
   border: none;
-  border-radius: 4px;
-  background: #2271b1;
+  border-radius: 999px;
+  background: linear-gradient(to bottom right, #5a16eb, #9880ff);
   color: #ffffff;
   cursor: pointer;
+}
+
+.khaveeai-cta-button:hover:not(:disabled) {
+  background: linear-gradient(to bottom right, #4a10c4, #8770e8);
 }
 
 .khaveeai-cta-button:disabled {
@@ -54,8 +62,65 @@
 }
 
 .khaveeai-cta-button--retry {
-  background: #2271b1;
+  background: linear-gradient(to bottom right, #5a16eb, #9880ff);
   margin-left: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * ControlBar (mic mute/unmute + chat show/hide) — mirrors khavee-app's
+ * PreviewControls.tsx bottom-center overlay row. Sized down from their
+ * 72px (size-18) buttons since this widget can be embedded far smaller than
+ * a full-page avatar preview; 48px keeps a comfortable touch target while
+ * staying proportionate to compact embeds.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+.khaveeai-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 30;
+}
+
+.khaveeai-control-btn {
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+
+/* Mic button keeps the same background whether enabled or muted — only the
+   icon swaps (Mic/MicOff) — matching khavee-app's PreviewControls.tsx, which
+   does not recolor the button on mute. */
+.khaveeai-control-btn--mic {
+  background: #ede9fe;
+  color: #6929ff;
+}
+
+.khaveeai-control-btn--mic:hover {
+  background: #ddd6fe;
+}
+
+.khaveeai-control-btn--chat {
+  background: #262626;
+  color: #ffffff;
+}
+
+.khaveeai-control-btn--chat:hover {
+  background: #3a3a3a;
+}
+
+.khaveeai-control-btn:focus-visible {
+  outline: 2px solid #6929ff;
+  outline-offset: 2px;
 }
 
 .khaveeai-error-text {
@@ -80,95 +145,114 @@
  *   font-family: inherit on every text-bearing rule (no @font-face)
  * ──────────────────────────────────────────────────────────────────────────── */
 
-/* ── Card ───────────────────────────────────────────────────────────────────── */
+/* ── Card ─────────────────────────────────────────────────────────────────────
+ * Pixel-matched against the live khavee-app ChatBox (platform.khavee.ai share
+ * page) via getComputedStyle, not just its Tailwind source class names — the
+ * two can diverge (e.g. HeroUI component internals). Solid opaque white, NOT
+ * the previous translucent rgba(255,255,255,0.92): "must look white" was the
+ * explicit correction (2026-07-02). No dark-mode variant — the reference
+ * platform's chat panel is always white regardless of OS theme, so this
+ * doesn't respond to prefers-color-scheme either.
+ */
 
 .khaveeai-chat {
   display: flex;
   flex-direction: column;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 24px; /* lg */
-  border-radius: 4px; /* matches Phase-8 overlay chrome */
+  background: #ffffff;
+  border-radius: 24px;
   font-family: inherit;
   box-sizing: border-box;
-}
-
-@media (prefers-color-scheme: dark) {
-  .khaveeai-chat {
-    background: rgba(30, 30, 30, 0.92);
-    color: #f0f0f0;
-  }
+  /* min-height:0 overrides the flexbox default (min-height:auto) that would
+     otherwise let this flex item grow past its stretched/bounded height to
+     fit the transcript's content — without it, an overflowing conversation
+     keeps growing the whole block instead of scrolling internally (bug
+     fixed 2026-07-02: "chat bubble overflow increases the block's height"). */
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ── Placement modifiers ─────────────────────────────────────────────────────
  * Plan 09-05 (mount.tsx) chooses the layout; these modifiers give it the hooks.
- * --beside: fixed-width flex-column sibling of the avatar canvas.
- * --below:  full-width panel below the canvas.
+ * --beside: fixed-width sibling of the avatar canvas, height:100% stretches
+ *   it to EXACTLY match the canvas's height (a row sibling in
+ *   .khaveeai-layout--beside) — was min-height:400px, which let the card
+ *   grow taller than the canvas as messages accumulated.
+ * --below: full-width panel below the canvas, bounded to a fixed max-height
+ *   since there's no sibling height to stretch to in a column layout.
  */
 
 .khaveeai-chat--beside {
   width: 320px;
-  min-height: 400px;
+  /* height:100% would overflow the layout row by the margin's height, since
+     margin is additive outside the box (not offset by box-sizing:border-box,
+     which only covers padding/border) — subtract it back out. */
+  height: calc(100% - 32px);
+  margin: 16px; /* "md" spacing token (see file header) — a little breathing room from the canvas and layout edges */
 }
 
 .khaveeai-chat--below {
-  width: 100%;
+  /* width:100% would overflow horizontally by the margin's width — see the
+     --beside comment above for why calc() is needed instead of box-sizing. */
+  width: calc(100% - 32px);
+  max-height: 400px;
+  margin: 16px;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
 
 .khaveeai-chat__header {
-  padding: 0 0 16px 0; /* md bottom gap before body */
+  flex-shrink: 0;
+  padding: 12px;
   font-family: inherit;
-  font-size: 16px; /* label token */
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.2;
+  color: #000000;
+  text-align: left;
 }
 
 /* ── Transcript (scrollable bubble list) ─────────────────────────────────── */
 
 .khaveeai-chat__transcript {
   flex: 1;
+  min-height: 0; /* required alongside overflow-y:auto inside a flex column — see .khaveeai-chat's comment */
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px; /* sm */
-  margin-bottom: 16px; /* md — gap before input row */
+  gap: 12px;
+  padding: 0 24px 24px;
 }
 
 /* ── Bubbles ─────────────────────────────────────────────────────────────────
- * Common shape, then role-specific alignment + colour.
+ * Common shape, then role-specific alignment + colour. Asymmetric corner
+ * (the "tail") on the side that points at the sender, matching khavee-app's
+ * rounded-3xl rounded-{br,bl}-md bubbles.
  */
 
 .khaveeai-chat__bubble {
-  padding: 16px; /* md — inner bubble padding */
-  border-radius: 12px;
+  padding: 12px 16px;
   font-family: inherit;
-  font-size: 14px; /* body token */
+  font-size: 16px;
   font-weight: 400;
   line-height: 1.5;
   word-break: break-word;
   max-width: 80%;
 }
 
-/* User: right-aligned, accent bg (UI-SPEC §Color) */
+/* User: right-aligned, violet gradient, tail bottom-right (6px corner) */
 .khaveeai-chat__bubble--user {
   align-self: flex-end;
-  background: #2271b1;
+  background: linear-gradient(to bottom right, #5a16eb, #9880ff);
   color: #ffffff;
+  border-radius: 24px 24px 6px 24px;
 }
 
-/* Assistant: left-aligned, neutral translucent bg (UI-SPEC §Color) */
+/* Assistant: left-aligned, tinted lavender, tail bottom-left (6px corner) */
 .khaveeai-chat__bubble--assistant {
   align-self: flex-start;
-  background: rgba(0, 0, 0, 0.05); /* subtle tint over card bg in light mode */
-  color: inherit;
-}
-
-@media (prefers-color-scheme: dark) {
-  .khaveeai-chat__bubble--assistant {
-    background: rgba(30, 30, 30, 0.92);
-    color: #f0f0f0;
-  }
+  background: #f3f2ff;
+  color: #6929ff;
+  border-radius: 24px 24px 24px 6px;
 }
 
 /* System messages: left-aligned, muted style (uncommonly shown) */
@@ -177,14 +261,27 @@
   background: transparent;
   color: inherit;
   opacity: 0.6;
+  border-radius: 24px 24px 24px 6px;
 }
 
 /* ── Input row ───────────────────────────────────────────────────────────────── */
 
 .khaveeai-chat__input-row {
+  flex-shrink: 0;
   display: flex;
-  gap: 4px; /* xs */
-  align-items: flex-end;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  margin: 0 24px 20px;
+  padding: 4px 4px 4px 16px;
+  border: 2px solid #d7d2ff;
+  border-radius: 14px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.khaveeai-chat__input-row:focus-within {
+  border-color: #6929ff;
 }
 
 /* ── Textarea ────────────────────────────────────────────────────────────────── */
@@ -192,44 +289,32 @@
 .khaveeai-chat__input {
   flex: 1;
   resize: none;
-  min-height: 44px; /* touch-target floor */
-  padding: 8px 12px; /* sm vertical, slightly more horizontal */
+  min-height: 20px;
+  max-height: 96px;
+  padding: 8px 0;
   font-family: inherit;
-  font-size: 14px; /* body token */
+  font-size: 16px;
   font-weight: 400;
   line-height: 1.5;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.6);
+  border: none;
+  background: transparent;
   box-sizing: border-box;
 }
 
 .khaveeai-chat__input:focus {
-  outline: 2px solid #2271b1;
-  outline-offset: 1px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .khaveeai-chat__input {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
-    color: #f0f0f0;
-  }
-
-  .khaveeai-chat__input:focus {
-    outline-color: #2271b1;
-  }
+  outline: none;
 }
 
 /* ── Send button ─────────────────────────────────────────────────────────────── */
 
 .khaveeai-chat__send {
-  min-height: 44px; /* touch-target floor */
-  min-width: 44px;
-  background: #2271b1; /* accent — matches Phase-8 CTA button */
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  background: #6929ff;
   color: #ffffff;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -238,11 +323,16 @@
 }
 
 .khaveeai-chat__send:hover {
-  background: #135e96; /* slightly darker accent on hover */
+  background: #5a16eb;
+}
+
+.khaveeai-chat__send:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .khaveeai-chat__send:focus-visible {
-  outline: 2px solid #2271b1;
+  outline: 2px solid #6929ff;
   outline-offset: 2px;
 }
 
@@ -250,10 +340,11 @@
 
 .khaveeai-chat__disconnected {
   flex: 1;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px; /* md */
+  padding: 24px;
   font-family: inherit;
   font-size: 14px; /* body token */
   font-weight: 400;
@@ -272,11 +363,12 @@
 
 .khaveeai-chat__empty-state {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px; /* md */
+  padding: 24px;
   text-align: center;
   font-family: inherit;
 }
@@ -319,6 +411,7 @@
   display: flex;
   width: 100%;
   height: 100%;
+  min-height: 0;
   align-items: stretch;
 }
 

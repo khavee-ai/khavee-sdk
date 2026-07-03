@@ -97,6 +97,14 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 	private const DEFAULT_CHAT_PLACEMENT = 'beside';
 
 	/**
+	 * Default camera horizontal orbit angle, in degrees, applied on top of
+	 * the selected camera preset's base position (0 = preset's own angle).
+	 *
+	 * @var float
+	 */
+	private const DEFAULT_CAMERA_ROTATION_Y = 0.0;
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function get_runtime_config(): array {
@@ -137,6 +145,7 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			'avatar_offset_x'  => isset( $settings['avatar_offset_x'] )  ? (float)  $settings['avatar_offset_x']  : self::DEFAULT_AVATAR_OFFSET_X,
 			'avatar_offset_y'  => isset( $settings['avatar_offset_y'] )  ? (float)  $settings['avatar_offset_y']  : self::DEFAULT_AVATAR_OFFSET_Y,
 			'camera_preset'    => isset( $settings['camera_preset'] )    ? (string) $settings['camera_preset']    : self::DEFAULT_CAMERA_PRESET,
+			'camera_rotation_y' => isset( $settings['camera_rotation_y'] ) ? (float) $settings['camera_rotation_y'] : self::DEFAULT_CAMERA_ROTATION_Y,
 			'chat_show'        => isset( $settings['chat_show'] )        ? (bool)   $settings['chat_show']        : false,
 			'chat_placement'   => isset( $settings['chat_placement'] )   ? (string) $settings['chat_placement']   : self::DEFAULT_CHAT_PLACEMENT,
 		];

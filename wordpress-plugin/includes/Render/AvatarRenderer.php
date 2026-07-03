@@ -83,12 +83,17 @@ final class AvatarRenderer {
 		$merged['bg_color']         = isset( $merged['bg_color'] )         ? (string) $merged['bg_color']         : '';
 		$merged['bg_transparent']   = (bool) ( $merged['bg_transparent'] ?? false );
 		$merged['bg_image_url']     = isset( $merged['bg_image_url'] )     ? (string) $merged['bg_image_url']     : '';
-		$merged['light_intensity']  = isset( $merged['light_intensity'] )  ? (float)  $merged['light_intensity']  : 1.0;
-		$merged['avatar_scale']     = isset( $merged['avatar_scale'] )     ? (float)  $merged['avatar_scale']     : 1.0;
+		// `> 0`, not isset(): 0 is the "unset" sentinel for these two fields
+		// (their real default is 1.0), unlike container_width/height where 0
+		// IS the real fallback — see AvatarBlock.php's render_callback for
+		// the full explanation of the isset()-always-true bug this avoids.
+		$merged['light_intensity']  = ( $merged['light_intensity'] ?? 0 ) > 0  ? (float)  $merged['light_intensity']  : 1.0;
+		$merged['avatar_scale']     = ( $merged['avatar_scale'] ?? 0 ) > 0     ? (float)  $merged['avatar_scale']     : 1.0;
 		$merged['avatar_offset_x']  = isset( $merged['avatar_offset_x'] )  ? (float)  $merged['avatar_offset_x']  : 0.0;
 		$merged['avatar_offset_y']  = isset( $merged['avatar_offset_y'] )  ? (float)  $merged['avatar_offset_y']  : 0.0;
 		$merged['camera_preset']    = isset( $merged['camera_preset'] ) && '' !== $merged['camera_preset']
 			? (string) $merged['camera_preset'] : 'front';
+		$merged['camera_rotation_y'] = isset( $merged['camera_rotation_y'] ) ? (float) $merged['camera_rotation_y'] : 0.0;
 		$merged['chat_show']        = (bool) ( $merged['chat_show'] ?? false );
 		$merged['chat_placement']   = isset( $merged['chat_placement'] ) && '' !== $merged['chat_placement']
 			? (string) $merged['chat_placement'] : 'beside';
@@ -182,6 +187,7 @@ final class AvatarRenderer {
 			'avatarOffsetX'   => isset( $merged['avatar_offset_x'] )  ? (float) $merged['avatar_offset_x']  : 0.0,
 			'avatarOffsetY'   => isset( $merged['avatar_offset_y'] )  ? (float) $merged['avatar_offset_y']  : 0.0,
 			'cameraPreset'    => isset( $merged['camera_preset'] )    ? (string)$merged['camera_preset']    : 'front',
+			'cameraRotationY' => isset( $merged['camera_rotation_y'] ) ? (float)$merged['camera_rotation_y'] : 0.0,
 			'chatShow'        => (bool) ( $merged['chat_show'] ?? false ),
 			'chatPlacement'   => isset( $merged['chat_placement'] )   ? (string)$merged['chat_placement']   : 'beside',
 		);

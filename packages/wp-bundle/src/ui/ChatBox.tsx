@@ -21,26 +21,17 @@ import { useRealtime } from "@khaveeai/react";
 export function ChatBox({ placement }: { placement: "beside" | "below" }) {
   const { conversation, sendMessage, chatStatus, isConnected } = useRealtime();
   const [input, setInput] = useState("");
-  // scrollRef: the scrollable transcript container, used for the pinned-to-bottom check.
+  // scrollRef: the scrollable transcript container; scrolls to its last bubble on update.
   const scrollRef = useRef<HTMLDivElement>(null);
-  // endRef: empty sentinel div at the end of the transcript; scrollIntoView anchor.
-  const endRef = useRef<HTMLDivElement>(null);
 
-  // ── Auto-scroll (pinned-to-bottom rule) ──────────────────────────────────────
-  // Lifted from khavee-app ChatBox.tsx:41-48 + RESEARCH pinned-to-bottom rule
-  // (UI-SPEC §Interaction-States "ChatBox — scrollback" row).
-  // Only auto-scrolls if the visitor is already within 80px of the bottom.
-  // Visitors who have scrolled up to read history are NOT yanked back down.
+  // ── Auto-scroll ────────────────────────────────────────────────────────────
+  // Matches khavee-app's ChatBox.tsx exactly: always scroll to the newest
+  // bubble on every conversation update (no "already near bottom" gating).
   useEffect(() => {
-    if (
-      scrollRef.current &&
-      scrollRef.current.scrollHeight -
-        scrollRef.current.scrollTop -
-        scrollRef.current.clientHeight <
-        80
-    ) {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
+    scrollRef.current?.lastElementChild?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
   }, [conversation]);
 
   // ── Send handler ─────────────────────────────────────────────────────────────
@@ -94,8 +85,8 @@ export function ChatBox({ placement }: { placement: "beside" | "below" }) {
         // Connected with messages: scrollable transcript.
         <div className="khaveeai-chat__transcript" ref={scrollRef}>
           {conversation.map((msg, i) => (
-            // bubble--user: right-aligned, accent bg (#2271b1)
-            // bubble--assistant: left-aligned, neutral translucent bg
+            // bubble--user: right-aligned, accent gradient bg, tail bottom-right
+            // bubble--assistant: left-aligned, tinted accent bg, tail bottom-left
             // Plain {msg.text} — React auto-escapes; XSS-safe (T-09-04-01)
             <div
               key={i}
@@ -104,8 +95,6 @@ export function ChatBox({ placement }: { placement: "beside" | "below" }) {
               {msg.text}
             </div>
           ))}
-          {/* Scroll-to-bottom anchor */}
-          <div ref={endRef} />
         </div>
       )}
 
@@ -130,8 +119,8 @@ export function ChatBox({ placement }: { placement: "beside" | "below" }) {
             {/* Paper-plane icon — single inline SVG, no icon library (UI-SPEC §Design System) */}
             <svg
               viewBox="0 0 24 24"
-              width="20"
-              height="20"
+              width="16"
+              height="16"
               aria-hidden="true"
               fill="currentColor"
             >

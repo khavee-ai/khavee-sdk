@@ -98,8 +98,16 @@ final class Plugin {
 		// AvatarBlock::register at priority 10) so the handle exists when
 		// register_block_type resolves the editorScript list.
 		// The script is editor-only: block.json lists it in "editorScript" (not
-		// "script" / "viewScript"), so WordPress loads it only inside the Gutenberg
-		// block-canvas iframe — never on published pages (Pitfall 5 / PERF-01).
+		// "script" / "viewScript"), so it is never enqueued on published pages
+		// (Pitfall 5 / PERF-01). NOTE (corrected 2026-07-02): editorScript does
+		// NOT load the script inside the Gutenberg block-canvas iframe — it
+		// still executes in the top admin window, same as any other admin
+		// script. Confirmed against Gutenberg's actual behaviour (gutenberg#59528,
+		// #44945, #38673) — a prior assumption here that editorScript ran inside
+		// the iframe was wrong and was the root cause of the preview never
+		// updating. The preview bundle itself (packages/wp-bundle/src/preview.ts)
+		// is responsible for locating `<iframe name="editor-canvas">` and
+		// scanning/observing ITS document instead of the top document.
 		add_action( 'init', array( __CLASS__, 'register_preview_bundle' ), 9 );
 	}
 
@@ -145,6 +153,24 @@ final class Plugin {
 			array(), // D-10 full isolation — bundle owns its own React 19.
 			$version,
 			false
+		);
+
+		// Companion stylesheet (khaveeai-preview.css, esbuild's CSS output for
+		// preview.ts's `import "../styles.css"`) — registered here, referenced
+		// by handle from block.json's "editorStyle" (mirrors "khaveeai-preview"
+		// above for editorScript). Without this, the .khaveeai-chat/-layout
+		// rules the Chat Box preview relies on never load in the editor, so
+		// the chat panel renders unstyled and overlapping the avatar canvas
+		// instead of positioned beside/below it (found while adding the
+		// preview Chat Box, 2026-07-02).
+		$style_path    = plugin_dir_path( KHAVEEAI_PLUGIN_FILE ) . 'build/khaveeai-preview.css';
+		$style_version = file_exists( $style_path ) ? (string) filemtime( $style_path ) : KHAVEEAI_VERSION;
+
+		wp_register_style(
+			'khaveeai-preview-style',
+			plugins_url( 'build/khaveeai-preview.css', KHAVEEAI_PLUGIN_FILE ),
+			array(),
+			$style_version
 		);
 	}
 }

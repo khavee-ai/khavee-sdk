@@ -38,6 +38,8 @@
 
 import { registerBlockType } from '@wordpress/blocks';
 import { createElement, useState, useRef, useEffect } from '@wordpress/element';
+import { useSelect } from '@wordpress/data';
+import { store as coreStore } from '@wordpress/core-data';
 import {
 	InspectorControls,
 	MediaUpload,
@@ -108,11 +110,30 @@ function Edit( { attributes, setAttributes } ) {
 		bgType, bgColor, bgTransparent, bgImageId,
 		lightIntensity,
 		avatarScale, avatarOffsetX, avatarOffsetY,
-		cameraPreset,
+		cameraPreset, cameraRotationY,
 		chatShow, chatPlacement,
 	} = attributes;
 
 	const blockProps = useBlockProps();
+
+	// ── Attachment ID → URL resolution (editor-preview-only) ─────────────
+	// The published-page path resolves `avatar`/`bgImageId` (attachment IDs)
+	// to URLs server-side via wp_get_attachment_url() (AvatarBlock.php,
+	// AvatarShortcode.php, WpOptionsConfigSource.php). The editor preview has
+	// no server round-trip per edit, so it must do the equivalent resolution
+	// client-side via the same core-data store MediaUpload already uses
+	// internally. Without this, the preview bundle's config.avatarUrl/
+	// bgImageUrl are always empty even when a valid attachment is selected.
+	const avatarMedia = useSelect(
+		( select ) => ( avatar ? select( coreStore ).getMedia( avatar ) : null ),
+		[ avatar ]
+	);
+	const bgImageMedia = useSelect(
+		( select ) => ( bgImageId ? select( coreStore ).getMedia( bgImageId ) : null ),
+		[ bgImageId ]
+	);
+	const avatarUrl = avatarMedia?.source_url ?? '';
+	const bgImageUrl = bgImageMedia?.source_url ?? '';
 
 	// ── Editor-only local state (not persisted as block attributes) ──────
 	// previewTalking drives a mouth-animation demo in the editor preview.
@@ -141,6 +162,7 @@ function Edit( { attributes, setAttributes } ) {
 		avatarScale,
 		avatarOffsetX,
 		avatarOffsetY,
+		cameraRotationY,
 	} );
 	const debounceRef = useRef( {} );
 
@@ -155,8 +177,9 @@ function Edit( { attributes, setAttributes } ) {
 			avatarScale,
 			avatarOffsetX,
 			avatarOffsetY,
+			cameraRotationY,
 		} ) );
-	}, [ containerWidth, containerHeight, lightIntensity, avatarScale, avatarOffsetX, avatarOffsetY ] );
+	}, [ containerWidth, containerHeight, lightIntensity, avatarScale, avatarOffsetX, avatarOffsetY, cameraRotationY ] );
 
 	/**
 	 * Update local slider state immediately (smooth drag) and schedule a
@@ -183,6 +206,7 @@ function Edit( { attributes, setAttributes } ) {
 		voice,
 		instructions,
 		avatar,
+		avatarUrl,
 		containerWidth:  live.containerWidth,
 		containerHeight: live.containerHeight,
 		fullWidth,
@@ -190,11 +214,13 @@ function Edit( { attributes, setAttributes } ) {
 		bgColor,
 		bgTransparent,
 		bgImageId,
+		bgImageUrl,
 		lightIntensity:  live.lightIntensity,
 		avatarScale:     live.avatarScale,
 		avatarOffsetX:   live.avatarOffsetX,
 		avatarOffsetY:   live.avatarOffsetY,
 		cameraPreset,
+		cameraRotationY: live.cameraRotationY,
 		chatShow,
 		chatPlacement,
 		previewTalking,
@@ -393,8 +419,12 @@ function Edit( { attributes, setAttributes } ) {
 			),
 
 			// ── Panel 5 — Camera ─────────────────────────────────────────
-			// CONTEXT locked decision: preset dropdown ONLY — no free-form
-			// XYZ/target controls. The four listed options are the complete set.
+			// Preset dropdown (four fixed framings) + a rotation slider on top of
+			// the chosen preset. The rotation is a UI dragger rather than
+			// mouse-drag orbiting on the canvas itself: Gutenberg's own
+			// block-selection click-capture layer intercepts a plain single
+			// drag gesture on block content before OrbitControls ever sees it,
+			// so a slider is the reliable control surface in the editor.
 			createElement(
 				PanelBody,
 				{ title: __( 'Camera', 'khaveeai' ), initialOpen: false },
@@ -404,6 +434,15 @@ function Edit( { attributes, setAttributes } ) {
 					value: cameraPreset,
 					options: CAMERA_PRESET_OPTIONS,
 					onChange: ( value ) => setAttributes( { cameraPreset: value } ),
+				} ),
+				createElement( RangeControl, {
+					label: __( 'Camera rotation', 'khaveeai' ),
+					help: __( 'Orbit the camera around the avatar, on top of the preset above.', 'khaveeai' ),
+					value: live.cameraRotationY,
+					min: -180,
+					max: 180,
+					step: 1,
+					onChange: ( value ) => debouncedAttr( 'cameraRotationY', value ),
 				} )
 			),
 

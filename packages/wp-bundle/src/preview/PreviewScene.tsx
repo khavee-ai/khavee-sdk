@@ -26,12 +26,15 @@
 import React, { useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { useThree } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { KhaveeProvider, VRMAvatar, GLBAvatar, useVRMExpressions } from "@khaveeai/react";
+import { KhaveeProvider, VRMAvatar, useVRMExpressions } from "@khaveeai/react";
 import {
   resolveSceneDefaults,
+  IDLE_ANIMATION_URL,
   type KhaveeAvatarConfig,
 } from "../config";
+import { PreviewChatBox } from "./PreviewChatBox";
 
 // ── Preview-only config extension ─────────────────────────────────────────────
 
@@ -142,7 +145,6 @@ function usePreviewTalking(enabled: boolean): void {
 function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
   const sceneDefaults = resolveSceneDefaults(config);
   const isTalking = config.previewTalking ?? false;
-  const isGlb = Boolean(config.avatarUrl?.toLowerCase().endsWith(".glb"));
 
   // Viseme cycler — must be inside KhaveeProvider context (Pitfall 4 avoidance).
   usePreviewTalking(isTalking);
@@ -195,8 +197,15 @@ function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
     0,
   ];
 
-  return (
-    <div style={containerStyle}>
+  // "" (not undefined) is editor.js's SelectControl value for "(using global
+  // default)" on chatPlacement too — the live/published path normalizes this
+  // in PHP (AvatarRenderer.php), but the editor preview reads the raw
+  // attribute directly, so this must use `||` not `??` for the same reason
+  // as resolveSceneDefaults()'s cameraPreset fix (config.ts).
+  const chatPlacement = (config.chatPlacement || "beside") as "beside" | "below";
+
+  const avatarArea = (
+    <>
       <Canvas
         camera={{ position: sceneDefaults.cameraPosition, fov: sceneDefaults.cameraFov }}
         gl={canvasGl}
@@ -207,26 +216,34 @@ function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
           target={sceneDefaults.cameraTarget}
           fov={sceneDefaults.cameraFov}
         />
+        {/* Lets the author freely orbit/zoom the preview to check angles.
+            makeDefault registers this as the R3F default controls instance;
+            CameraController still owns the canonical position/target/fov
+            whenever the config-driven values change (e.g. a new camera
+            preset), so switching presets resets any manual orbiting. */}
+        <OrbitControls target={sceneDefaults.cameraTarget} makeDefault />
         {/* ── Lighting ─────────────────────────────────────────────────── */}
         {/* ambient: config-driven Part A Lighting. directional: matches Phase-8 mount.tsx:59-60. */}
         <ambientLight intensity={sceneDefaults.lightIntensity} />
         <directionalLight position={[10, 10, 5]} intensity={sceneDefaults.directional} />
 
         {/* ── Avatar ───────────────────────────────────────────────────── */}
+        {/* Always VRMAvatar, never branched on file extension: several
+            "avatarUrl.glb" uploads in the wild are actually VRM avatars
+            (VRM extension present, zero embedded animations, unlit
+            material fallback) saved with a .glb filename — routing those
+            through GLBAvatar left them in a permanent T-pose with no
+            lighting response. VRMAvatar's VRMLoaderPlugin is additive on
+            top of the standard GLTFLoader, so a genuinely plain (non-VRM)
+            .glb still loads and displays, just without humanoid/expression
+            features (found 2026-07-02, testing a real .glb avatar). */}
         {config.avatarUrl && (
-          isGlb ? (
-            <GLBAvatar
-              src={config.avatarUrl}
-              position={positionTuple}
-              scale={scaleTuple}
-            />
-          ) : (
-            <VRMAvatar
-              src={config.avatarUrl}
-              position={positionTuple}
-              scale={scaleTuple}
-            />
-          )
+          <VRMAvatar
+            src={config.avatarUrl}
+            position={positionTuple}
+            scale={scaleTuple}
+            animations={IDLE_ANIMATION_URL ? { idle: IDLE_ANIMATION_URL } : undefined}
+          />
         )}
       </Canvas>
 
@@ -275,6 +292,23 @@ function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
         >
           Preview talking
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div style={containerStyle}>
+      {config.chatShow ? (
+        // Mirrors mount.tsx's live-view layout (.khaveeai-layout--{beside|below})
+        // so the editor preview matches the published page WYSIWYG.
+        <div className={`khaveeai-layout khaveeai-layout--${chatPlacement}`}>
+          <div style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0 }}>
+            {avatarArea}
+          </div>
+          <PreviewChatBox placement={chatPlacement} />
+        </div>
+      ) : (
+        avatarArea
       )}
     </div>
   );

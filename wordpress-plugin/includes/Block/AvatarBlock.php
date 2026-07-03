@@ -97,11 +97,23 @@ final class AvatarBlock {
 			'bg_color'         => isset( $attributes['bgColor'] )         ? (string) $attributes['bgColor']        : '',
 			'bg_transparent'   => ! empty( $attributes['bgTransparent'] ),
 			'bg_image_url'     => $bg_image_url,
-			'light_intensity'  => isset( $attributes['lightIntensity'] )  ? (float)  $attributes['lightIntensity']  : 1.0,
-			'avatar_scale'     => isset( $attributes['avatarScale'] )     ? (float)  $attributes['avatarScale']     : 1.0,
+			// isset() is wrong here (unlike containerWidth/Height above, where 0 IS
+			// the real desired fallback): Gutenberg ALWAYS populates lightIntensity/
+			// avatarScale with their block.json schema default (0) even when the
+			// author never touched the control, so isset() is true and the "real"
+			// default (1.0) below was never actually reached — every block that
+			// hadn't had these two sliders explicitly dragged rendered with
+			// avatarScale=0 (invisible avatar) and lightIntensity=0 (unlit) on the
+			// published page (found 2026-07-02, reported as "camera rotation doesn't
+			// affect the real page" — nothing was visible to rotate). `> 0` matches
+			// the same "0 means unset" convention editor.js's RangeControl display
+			// already uses (`value: live.avatarScale > 0 ? ... : undefined`).
+			'light_intensity'  => ( $attributes['lightIntensity'] ?? 0 ) > 0  ? (float)  $attributes['lightIntensity']  : 1.0,
+			'avatar_scale'     => ( $attributes['avatarScale'] ?? 0 ) > 0     ? (float)  $attributes['avatarScale']     : 1.0,
 			'avatar_offset_x'  => isset( $attributes['avatarOffsetX'] )   ? (float)  $attributes['avatarOffsetX']   : 0.0,
 			'avatar_offset_y'  => isset( $attributes['avatarOffsetY'] )   ? (float)  $attributes['avatarOffsetY']   : 0.0,
 			'camera_preset'    => isset( $attributes['cameraPreset'] )    ? (string) $attributes['cameraPreset']    : '',
+			'camera_rotation_y' => isset( $attributes['cameraRotationY'] ) ? (float) $attributes['cameraRotationY'] : 0.0,
 			'chat_show'        => ! empty( $attributes['chatShow'] ),
 			'chat_placement'   => isset( $attributes['chatPlacement'] )   ? (string) $attributes['chatPlacement']   : '',
 		);

@@ -155,6 +155,24 @@ final class Plugin {
 			false
 		);
 
+		// Expose the admin's resolved global config to the editor as
+		// window.khaveeaiGlobalConfig, so the block sidebar's "Global
+		// default / Custom" toggle (260704-05c) can show the REAL currently
+		// resolved value instead of a stale hardcoded string — get_runtime_config()
+		// already reflects a connected Khavee Platform key's overlay when one
+		// is set. This is a read-only, already-cached (5-min transient) call:
+		// no new per-editor-page network cost beyond what the admin settings
+		// page's own connection notice already triggers. get_runtime_config()
+		// is proven secret-free (platform-config-harness.php asserts no
+		// sentinel/secret ever appears in its output) — the platform/OpenAI
+		// keys live only behind the separate get_api_key() method, which is
+		// never localized here.
+		wp_localize_script(
+			'khaveeai-preview',
+			'khaveeaiGlobalConfig',
+			( new PlatformConfigSource( new WpOptionsConfigSource() ) )->get_runtime_config()
+		);
+
 		// Companion stylesheet (khaveeai-preview.css, esbuild's CSS output for
 		// preview.ts's `import "../styles.css"`) — registered here, referenced
 		// by handle from block.json's "editorStyle" (mirrors "khaveeai-preview"

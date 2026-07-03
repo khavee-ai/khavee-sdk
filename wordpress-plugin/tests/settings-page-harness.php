@@ -921,7 +921,87 @@ run_case(
 	}
 );
 
-// ── Exit (live — runs after ALL cases, including 07-02's and 07-03's) ──
+// ════════════════════════════════════════════════════════════════════
+// Quick-260703-slv cases — mask_platform_key + sanitize_platform_api_key
+// (T-QK-01/T-QK-03/T-QK-05)
+// ════════════════════════════════════════════════════════════════════
+//
+// Mirrors mask_api_key()/sanitize_api_key()'s cases exactly, but for the
+// second, separate "Khavee Platform API Key" field (format
+// khavee_<uuid>_<64hex>, gated on a literal `khavee_` prefix instead of
+// `sk-`). These are added by Quick-260703-slv Task 2 (RED) — they exercise
+// SettingsPage::mask_platform_key() / SettingsPage::sanitize_platform_api_key(),
+// which Task 2's GREEN step adds to SettingsPage.php.
+
+// ── Case 34: mask_platform_key produces exactly 'khavee_••••••<last4>' ──
+
+run_case(
+	'mask_platform_key: returns exactly khavee_••••••wxyz for khavee_abcd_...wxyz',
+	function () {
+		return 'khavee_••••••wxyz' === SettingsPage::mask_platform_key( 'khavee_abcd_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abwxyz' );
+	}
+);
+
+// ── Case 35: mask_platform_key returns '' for empty input (never a bare mask placeholder) ──
+
+run_case(
+	'mask_platform_key: returns empty string for empty input (never a bare khavee_•••••• mask)',
+	function () {
+		return '' === SettingsPage::mask_platform_key( '' );
+	}
+);
+
+// ── Case 36: sanitize_platform_api_key clears the key ONLY when remove flag is set ──
+
+run_case(
+	'sanitize_platform_api_key: remove flag true -> "" (deliberate removal)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'khavee_proj1_' . str_repeat( 'a', 64 );
+		return '' === $page->sanitize_platform_api_key( SettingsPage::mask_platform_key( $existing ), $existing, true );
+	}
+);
+
+// ── Case 37: sanitize_platform_api_key preserves existing when submitted equals the mask ──
+
+run_case(
+	'sanitize_platform_api_key: submitted === mask_platform_key(existing) -> existing unchanged (masked placeholder preserved)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'khavee_proj2_' . str_repeat( 'b', 64 );
+		$masked   = SettingsPage::mask_platform_key( $existing );
+		return $existing === $page->sanitize_platform_api_key( $masked, $existing, false );
+	}
+);
+
+// ── Case 38: sanitize_platform_api_key rejects a value not prefixed 'khavee_' ──
+
+run_case(
+	'sanitize_platform_api_key: a genuinely new value not starting with khavee_ -> returns existing (rejected, no overwrite)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'khavee_proj3_' . str_repeat( 'c', 64 );
+		return $existing === $page->sanitize_platform_api_key( 'not-prefixed-value', $existing, false );
+	}
+);
+
+// ── Case 39: sanitize_platform_api_key trims a fresh khavee_-prefixed value ──
+
+run_case(
+	'sanitize_platform_api_key: a fresh khavee_-prefixed value with surrounding whitespace -> returned trimmed',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = 'khavee_proj4_' . str_repeat( 'd', 64 );
+		$fresh    = 'khavee_proj5_' . str_repeat( 'e', 64 );
+		return $fresh === $page->sanitize_platform_api_key( '  ' . $fresh . '  ', $existing, false );
+	}
+);
+
+// ── Exit (live — runs after ALL cases, including 07-02's, 07-03's, and Quick-260703-slv's) ──
 
 if ( $failures > 0 ) {
 	echo "\n{$failures} case(s) FAILED.\n";

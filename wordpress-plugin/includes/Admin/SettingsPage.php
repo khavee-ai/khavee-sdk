@@ -40,6 +40,7 @@
 namespace Khavee\Plugin\Admin;
 
 use Khavee\Plugin\ConfigSource\ConfigSourceInterface;
+use Khavee\Plugin\Platform\PlatformClient;
 
 /**
  * Allow .glb and .vrm extensions through the upload allowlist (D-09, ASSET-01).
@@ -543,6 +544,25 @@ final class SettingsPage {
 			'khaveeai_main'
 		);
 
+		// Quick-260703-slv: a second, separate secret — the Khavee Platform
+		// API key — masked/removable exactly like the OpenAI key above, but
+		// gated on a `khavee_` prefix instead of `sk-` (T-QK-01/T-QK-05).
+		add_settings_field(
+			'platform_api_key',
+			__( 'Khavee Platform API Key', 'khaveeai' ),
+			array( $this, 'render_platform_api_key_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'remove_platform_key',
+			__( 'Remove Platform Key', 'khaveeai' ),
+			array( $this, 'render_remove_platform_key_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
 		add_settings_field(
 			'instructions',
 			__( 'Personality / Instructions', 'khaveeai' ),
@@ -606,14 +626,24 @@ final class SettingsPage {
 		$submitted_instr     = isset( $input['instructions'] ) ? (string) $input['instructions'] : '';
 		$submitted_voice     = isset( $input['voice'] ) ? (string) $input['voice'] : '';
 
+		// Quick-260703-slv: the platform key is unrelated to the OpenAI
+		// api_key above — read its existing value from the raw stored option
+		// blob (NOT via ConfigSourceInterface, which never exposes it), mirror
+		// the same submitted-value/remove-checkbox decision order as the
+		// OpenAI key (D-05/D-06/D-08, but the format gate is `khavee_` not `sk-`).
+		$existing_platform_key          = isset( $existing_option['platform_api_key'] ) ? (string) $existing_option['platform_api_key'] : '';
+		$submitted_platform_key         = isset( $input['platform_api_key'] ) ? (string) $input['platform_api_key'] : '';
+		$remove_platform_requested      = isset( $input['remove_platform_key'] ) && '1' === (string) $input['remove_platform_key'];
+
 		$existing_attachment_id   = isset( $existing_option['avatar_attachment_id'] ) ? (int) $existing_option['avatar_attachment_id'] : 0;
 		$submitted_attachment_id  = $input['avatar_attachment_id'] ?? '';
 		$remove_avatar_requested  = isset( $input['remove_avatar'] ) && '1' === (string) $input['remove_avatar'];
 
 		$sanitized = $existing_option; // Preserve any prior keys (model untouched per D-03).
 
-		$sanitized['api_key']      = $this->sanitize_api_key( $submitted_api_key, $existing_api_key, $remove_requested );
-		$sanitized['instructions'] = sanitize_textarea_field( $submitted_instr );
+		$sanitized['api_key']           = $this->sanitize_api_key( $submitted_api_key, $existing_api_key, $remove_requested );
+		$sanitized['platform_api_key']  = $this->sanitize_platform_api_key( $submitted_platform_key, $existing_platform_key, $remove_platform_requested );
+		$sanitized['instructions']      = sanitize_textarea_field( $submitted_instr );
 
 		// CR-01/SET-03: a submitted voice is persisted ONLY when it is one of
 		// the self::VOICES allowlist values (strict in_array, third arg true,
@@ -669,6 +699,30 @@ final class SettingsPage {
 			return '';
 		}
 		return 'sk-••••••' . substr( $key, -4 ); // D-07: literal SET-01 example format.
+	}
+
+	/**
+	 * Mask a Khavee Platform API key for redisplay in the form field's value
+	 * attribute (Quick-260703-slv, T-QK-01).
+	 *
+	 * Format: literal `khavee_••••••` prefix + last 4 characters of the key
+	 * — mirrors mask_api_key()'s D-07 format exactly, but for the
+	 * `khavee_<uuid>_<64hex>` platform key instead of the `sk-` OpenAI key.
+	 * Returns '' for empty input so an unconfigured key renders an empty
+	 * field rather than a bare `khavee_••••••` placeholder (never echo the
+	 * raw key — T-07B-03 discipline).
+	 *
+	 * Static so the test harness can exercise it without constructing a
+	 * SettingsPage instance (mirrors mask_api_key()'s testability decision).
+	 *
+	 * @param string $key The raw stored platform API key.
+	 * @return string The masked string, or '' if $key is empty.
+	 */
+	public static function mask_platform_key( string $key ): string {
+		if ( '' === $key ) {
+			return '';
+		}
+		return 'khavee_••••••' . substr( $key, -4 );
 	}
 
 	/**
@@ -775,6 +829,49 @@ final class SettingsPage {
 		return $submitted;
 	}
 
+	/**
+	 * Sanitize a submitted Khavee Platform API key value (Quick-260703-slv,
+	 * T-QK-01/T-QK-05).
+	 *
+	 * Same decision order as sanitize_api_key(), with the format gate
+	 * checking the `khavee_` prefix instead of `sk-`:
+	 *  1. Deliberate removal via the remove_platform_key checkbox.
+	 *  2. Unchanged masked field (submitted === mask_platform_key(existing))
+	 *     → preserve the existing key.
+	 *  3. A genuinely new value that is empty-after-trim or does not start
+	 *     with `khavee_` is rejected via add_settings_error() and the
+	 *     existing key is kept.
+	 *  4. Otherwise the new value is valid — return it trimmed.
+	 *
+	 * @param mixed  $submitted        The raw submitted field value.
+	 * @param string $existing         The currently-stored platform API key.
+	 * @param bool   $remove_requested Whether the remove_platform_key checkbox was checked.
+	 * @return string The sanitized key (existing, new, or '' on deliberate removal).
+	 */
+	public function sanitize_platform_api_key( $submitted, string $existing, bool $remove_requested = false ): string {
+		if ( $remove_requested ) {
+			return '';
+		}
+
+		$submitted = is_string( $submitted ) ? trim( $submitted ) : '';
+		$masked    = self::mask_platform_key( $existing );
+
+		if ( $submitted === $masked ) {
+			return $existing;
+		}
+
+		if ( '' === $submitted || 0 !== strpos( $submitted, 'khavee_' ) ) {
+			add_settings_error(
+				self::OPTION_NAME,
+				'khaveeai_platform_key_invalid_format',
+				__( 'Khavee Platform API key must start with "khavee_" and cannot be empty.', 'khaveeai' )
+			);
+			return $existing; // Reject the bad value — keep the previously stored key.
+		}
+
+		return $submitted;
+	}
+
 	// ── Render callback + field renderers ──────────────────────────────
 
 	/**
@@ -802,6 +899,41 @@ final class SettingsPage {
 		}
 
 		settings_errors( self::OPTION_NAME );
+
+		// Quick-260703-slv: platform connection-status notice. Reads the raw
+		// stored key directly (SettingsPage stays typed to ConfigSourceInterface;
+		// the interface deliberately does not expose the platform key) and
+		// calls the CACHED PlatformClient::fetch_preview() — cheap even on
+		// every render, since a fresh key only re-fetches once (its transient
+		// cache is keyed on the key's hash, so saving a new key produces a
+		// fresh fetch here on the next render). NEVER echoes the raw key or an
+		// exception/stack trace (T-QK-03) — only the project name on success,
+		// or PlatformClient's own short generic reason on failure.
+		$platform_settings = get_option( self::OPTION_NAME, array() );
+		$platform_settings = is_array( $platform_settings ) ? $platform_settings : array();
+		$platform_key      = isset( $platform_settings['platform_api_key'] ) ? (string) $platform_settings['platform_api_key'] : '';
+
+		if ( '' !== $platform_key ) {
+			$preview = PlatformClient::fetch_preview( $platform_key );
+
+			if ( ! empty( $preview['ok'] ) ) {
+				echo '<div class="notice notice-success"><p>' .
+					sprintf(
+						/* translators: %s: connected project name */
+						esc_html__( 'Connected to project: %s', 'khaveeai' ),
+						esc_html( (string) $preview['project_name'] )
+					) .
+					'</p></div>';
+			} else {
+				echo '<div class="notice notice-warning"><p>' .
+					sprintf(
+						/* translators: %s: short, generic failure reason (never the raw key or a stack trace) */
+						esc_html__( "Couldn't reach Khavee Platform: %s", 'khaveeai' ),
+						esc_html( (string) ( $preview['error'] ?? '' ) )
+					) .
+					'</p></div>';
+			}
+		}
 
 		wp_enqueue_media(); // D-01: loads wp.media JS for the avatar picker (added by 07-03).
 
@@ -863,6 +995,52 @@ final class SettingsPage {
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Check this box and save to remove the stored API key. An emptied key field alone does NOT clear the key.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the masked Khavee Platform API key input (Quick-260703-slv,
+	 * T-QK-01).
+	 *
+	 * Reads the existing platform key directly from get_option() (NOT via
+	 * ConfigSourceInterface — the interface deliberately never exposes it)
+	 * and echoes ONLY mask_platform_key()'s output in the value attribute
+	 * (esc_attr), mirroring render_api_key_field()'s never-echo-the-raw-key
+	 * discipline exactly.
+	 *
+	 * @return void
+	 */
+	public function render_platform_api_key_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$existing = isset( $settings['platform_api_key'] ) ? (string) $settings['platform_api_key'] : '';
+		$masked   = self::mask_platform_key( $existing ); // T-QK-01: never echo the raw key.
+		printf(
+			'<input type="text" id="khaveeai_platform_api_key" name="%s[platform_api_key]" value="%s" class="regular-text" autocomplete="new-password" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( $masked )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Optional: enter your Khavee Platform API key (must start with "khavee_") to drive avatar config from the hosted Khavee dashboard. Platform always wins over the settings below when set.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the "Remove Platform Key" checkbox control. Checking this on
+	 * save clears the stored platform key; leaving it unchecked preserves
+	 * whatever sanitize_platform_api_key()'s placeholder/fresh-key logic
+	 * decided (Quick-260703-slv, mirrors render_remove_key_field()).
+	 *
+	 * @return void
+	 */
+	public function render_remove_platform_key_field(): void {
+		printf(
+			'<label><input type="checkbox" id="khaveeai_remove_platform_key" name="%s[remove_platform_key]" value="1" /> %s</label>',
+			esc_attr( self::OPTION_NAME ),
+			esc_html__( 'Clear the saved Platform API key (deliberate removal)', 'khaveeai' )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Check this box and save to remove the stored Platform API key. An emptied key field alone does NOT clear the key.', 'khaveeai' ) .
 			'</p>';
 	}
 

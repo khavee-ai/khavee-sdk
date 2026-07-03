@@ -103,6 +103,112 @@ const CHAT_PLACEMENT_OPTIONS = [
 	{ label: __( 'Below avatar', 'khaveeai' ), value: 'below' },
 ];
 
+/**
+ * The admin's resolved global config (260704-05c), localized onto this
+ * script's handle by Plugin.php's register_preview_bundle() via
+ * wp_localize_script( 'khaveeai-preview', 'khaveeaiGlobalConfig', ... ).
+ * Read once, defensively — this must never throw in a context where the
+ * localize call didn't run (e.g. an isolated test harness), so every
+ * lookup below tolerates an absent key.
+ */
+const GLOBAL_CONFIG = ( typeof window !== 'undefined' && window.khaveeaiGlobalConfig ) || {};
+
+/**
+ * Two-button "Global default / Custom" segmented toggle + RangeControl,
+ * replacing the old ambiguous pattern (a blank input + a slider sitting at
+ * some position, with a static help string like "Default 1." that lied
+ * once a connected Platform key could resolve a different default).
+ *
+ * "Global default" is simply the field's existing 0-is-unset sentinel
+ * convention (unchanged) — this component only presents that convention
+ * clearly and shows the REAL currently-resolved value via GLOBAL_CONFIG.
+ *
+ * @param {Object}   props
+ * @param {string}   props.label         RangeControl label.
+ * @param {string}   props.globalKey     Key into GLOBAL_CONFIG (snake_case, may be absent).
+ * @param {number}   props.liveValue     Current live.* value (0 = "using global default").
+ * @param {number}   props.min
+ * @param {number}   props.max
+ * @param {number}   [props.step]
+ * @param {number}   props.defaultSeed   Starting value when switching into Custom with no
+ *                                       usable global value to seed from.
+ * @param {Function} props.onChangeValue Called with the new attribute value.
+ */
+function GlobalCustomRange( { label, globalKey, liveValue, min, max, step, defaultSeed, onChangeValue } ) {
+	const isCustom = liveValue > 0;
+	const globalValue = GLOBAL_CONFIG[ globalKey ];
+	const hasGlobalValue = typeof globalValue === 'number' && isFinite( globalValue );
+
+	const segmentBaseStyle = {
+		appearance: 'none',
+		border: 'none',
+		fontSize: 11,
+		fontWeight: 600,
+		padding: '5px 10px',
+		cursor: 'pointer',
+	};
+
+	return createElement(
+		'div',
+		null,
+		createElement(
+			'div',
+			{
+				style: {
+					display: 'inline-flex',
+					border: '1px solid #dcdcde',
+					borderRadius: 4,
+					overflow: 'hidden',
+					marginBottom: 10,
+				},
+			},
+			createElement(
+				'button',
+				{
+					type: 'button',
+					onClick: () => onChangeValue( 0 ),
+					style: {
+						...segmentBaseStyle,
+						borderRight: '1px solid #dcdcde',
+						background: ! isCustom ? '#eef4fa' : '#fff',
+						color: ! isCustom ? '#135e96' : '#757575',
+					},
+				},
+				__( 'Global default', 'khaveeai' )
+			),
+			createElement(
+				'button',
+				{
+					type: 'button',
+					onClick: () => onChangeValue( hasGlobalValue && globalValue > 0 ? globalValue : defaultSeed ),
+					style: {
+						...segmentBaseStyle,
+						background: isCustom ? '#f3f2ff' : '#fff',
+						color: isCustom ? '#6929ff' : '#757575',
+					},
+				},
+				__( 'Custom', 'khaveeai' )
+			)
+		),
+		createElement( RangeControl, {
+			label,
+			value: isCustom ? liveValue : undefined,
+			min,
+			max,
+			step,
+			disabled: ! isCustom,
+			onChange: ( value ) => onChangeValue( value ),
+		} ),
+		! isCustom && createElement(
+			'p',
+			{ style: { fontSize: '11.5px', color: '#757575', marginTop: 4 } },
+			hasGlobalValue
+				? __( 'Global default:', 'khaveeai' ) + ' ' + globalValue
+				: __( 'Using global default', 'khaveeai' )
+		)
+	);
+}
+
 function Edit( { attributes, setAttributes } ) {
 	const {
 		voice, instructions, avatar,
@@ -238,21 +344,23 @@ function Edit( { attributes, setAttributes } ) {
 			createElement(
 				PanelBody,
 				{ title: __( 'Layout', 'khaveeai' ), initialOpen: true },
-				createElement( RangeControl, {
+				createElement( GlobalCustomRange, {
 					label: __( 'Container width (px)', 'khaveeai' ),
-					help: __( 'Leave blank to use the global default.', 'khaveeai' ),
-					value: live.containerWidth > 0 ? live.containerWidth : undefined,
+					globalKey: 'container_width',
+					liveValue: live.containerWidth,
 					min: 200,
 					max: 1200,
-					onChange: ( value ) => debouncedAttr( 'containerWidth', value ),
+					defaultSeed: 200,
+					onChangeValue: ( value ) => debouncedAttr( 'containerWidth', value ),
 				} ),
-				createElement( RangeControl, {
+				createElement( GlobalCustomRange, {
 					label: __( 'Container height (px)', 'khaveeai' ),
-					help: __( 'Leave blank to use the global default.', 'khaveeai' ),
-					value: live.containerHeight > 0 ? live.containerHeight : undefined,
+					globalKey: 'container_height',
+					liveValue: live.containerHeight,
 					min: 200,
 					max: 1200,
-					onChange: ( value ) => debouncedAttr( 'containerHeight', value ),
+					defaultSeed: 200,
+					onChangeValue: ( value ) => debouncedAttr( 'containerHeight', value ),
 				} ),
 				createElement( ToggleControl, {
 					label: __( 'Full-width', 'khaveeai' ),
@@ -353,14 +461,15 @@ function Edit( { attributes, setAttributes } ) {
 			createElement(
 				PanelBody,
 				{ title: __( 'Lighting', 'khaveeai' ), initialOpen: false },
-				createElement( RangeControl, {
+				createElement( GlobalCustomRange, {
 					label: __( 'Light intensity', 'khaveeai' ),
-					help: __( '0 is dark, 2 is bright. Default 1.', 'khaveeai' ),
-					value: live.lightIntensity > 0 ? live.lightIntensity : undefined,
+					globalKey: 'light_intensity',
+					liveValue: live.lightIntensity,
 					min: 0,
 					max: 2,
 					step: 0.1,
-					onChange: ( value ) => debouncedAttr( 'lightIntensity', value ),
+					defaultSeed: 1,
+					onChangeValue: ( value ) => debouncedAttr( 'lightIntensity', value ),
 				} )
 			),
 
@@ -386,14 +495,15 @@ function Edit( { attributes, setAttributes } ) {
 							),
 					} )
 				),
-				createElement( RangeControl, {
+				createElement( GlobalCustomRange, {
 					label: __( 'Avatar scale', 'khaveeai' ),
-					help: __( '1 is normal size.', 'khaveeai' ),
-					value: live.avatarScale > 0 ? live.avatarScale : undefined,
+					globalKey: 'avatar_scale',
+					liveValue: live.avatarScale,
 					min: 0.5,
 					max: 2.0,
 					step: 0.05,
-					onChange: ( value ) => debouncedAttr( 'avatarScale', value ),
+					defaultSeed: 1,
+					onChangeValue: ( value ) => debouncedAttr( 'avatarScale', value ),
 				} ),
 				createElement( RangeControl, {
 					label: __( 'Horizontal offset', 'khaveeai' ),

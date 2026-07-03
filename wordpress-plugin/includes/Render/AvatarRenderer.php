@@ -57,12 +57,87 @@ final class AvatarRenderer {
 		// Instance atts win over defaults — wp_parse_args() merges $atts
 		// OVER $defaults (first arg wins on key collision).
 		$merged = wp_parse_args( $atts, $defaults );
+		$merged = $this->apply_defensive_defaults( $merged, $defaults );
 
-		// Defensive isset->cast->fallback re-application per field, mirroring
-		// WpOptionsConfigSource's own merge shape — guards against an empty
-		// string surviving wp_parse_args() for a field present in $atts but
-		// blank (callers are expected to array_filter() these out already,
-		// but AvatarRenderer must not trust that has happened).
+		if ( ! $this->config_source->is_configured() ) {
+			if ( current_user_can( 'manage_options' ) ) {
+				return $this->render_admin_notice();
+			}
+
+			return $this->render_visitor_placeholder();
+		}
+
+		// Configured path: enqueue assets only from here (PERF-01) and emit
+		// the escaped mount point.
+		$this->assets->enqueue();
+
+		$id = 'khaveeai-' . wp_unique_id();
+
+		return sprintf(
+			'<div id="%s" class="khaveeai-root" data-khaveeai-config="%s"></div>',
+			esc_attr( $id ),
+			esc_attr( wp_json_encode( $this->public_safe( $merged ) ) )
+		);
+	}
+
+	/**
+	 * Site-wide floating chat launcher render path (FLOAT-01, quick task
+	 * 260704-77n) — a SEPARATE mount point from render()'s shortcode/block
+	 * embed, invoked from Plugin::render_floating_widget() (a `wp_footer`
+	 * hook), never from the shortcode/block path.
+	 *
+	 * Silent on an unconfigured site: returns '' immediately, with NO admin
+	 * notice and NO visitor placeholder — unlike render(), a footer hook has
+	 * no per-instance "this block is empty" context to explain, so staying
+	 * silent is correct here (an admin already sees the "not configured"
+	 * notice on the Settings page itself).
+	 *
+	 * Reuses get_runtime_config() + apply_defensive_defaults() + public_safe()
+	 * verbatim — same secret-exclusion guarantee as render() (T-77n-01):
+	 * this method never reads the API key/platform key, only adds the plain
+	 * `floating` boolean on top of public_safe()'s existing whitelist.
+	 *
+	 * @return string The mount-point div markup, or '' when unconfigured.
+	 */
+	public function render_floating(): string {
+		if ( ! $this->config_source->is_configured() ) {
+			return '';
+		}
+
+		$this->assets->enqueue();
+
+		$defaults = $this->config_source->get_runtime_config();
+		$merged   = $this->apply_defensive_defaults( $defaults, $defaults );
+
+		$config             = $this->public_safe( $merged );
+		$config['floating'] = true;
+
+		return sprintf(
+			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
+			esc_attr( wp_json_encode( $config ) )
+		);
+	}
+
+	/**
+	 * Defensive isset->cast->fallback re-application per field, mirroring
+	 * WpOptionsConfigSource's own merge shape — guards against an empty
+	 * string surviving wp_parse_args() for a field present in $atts but
+	 * blank (callers are expected to array_filter() these out already, but
+	 * AvatarRenderer must not trust that has happened).
+	 *
+	 * Extracted from render() (unchanged behavior/output) so render_floating()
+	 * can reuse the identical defaulting logic without duplicating it
+	 * (quick task 260704-77n).
+	 *
+	 * @param array $merged   Instance-atts-over-defaults merged config (or,
+	 *                        for render_floating(), the global defaults
+	 *                        merged with themselves — there are no instance
+	 *                        atts on a footer-hook mount point).
+	 * @param array $defaults The raw get_runtime_config() defaults, used as
+	 *                        the final fallback for the four Phase-8 keys.
+	 * @return array
+	 */
+	private function apply_defensive_defaults( array $merged, array $defaults ): array {
 		$instructions = isset( $merged['instructions'] ) ? (string) $merged['instructions'] : '';
 		$voice        = isset( $merged['voice'] ) ? (string) $merged['voice'] : '';
 		$avatar_url   = isset( $merged['avatar_url'] ) ? (string) $merged['avatar_url'] : '';
@@ -98,25 +173,7 @@ final class AvatarRenderer {
 		$merged['chat_placement']   = isset( $merged['chat_placement'] ) && '' !== $merged['chat_placement']
 			? (string) $merged['chat_placement'] : 'beside';
 
-		if ( ! $this->config_source->is_configured() ) {
-			if ( current_user_can( 'manage_options' ) ) {
-				return $this->render_admin_notice();
-			}
-
-			return $this->render_visitor_placeholder();
-		}
-
-		// Configured path: enqueue assets only from here (PERF-01) and emit
-		// the escaped mount point.
-		$this->assets->enqueue();
-
-		$id = 'khaveeai-' . wp_unique_id();
-
-		return sprintf(
-			'<div id="%s" class="khaveeai-root" data-khaveeai-config="%s"></div>',
-			esc_attr( $id ),
-			esc_attr( wp_json_encode( $this->public_safe( $merged ) ) )
-		);
+		return $merged;
 	}
 
 	/**

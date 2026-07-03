@@ -36,6 +36,28 @@ use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 final class Plugin {
 
 	/**
+	 * Shared AvatarRenderer instance, set once in boot() (Phase 8's
+	 * composition-root $renderer local, promoted to a static property so
+	 * render_floating_widget() — a static wp_footer callback — can reach
+	 * it) so the wp_footer floating-widget hook (FLOAT-01, quick task
+	 * 260704-77n) reuses the exact same shortcode/block render path instead
+	 * of constructing a second renderer.
+	 *
+	 * @var AvatarRenderer|null
+	 */
+	private static ?AvatarRenderer $floating_renderer = null;
+
+	/**
+	 * Once-guard (T-77n-04): ensures render_floating_widget() echoes at most
+	 * one mount point per page load even if wp_footer somehow fires more
+	 * than once (defensive — WordPress core only fires it once per request,
+	 * but this makes the guarantee explicit and independent of that).
+	 *
+	 * @var bool
+	 */
+	private static bool $floating_widget_rendered = false;
+
+	/**
 	 * Boot the plugin: wire concretes into SessionController and
 	 * SettingsPage, and register the REST route on rest_api_init.
 	 *
@@ -87,11 +109,19 @@ final class Plugin {
 		$assets   = new AssetManager();
 		$renderer = new AvatarRenderer( $config_source, $assets );
 
+		self::$floating_renderer = $renderer;
+
 		$shortcode = new AvatarShortcode( $renderer );
 		$shortcode->register();
 
 		$block = new AvatarBlock( $renderer );
 		add_action( 'init', array( $block, 'register' ) );
+
+		// FLOAT-01 (quick task 260704-77n): site-wide floating chat launcher,
+		// independent of any shortcode/block placement. wp_footer is
+		// front-end-only by definition; render_floating_widget() ALSO
+		// early-returns on is_admin() as defense-in-depth (T-77n-03).
+		add_action( 'wp_footer', array( __CLASS__, 'render_floating_widget' ) );
 
 		// Phase 9: register khaveeai-preview so block.json's editorScript array
 		// can reference it by handle. Registration runs in init (priority 9, before
@@ -190,5 +220,51 @@ final class Plugin {
 			array(),
 			$style_version
 		);
+	}
+
+	/**
+	 * wp_footer callback: echo the site-wide floating chat launcher's mount
+	 * point (FLOAT-01, quick task 260704-77n), gated on the persisted
+	 * "Enable floating widget" setting. Renders on every front-end page
+	 * regardless of whether any shortcode/block instance also exists on
+	 * that page — this is the whole point of the feature (site-wide,
+	 * block-independent).
+	 *
+	 * Guards, in order:
+	 *  1. is_admin() — defense-in-depth (T-77n-03); wp_footer itself never
+	 *     fires in wp-admin, but this makes the front-end-only guarantee
+	 *     independent of that hook's own scope.
+	 *  2. Once-guard — at most one mount point per page load (T-77n-04).
+	 *  3. The persisted `floating_widget_enabled` setting — off by default.
+	 *  4. self::$floating_renderer must be set (boot() always sets it before
+	 *     wp_footer can fire, but this guards against any out-of-order call).
+	 *
+	 * @return void
+	 */
+	public static function render_floating_widget(): void {
+		if ( is_admin() ) {
+			return;
+		}
+
+		if ( self::$floating_widget_rendered ) {
+			return;
+		}
+
+		$settings = get_option( 'khaveeai_settings', array() );
+		$settings = is_array( $settings ) ? $settings : array();
+
+		if ( empty( $settings['floating_widget_enabled'] ) ) {
+			return;
+		}
+
+		if ( null === self::$floating_renderer ) {
+			return;
+		}
+
+		self::$floating_widget_rendered = true;
+
+		// Already escaped inside render_floating() — echo verbatim, same
+		// convention as AvatarShortcode/AvatarBlock consuming render().
+		echo self::$floating_renderer->render_floating(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_floating() returns pre-escaped markup (esc_attr on the JSON config), matching render()'s own convention.
 	}
 }

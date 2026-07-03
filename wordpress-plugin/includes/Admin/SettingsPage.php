@@ -601,6 +601,18 @@ final class SettingsPage {
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		// FLOAT-01 (quick task 260704-77n): registered here for Settings API
+		// consistency (do_settings_sections() callers, WP-CLI introspection,
+		// etc.) even though render_page()'s manual sectioned layout below is
+		// what actually renders the field on this page.
+		add_settings_field(
+			'floating_widget_enabled',
+			__( 'Enable floating widget', 'khaveeai' ),
+			array( $this, 'render_floating_widget_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -691,6 +703,13 @@ final class SettingsPage {
 		} else {
 			$sanitized['avatar_attachment_id'] = self::sanitize_avatar_attachment_id( $submitted_attachment_id, $existing_attachment_id );
 		}
+
+		// FLOAT-01 (quick task 260704-77n, T-77n-02): strict boolean coercion —
+		// isset() + '1'===(string) cast, matching the existing checkbox read
+		// shape used by remove_key/remove_platform_key/remove_avatar above.
+		// Unlike those transient remove_* flags, this one IS persisted (it's
+		// a durable on/off setting, not a one-shot deletion trigger).
+		$sanitized['floating_widget_enabled'] = isset( $input['floating_widget_enabled'] ) && '1' === (string) $input['floating_widget_enabled'];
 
 		return $sanitized;
 	}
@@ -983,6 +1002,12 @@ final class SettingsPage {
 		$this->render_section_heading( __( 'Avatar', 'khaveeai' ) );
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'Avatar (VRM/GLB)', 'khaveeai' ), array( $this, 'render_avatar_field' ) );
+		echo '</tbody></table>';
+
+		// FLOAT-01 (quick task 260704-77n): site-wide floating chat launcher toggle.
+		$this->render_section_heading( __( 'Floating Widget', 'khaveeai' ) );
+		echo '<table class="form-table" role="presentation"><tbody>';
+		$this->render_form_table_row( __( 'Enable floating widget', 'khaveeai' ), array( $this, 'render_floating_widget_field' ) );
 		echo '</tbody></table>';
 
 		submit_button();
@@ -1433,5 +1458,30 @@ final class SettingsPage {
 			echo '</div>';
 			echo '</details>';
 		}
+	}
+
+	/**
+	 * Render the "Enable floating widget" checkbox (FLOAT-01, quick task
+	 * 260704-77n) — mirrors render_remove_key_field()'s checkbox pattern,
+	 * but unlike that transient removal flag, this value IS persisted
+	 * (read back via get_option() into `checked()`, not re-derived each
+	 * save from a one-shot request flag).
+	 *
+	 * @return void
+	 */
+	public function render_floating_widget_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$enabled  = ! empty( $settings['floating_widget_enabled'] );
+
+		printf(
+			'<label><input type="checkbox" id="khaveeai_floating_widget_enabled" name="%s[floating_widget_enabled]" value="1" %s /> %s</label>',
+			esc_attr( self::OPTION_NAME ),
+			checked( $enabled, true, false ),
+			esc_html__( 'Enable the site-wide floating chat widget', 'khaveeai' )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Shows a fixed bottom-right launcher on every front-end page, using the global config above — independent of any block or shortcode placement.', 'khaveeai' ) .
+			'</p>';
 	}
 }

@@ -97,6 +97,7 @@ None yet.
 | 260625-sqp | Wire up self-hosted auto-updates for wordpress-plugin via GitHub Releases (Plugin Update Checker + tag-triggered release workflow) | 2026-06-25 | d287f49 | [260625-sqp-wire-up-self-hosted-auto-updates-for-wor](./quick/260625-sqp-wire-up-self-hosted-auto-updates-for-wor/) |
 | 260703-slv | Add Khavee Platform API key integration to WordPress plugin config resolution (PlatformConfigSource decorator over WpOptionsConfigSource) | 2026-07-03 | bf16df8 | [260703-slv-add-khavee-platform-api-key-integration-](./quick/260703-slv-add-khavee-platform-api-key-integration-/) |
 | 260704-05c | Redesign admin Settings page + block sidebar UI (sectioned layout, per-field "Synced from Platform" pills + override disclosures, sidebar Global default/Custom segmented toggles) | 2026-07-04 | 37a985e | [260704-05c-redesign-the-khavee-admin-settings-page-](./quick/260704-05c-redesign-the-khavee-admin-settings-page-/) |
+| 260704-77n | Add a site-wide floating chat launcher (Settings toggle + wp_footer hook + FloatingWidget launcher/panel wrapping the existing avatar+chat pieces); live verification caught and fixed a GLB-load-failure/WebGL-context-loss regression that unmounted the whole widget (new AvatarErrorBoundary) | 2026-07-04 | 800b62d | [260704-77n-build-a-site-wide-floating-chat-launcher](./quick/260704-77n-build-a-site-wide-floating-chat-launcher/) |
 
 ## Deferred Items
 
@@ -112,5 +113,5 @@ Last session: 2026-07-02T11:07:09.730Z
 Stopped at: context exhaustion at 78% (2026-07-02)
 Resume file: None
 
-Last activity: 2026-07-04 - Completed quick task 260704-05c: Redesign admin Settings page + block sidebar UI for global-default/custom clarity
+Last activity: 2026-07-04 - Completed quick task 260704-77n: Site-wide floating chat launcher (Settings toggle, wp_footer hook, FloatingWidget) + live-verification regression fix (AvatarErrorBoundary)
 </content>

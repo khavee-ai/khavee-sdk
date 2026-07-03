@@ -47,6 +47,13 @@
  * embed layout — containerStyle is not applied in that branch. AvatarScene
  * is exported so FloatingWidget can reuse it inside its own avatar area,
  * still nested inside the same KhaveeProvider constructed below.
+ *
+ * Bugfix (found live against wp-env, 2026-07-04): both AvatarScene usages
+ * below are wrapped in AvatarErrorBoundary (./ui/AvatarErrorBoundary) —
+ * @react-three/fiber's <Canvas> re-throws any internally-caught render
+ * error on its own next render, so an uncaught GLB/VRM load failure would
+ * otherwise unmount this ENTIRE mount point's React root (chat, controls,
+ * everything), not just the avatar. See AvatarErrorBoundary.tsx.
  */
 import { useState, type CSSProperties } from "react";
 import type { Root } from "react-dom/client";
@@ -57,6 +64,7 @@ import { ClickToTalkOverlay } from "./ui/ClickToTalkOverlay";
 import { ErrorOverlay } from "./ui/ErrorOverlay";
 import { ChatBox } from "./ui/ChatBox";
 import { ControlBar } from "./ui/ControlBar";
+import { AvatarErrorBoundary } from "./ui/AvatarErrorBoundary";
 import { resolveSceneDefaults, IDLE_ANIMATION_URL } from "./config";
 import type { KhaveeAvatarConfig } from "./config";
 import { FloatingWidget } from "./floating/FloatingWidget";
@@ -148,12 +156,20 @@ function AppRoot({
         // ClickToTalkOverlay + ErrorOverlay are siblings of this div so they
         // overlay the entire widget (position: absolute; inset: 0 from styles.css).
         <div className={`khaveeai-layout khaveeai-layout--${placement}`}>
-          {config.avatarUrl ? <AvatarScene config={config} /> : null}
+          {config.avatarUrl ? (
+            <AvatarErrorBoundary>
+              <AvatarScene config={config} />
+            </AvatarErrorBoundary>
+          ) : null}
           {isChatOpen && <ChatBox placement={placement} />}
         </div>
       ) : (
         // No chat panel: AvatarScene fills .khaveeai-root (no layout wrapper).
-        config.avatarUrl ? <AvatarScene config={config} /> : null
+        config.avatarUrl ? (
+          <AvatarErrorBoundary>
+            <AvatarScene config={config} />
+          </AvatarErrorBoundary>
+        ) : null
       )}
       <ClickToTalkOverlay />
       <ErrorOverlay />

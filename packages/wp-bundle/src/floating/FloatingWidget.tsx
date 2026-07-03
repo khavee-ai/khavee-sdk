@@ -16,6 +16,15 @@
  * Design spec (mockup, verbatim colors/dimensions): solid #6929ff, #dde1ea
  * border, 20px panel radius, 220ms cubic-bezier(0.2,0.8,0.2,1) transform
  * transition — NO box-shadow, NO gradient anywhere (see styles.css).
+ *
+ * Bugfix (found live against wp-env, 2026-07-04): AvatarScene is wrapped in
+ * AvatarErrorBoundary (../ui/AvatarErrorBoundary) because @react-three/fiber's
+ * <Canvas> re-throws any internally-caught render error on its own next
+ * render — an uncaught GLB/VRM load failure (e.g. a CORS-rejected S3 avatar
+ * URL) would otherwise propagate all the way out and unmount this ENTIRE
+ * mount point's React root (chat transcript, launcher, everything), even
+ * though only the avatar itself is broken. See AvatarErrorBoundary.tsx for
+ * the full root-cause writeup.
  */
 import { useState } from "react";
 import { AvatarScene } from "../mount";
@@ -23,6 +32,7 @@ import { ChatBox } from "../ui/ChatBox";
 import { ClickToTalkOverlay } from "../ui/ClickToTalkOverlay";
 import { ErrorOverlay } from "../ui/ErrorOverlay";
 import { ControlBar } from "../ui/ControlBar";
+import { AvatarErrorBoundary } from "../ui/AvatarErrorBoundary";
 import type { KhaveeAvatarConfig } from "../config";
 
 export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
@@ -67,7 +77,11 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
             CTA, not the mockup's static button) + ErrorOverlay so connect
             errors surface inside the panel. */}
         <div className="khaveeai-floating-avatar-area">
-          {config.avatarUrl ? <AvatarScene config={config} /> : null}
+          {config.avatarUrl ? (
+            <AvatarErrorBoundary>
+              <AvatarScene config={config} />
+            </AvatarErrorBoundary>
+          ) : null}
           <ClickToTalkOverlay />
           <ErrorOverlay />
         </div>

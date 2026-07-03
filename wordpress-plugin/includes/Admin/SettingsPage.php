@@ -212,6 +212,21 @@ final class SettingsPage {
 	private $config_source;
 
 	/**
+	 * The already-computed PlatformClient::fetch_preview() result for the
+	 * currently-configured platform key, captured once in render_page() so
+	 * the field renderers (render_instructions_field()/render_voice_field()/
+	 * render_avatar_field()) can reach it without a second live fetch.
+	 * Remains null when no platform key is configured (the "not synced,
+	 * render exactly as today" branch in each renderer).
+	 *
+	 * Shape when non-null: array{ok: bool, project_name: string, fields: array, error: string}
+	 * (see PlatformClient::fetch_preview()).
+	 *
+	 * @var array|null
+	 */
+	private $platform_preview = null;
+
+	/**
 	 * @param ConfigSourceInterface $config_source Shared with SessionController
 	 *                                             (Plugin.php wires the same instance).
 	 */
@@ -916,6 +931,10 @@ final class SettingsPage {
 		if ( '' !== $platform_key ) {
 			$preview = PlatformClient::fetch_preview( $platform_key );
 
+			// Captured for the per-field synced/override renderers below —
+			// reuses this exact $preview, never a second fetch_preview() call.
+			$this->platform_preview = $preview;
+
 			if ( ! empty( $preview['ok'] ) ) {
 				echo '<div class="notice notice-success"><p>' .
 					sprintf(
@@ -941,10 +960,66 @@ final class SettingsPage {
 		echo '<h1>' . esc_html__( 'Khavee AI Avatar', 'khaveeai' ) . '</h1>';
 		echo '<form method="post" action="options.php">';
 		settings_fields( self::OPTION_GROUP );
-		do_settings_sections( self::PAGE_SLUG );
+
+		// Manual sectioned layout (replaces the single do_settings_sections()
+		// call) so each section can render under an uppercase mockup-matching
+		// heading. The existing field renderers are called DIRECTLY — they
+		// already emit only the input + description, never a label, so the
+		// <th> below (standard WP form-table convention) supplies the label.
+		$this->render_section_heading( __( 'Connection', 'khaveeai' ) );
+		echo '<table class="form-table" role="presentation"><tbody>';
+		$this->render_form_table_row( __( 'OpenAI API Key', 'khaveeai' ), array( $this, 'render_api_key_field' ) );
+		$this->render_form_table_row( __( 'Remove Key', 'khaveeai' ), array( $this, 'render_remove_key_field' ) );
+		$this->render_form_table_row( __( 'Khavee Platform API Key', 'khaveeai' ), array( $this, 'render_platform_api_key_field' ) );
+		$this->render_form_table_row( __( 'Remove Platform Key', 'khaveeai' ), array( $this, 'render_remove_platform_key_field' ) );
+		echo '</tbody></table>';
+
+		$this->render_section_heading( __( 'Personality & Voice', 'khaveeai' ) );
+		echo '<table class="form-table" role="presentation"><tbody>';
+		$this->render_form_table_row( __( 'Personality / Instructions', 'khaveeai' ), array( $this, 'render_instructions_field' ) );
+		$this->render_form_table_row( __( 'Voice', 'khaveeai' ), array( $this, 'render_voice_field' ) );
+		echo '</tbody></table>';
+
+		$this->render_section_heading( __( 'Avatar', 'khaveeai' ) );
+		echo '<table class="form-table" role="presentation"><tbody>';
+		$this->render_form_table_row( __( 'Avatar (VRM/GLB)', 'khaveeai' ), array( $this, 'render_avatar_field' ) );
+		echo '</tbody></table>';
+
 		submit_button();
 		echo '</form>';
 		echo '</div>';
+	}
+
+	/**
+	 * Emit one uppercase, muted, bottom-bordered section heading matching the
+	 * mockup's .section-heading style (inline styles — no separate stylesheet
+	 * enqueued for this page).
+	 *
+	 * @param string $label Section label (already translated by the caller).
+	 * @return void
+	 */
+	private function render_section_heading( string $label ): void {
+		printf(
+			'<h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#757575;margin:24px 0 14px;padding-bottom:8px;border-bottom:1px solid #dcdcde;">%s</h2>',
+			esc_html( $label )
+		);
+	}
+
+	/**
+	 * Emit one `<tr><th scope="row">{label}</th><td>{callback output}</td></tr>`
+	 * form-table row, mirroring the row shape add_settings_field()/
+	 * do_settings_sections() would otherwise have produced for the same field
+	 * renderer callback.
+	 *
+	 * @param string   $label    Visible field label (already translated).
+	 * @param callable $callback Zero-arg render callback that echoes the field's
+	 *                           input/control + description markup.
+	 * @return void
+	 */
+	private function render_form_table_row( string $label, callable $callback ): void {
+		echo '<tr><th scope="row">' . esc_html( $label ) . '</th><td>';
+		call_user_func( $callback );
+		echo '</td></tr>';
 	}
 
 	/**
@@ -1021,7 +1096,7 @@ final class SettingsPage {
 			esc_attr( $masked )
 		);
 		echo '<p class="description">' .
-			esc_html__( 'Optional: enter your Khavee Platform API key (must start with "khavee_") to drive avatar config from the hosted Khavee dashboard. Platform always wins over the settings below when set.', 'khaveeai' ) .
+			esc_html__( 'Optional. When connected, Voice, Instructions, and Avatar below are driven live from this project — remove the key to configure them manually instead.', 'khaveeai' ) .
 			'</p>';
 	}
 
@@ -1045,7 +1120,56 @@ final class SettingsPage {
 	}
 
 	/**
+	 * True when $field_key is present in the already-computed
+	 * $this->platform_preview for the currently-configured (and reachable)
+	 * platform key — the gate every per-field synced/override renderer uses
+	 * to decide whether to show the "Synced from Platform" UI or fall
+	 * through to the plain, unchanged rendering.
+	 *
+	 * @param string $field_key One of 'instructions' | 'voice' | 'avatar_url'.
+	 * @return bool
+	 */
+	private function is_field_synced_from_platform( string $field_key ): bool {
+		return is_array( $this->platform_preview )
+			&& ! empty( $this->platform_preview['ok'] )
+			&& isset( $this->platform_preview['fields'][ $field_key ] );
+	}
+
+	/**
+	 * Emit the "Synced from Platform" pill matching the mockup's .pill.synced
+	 * style (inline styles — no separate stylesheet enqueued for this page).
+	 *
+	 * @return void
+	 */
+	private function render_synced_pill(): void {
+		printf(
+			'<span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:#f3f2ff;color:#6929ff;margin-left:8px;">%s</span>',
+			esc_html__( 'Synced from Platform', 'khaveeai' )
+		);
+	}
+
+	/**
+	 * Emit the read-only, dashed-border platform-value preview box matching
+	 * the mockup's .managed-field style.
+	 *
+	 * @param string $value Already-plain-text value to display (escaped here).
+	 * @return void
+	 */
+	private function render_managed_field_preview( string $value ): void {
+		printf(
+			'<div style="border:1px dashed #d7cdfb;background:#fbfaff;border-radius:4px;padding:10px 12px;font-size:13px;color:#4a3a8a;line-height:1.5;margin-top:6px;">%s</div>',
+			esc_html( $value )
+		);
+	}
+
+	/**
 	 * Render the personality/instructions textarea (SET-02).
+	 *
+	 * When a connected Platform key's preview includes the 'instructions'
+	 * field, shows a "Synced from Platform" pill + a read-only preview of the
+	 * platform value, with the original editable textarea moved inside a
+	 * native `<details>` "Override locally →" disclosure. Otherwise renders
+	 * EXACTLY as before (plain textarea, no pill, no disclosure).
 	 *
 	 * @return void
 	 */
@@ -1062,6 +1186,18 @@ final class SettingsPage {
 		$settings  = is_array( $settings ) ? $settings : array();
 		$stored    = isset( $settings['instructions'] ) ? (string) $settings['instructions'] : '';
 		$value     = '' !== $stored ? $stored : 'You are a helpful AI assistant.';
+		$synced    = $this->is_field_synced_from_platform( 'instructions' );
+
+		if ( $synced ) {
+			$this->render_synced_pill();
+			$this->render_managed_field_preview( (string) $this->platform_preview['fields']['instructions'] );
+			echo '<details style="margin-top:8px;">';
+			echo '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#6929ff;">' .
+				esc_html__( 'Override locally →', 'khaveeai' ) .
+				'</summary>';
+			echo '<div style="margin-top:10px;">';
+		}
+
 		printf(
 			'<textarea id="khaveeai_instructions" name="%s[instructions]" rows="5" class="large-text">%s</textarea>',
 			esc_attr( self::OPTION_NAME ),
@@ -1070,6 +1206,14 @@ final class SettingsPage {
 		echo '<p class="description">' .
 			esc_html__( 'The system prompt / personality for the AI assistant.', 'khaveeai' ) .
 			'</p>';
+
+		if ( $synced ) {
+			echo '<p class="description">' .
+				esc_html__( 'This local value only applies if the Platform key is later removed.', 'khaveeai' ) .
+				'</p>';
+			echo '</div>';
+			echo '</details>';
+		}
 	}
 
 	/**
@@ -1086,6 +1230,18 @@ final class SettingsPage {
 		$settings = is_array( $settings ) ? $settings : array();
 		$stored   = isset( $settings['voice'] ) ? (string) $settings['voice'] : '';
 		$current  = '' !== $stored ? $stored : self::VOICES[0];
+		$synced   = $this->is_field_synced_from_platform( 'voice' );
+
+		if ( $synced ) {
+			$this->render_synced_pill();
+			$this->render_managed_field_preview( (string) $this->platform_preview['fields']['voice'] );
+			echo '<details style="margin-top:8px;">';
+			echo '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#6929ff;">' .
+				esc_html__( 'Override locally →', 'khaveeai' ) .
+				'</summary>';
+			echo '<div style="margin-top:10px;">';
+		}
+
 		printf( '<select id="khaveeai_voice" name="%s[voice]">', esc_attr( self::OPTION_NAME ) );
 		foreach ( self::VOICES as $voice ) {
 			printf(
@@ -1099,6 +1255,14 @@ final class SettingsPage {
 		echo '<p class="description">' .
 			esc_html__( 'The OpenAI Realtime voice the avatar will speak with.', 'khaveeai' ) .
 			'</p>';
+
+		if ( $synced ) {
+			echo '<p class="description">' .
+				esc_html__( 'This local value only applies if the Platform key is later removed.', 'khaveeai' ) .
+				'</p>';
+			echo '</div>';
+			echo '</details>';
+		}
 	}
 
 	/**
@@ -1114,11 +1278,35 @@ final class SettingsPage {
 	 * CONTEXT.md "Restrict avatar upload to manage_options only" (SET-05
 	 * re-assertion for the upload surface, T-07C-04).
 	 *
+	 * When a connected Platform key's preview includes the 'avatar_url'
+	 * field, shows a "Synced from Platform" pill + a read-only preview of
+	 * the platform's avatar filename, with the original wp.media picker
+	 * moved inside a native `<details>` "Override locally →" disclosure.
+	 * Otherwise renders EXACTLY as before (plain picker, no pill/disclosure).
+	 *
 	 * @return void
 	 */
 	public function render_avatar_field(): void {
 		if ( ! current_user_can( 'manage_options' ) ) { // T-07C-04: defense-in-depth re-check for the upload-adjacent surface.
 			return;
+		}
+
+		$synced = $this->is_field_synced_from_platform( 'avatar_url' );
+
+		if ( $synced ) {
+			$this->render_synced_pill();
+			$platform_avatar_url = (string) $this->platform_preview['fields']['avatar_url'];
+			// Strip any query string (S3 presigned URLs carry signing params)
+			// before taking the basename, so the preview shows a readable
+			// filename rather than a wall of X-Amz-* parameters.
+			$path_only            = (string) wp_parse_url( $platform_avatar_url, PHP_URL_PATH );
+			$display_name         = '' !== $path_only ? basename( $path_only ) : $platform_avatar_url;
+			$this->render_managed_field_preview( $display_name );
+			echo '<details style="margin-top:8px;">';
+			echo '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#6929ff;">' .
+				esc_html__( 'Override locally →', 'khaveeai' ) .
+				'</summary>';
+			echo '<div style="margin-top:10px;">';
 		}
 
 		$settings      = get_option( self::OPTION_NAME, array() );
@@ -1238,5 +1426,12 @@ final class SettingsPage {
 		} )();
 		</script>
 		<?php
+		if ( $synced ) {
+			echo '<p class="description">' .
+				esc_html__( 'This local value only applies if the Platform key is later removed.', 'khaveeai' ) .
+				'</p>';
+			echo '</div>';
+			echo '</details>';
+		}
 	}
 }

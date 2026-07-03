@@ -104,14 +104,25 @@ const CHAT_PLACEMENT_OPTIONS = [
 ];
 
 /**
- * The admin's resolved global config (260704-05c), localized onto this
- * script's handle by Plugin.php's register_preview_bundle() via
- * wp_localize_script( 'khaveeai-preview', 'khaveeaiGlobalConfig', ... ).
- * Read once, defensively — this must never throw in a context where the
- * localize call didn't run (e.g. an isolated test harness), so every
- * lookup below tolerates an absent key.
+ * Reads the admin's resolved global config (260704-05c), localized by
+ * Plugin.php's register_preview_bundle() via wp_localize_script(
+ * 'khaveeai-preview', 'khaveeaiGlobalConfig', ... ) — but attached to the
+ * SEPARATE 'khaveeai-preview' script handle, not this file's own handle.
+ * block.json's editorScript array enqueues both handles as siblings with
+ * no guaranteed order, and in practice this file's <script> tag has been
+ * observed executing BEFORE the localized inline <script> (which prints
+ * immediately ahead of khaveeai-preview.js specifically) — so reading
+ * window.khaveeaiGlobalConfig ONCE at module-parse time would permanently
+ * capture {} regardless of what loads later. Must be read lazily, at
+ * component-render time (well after all synchronous <script> tags have
+ * executed), never memoized at module scope. Tolerates the key being
+ * absent entirely (e.g. an isolated test harness that never localizes).
+ *
+ * @return {Object} The current window.khaveeaiGlobalConfig, or {} if absent.
  */
-const GLOBAL_CONFIG = ( typeof window !== 'undefined' && window.khaveeaiGlobalConfig ) || {};
+function getGlobalConfig() {
+	return ( typeof window !== 'undefined' && window.khaveeaiGlobalConfig ) || {};
+}
 
 /**
  * Two-button "Global default / Custom" segmented toggle + RangeControl,
@@ -136,8 +147,17 @@ const GLOBAL_CONFIG = ( typeof window !== 'undefined' && window.khaveeaiGlobalCo
  */
 function GlobalCustomRange( { label, globalKey, liveValue, min, max, step, defaultSeed, onChangeValue } ) {
 	const isCustom = liveValue > 0;
-	const globalValue = GLOBAL_CONFIG[ globalKey ];
-	const hasGlobalValue = typeof globalValue === 'number' && isFinite( globalValue );
+	// wp_localize_script() has documented behavior that stringifies every
+	// leaf value before embedding it as JSON — getGlobalConfig()[ globalKey ]
+	// is "1.5", not 1.5. Parse defensively rather than typeof-checking for
+	// 'number', which would silently always fail against localized data.
+	const rawGlobalValue = getGlobalConfig()[ globalKey ];
+	const globalValue = typeof rawGlobalValue === 'string' ? parseFloat( rawGlobalValue ) : rawGlobalValue;
+	// > 0, not just isFinite(): 0 is this same 0-is-unset sentinel at the
+	// global-config layer too (e.g. container_width/height default to 0
+	// meaning "no fixed width configured globally either") — showing
+	// "Global default: 0" would misleadingly read as a real configured value.
+	const hasGlobalValue = typeof globalValue === 'number' && isFinite( globalValue ) && globalValue > 0;
 
 	const segmentBaseStyle = {
 		appearance: 'none',

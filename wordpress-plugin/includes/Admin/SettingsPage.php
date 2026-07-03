@@ -1050,8 +1050,18 @@ final class SettingsPage {
 	 * @return void
 	 */
 	public function render_instructions_field(): void {
-		$runtime   = $this->config_source->get_runtime_config();
-		$value     = isset( $runtime['instructions'] ) ? (string) $runtime['instructions'] : '';
+		// Must read the RAW local option, not $this->config_source->get_runtime_config():
+		// when PlatformConfigSource is wired in (a Khavee Platform API key is set),
+		// get_runtime_config() overlays the platform's instructionPrompt on top of the
+		// local value. Displaying that in this editable textarea would silently
+		// persist the platform's text into the local 'instructions' option on the
+		// very next save (even an unrelated one) — the admin form must always
+		// edit the local override, never the resolved runtime blend (found via
+		// live testing with a real platform key, 2026-07-03).
+		$settings  = get_option( self::OPTION_NAME, array() );
+		$settings  = is_array( $settings ) ? $settings : array();
+		$stored    = isset( $settings['instructions'] ) ? (string) $settings['instructions'] : '';
+		$value     = '' !== $stored ? $stored : 'You are a helpful AI assistant.';
 		printf(
 			'<textarea id="khaveeai_instructions" name="%s[instructions]" rows="5" class="large-text">%s</textarea>',
 			esc_attr( self::OPTION_NAME ),
@@ -1068,8 +1078,14 @@ final class SettingsPage {
 	 * @return void
 	 */
 	public function render_voice_field(): void {
-		$runtime = $this->config_source->get_runtime_config();
-		$current = isset( $runtime['voice'] ) ? (string) $runtime['voice'] : '';
+		// Same reasoning as render_instructions_field(): read the raw local
+		// option, not the platform-overlaid runtime config, so this <select>'s
+		// currently-selected value never round-trips platform data back into
+		// the local 'voice' option on save.
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$stored   = isset( $settings['voice'] ) ? (string) $settings['voice'] : '';
+		$current  = '' !== $stored ? $stored : self::VOICES[0];
 		printf( '<select id="khaveeai_voice" name="%s[voice]">', esc_attr( self::OPTION_NAME ) );
 		foreach ( self::VOICES as $voice ) {
 			printf(

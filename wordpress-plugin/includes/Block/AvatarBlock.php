@@ -108,8 +108,15 @@ final class AvatarBlock {
 			// affect the real page" — nothing was visible to rotate). `> 0` matches
 			// the same "0 means unset" convention editor.js's RangeControl display
 			// already uses (`value: live.avatarScale > 0 ? ... : undefined`).
-			'light_intensity'  => ( $attributes['lightIntensity'] ?? 0 ) > 0  ? (float)  $attributes['lightIntensity']  : 1.0,
-			'avatar_scale'     => ( $attributes['avatarScale'] ?? 0 ) > 0     ? (float)  $attributes['avatarScale']     : 1.0,
+			// null (not a literal 1.0) when unset: since PlatformConfigSource can now
+			// resolve a DIFFERENT default (e.g. 1.5 from the hosted platform), baking
+			// in "1.0" here would always win over wp_parse_args() and silently discard
+			// the platform's value on every block that hasn't had this slider touched
+			// — the overwhelming common case. null gets stripped by the array_filter
+			// below so AvatarRenderer's own config_source-derived default applies
+			// (found via live testing with a real Platform API key, 2026-07-03).
+			'light_intensity'  => ( $attributes['lightIntensity'] ?? 0 ) > 0  ? (float)  $attributes['lightIntensity']  : null,
+			'avatar_scale'     => ( $attributes['avatarScale'] ?? 0 ) > 0     ? (float)  $attributes['avatarScale']     : null,
 			'avatar_offset_x'  => isset( $attributes['avatarOffsetX'] )   ? (float)  $attributes['avatarOffsetX']   : 0.0,
 			'avatar_offset_y'  => isset( $attributes['avatarOffsetY'] )   ? (float)  $attributes['avatarOffsetY']   : 0.0,
 			'camera_preset'    => isset( $attributes['cameraPreset'] )    ? (string) $attributes['cameraPreset']    : '',
@@ -125,6 +132,13 @@ final class AvatarBlock {
 		$renderer_atts = array_filter(
 			$renderer_atts,
 			static function ( $v, $k ) {
+				if ( null === $v ) {
+					// light_intensity/avatar_scale's "unset" sentinel (see above) — the
+					// key must be entirely ABSENT from $renderer_atts, not merely null,
+					// since wp_parse_args() treats a present-but-null key as an explicit
+					// override and would still shadow config_source's own default.
+					return false;
+				}
 				if ( is_string( $v ) ) {
 					return '' !== $v;
 				}

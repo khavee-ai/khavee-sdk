@@ -533,6 +533,18 @@
   height: 100%;
 }
 
+/* Floating panel's mic-only ControlBar: bottom-right of the avatar area,
+   clear of the centered ClickToTalkOverlay CTA (quick task 260705-p30).
+   Scoped via descendant selector + .khaveeai-floating-controls modifier so
+   the shared base .khaveeai-controls rule (bottom-center, used by the
+   inline embed) is never modified. */
+.khaveeai-floating-avatar-area .khaveeai-controls.khaveeai-floating-controls {
+  bottom: 12px;
+  left: auto;
+  right: 12px;
+  transform: none;
+}
+
 .khaveeai-floating-chat {
   flex: 1;
   min-height: 0;
@@ -595,21 +607,6 @@
 .khaveeai-floating-widget[data-open="false"] .khaveeai-floating-icon-close {
   transform: scale(0.5) rotate(-45deg);
   opacity: 0;
-}
-
-.khaveeai-floating-unread-dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #ff4d4f;
-  border: 2px solid #ffffff;
-}
-
-.khaveeai-floating-widget[data-open="true"] .khaveeai-floating-unread-dot {
-  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

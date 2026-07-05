@@ -38,6 +38,19 @@ import type { KhaveeAvatarConfig } from "../config";
 export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Derived scene config for the floating avatar area ONLY: maps the
+  // floating*-prefixed fields onto the keys AvatarScene actually reads
+  // (avatarScale/avatarOffsetX/avatarOffsetY/bgTransparent), with fixed
+  // defaults (not the global inline-embed values) so the floating widget
+  // is independently configurable (quick task 260705-p30).
+  const floatingSceneConfig: KhaveeAvatarConfig = {
+    ...config,
+    avatarScale: config.floatingAvatarScale ?? 1.0,
+    avatarOffsetX: config.floatingAvatarOffsetX ?? 0.0,
+    avatarOffsetY: config.floatingAvatarOffsetY ?? 0.0,
+    bgTransparent: config.floatingBgTransparent ?? false,
+  };
+
   return (
     <div
       className="khaveeai-floating-widget"
@@ -76,30 +89,40 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
         {/* Real AvatarScene + ClickToTalkOverlay (the actual "Click to talk"
             CTA, not the mockup's static button) + ErrorOverlay so connect
             errors surface inside the panel. */}
-        <div className="khaveeai-floating-avatar-area">
+        <div
+          className="khaveeai-floating-avatar-area"
+          style={{
+            background: config.floatingBgTransparent
+              ? "transparent"
+              : config.floatingBgColor ?? "#6929ff",
+          }}
+        >
           {config.avatarUrl ? (
             <AvatarErrorBoundary>
-              <AvatarScene config={config} />
+              <AvatarScene config={floatingSceneConfig} />
             </AvatarErrorBoundary>
           ) : null}
           <ClickToTalkOverlay />
           <ErrorOverlay />
+          {/* Mic mute/unmute only (no chat toggle) — anchored bottom-right of
+              this avatar area, clear of the centered ClickToTalkOverlay CTA.
+              No-op chat toggle since the panel's own launcher/close already
+              governs visibility. */}
+          <ControlBar
+            chatEnabled
+            isChatOpen
+            onToggleChat={() => {
+              /* no-op: panel open/close is governed by the launcher/close button */
+            }}
+            showChatToggle={false}
+            className="khaveeai-floating-controls"
+          />
         </div>
 
         {/* ── Chat ──────────────────────────────────────────────────────── */}
         <div className="khaveeai-floating-chat">
           <ChatBox placement="below" />
         </div>
-
-        {/* Mic mute/unmute — already-working control, no-op chat toggle
-            since the panel's own launcher/close already governs visibility. */}
-        <ControlBar
-          chatEnabled
-          isChatOpen
-          onToggleChat={() => {
-            /* no-op: panel open/close is governed by the launcher/close button */
-          }}
-        />
       </div>
 
       <button
@@ -136,7 +159,6 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
         >
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
-        <span className="khaveeai-floating-unread-dot" />
       </button>
     </div>
   );

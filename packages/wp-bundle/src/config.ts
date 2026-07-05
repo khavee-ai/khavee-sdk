@@ -156,6 +156,20 @@ export interface KhaveeAvatarConfig {
    * in this mode — the panel has fixed 360x520 sizing.
    */
   floating?: boolean;
+  // Floating-widget-only visual config (quick task 260705-p30): independent
+  // of the global bgColor/bgTransparent/avatarScale/avatarOffsetX/Y fields
+  // above — FloatingWidget derives its own scene config from these instead
+  // of falling back to the global ones, so the two embeds never share state.
+  /** CSS colour string for the floating panel's avatar-area background. Default "#6929ff". */
+  floatingBgColor?: string;
+  /** When true, the floating panel's avatar-area Canvas background is transparent. */
+  floatingBgTransparent?: boolean;
+  /** Horizontal avatar offset in scene units, floating panel only. 0.0 = centred. */
+  floatingAvatarOffsetX?: number;
+  /** Vertical avatar offset in scene units, floating panel only. 0.0 = centred. */
+  floatingAvatarOffsetY?: number;
+  /** Avatar scale multiplier, floating panel only. 1.0 = natural size. */
+  floatingAvatarScale?: number;
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────

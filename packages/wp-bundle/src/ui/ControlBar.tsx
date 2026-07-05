@@ -17,11 +17,27 @@ export function ControlBar({
   chatEnabled,
   isChatOpen,
   onToggleChat,
+  showChatToggle,
+  className,
 }: {
   /** Whether the admin config allows a chat panel to exist at all (config.chatShow). */
   chatEnabled: boolean;
   isChatOpen: boolean;
   onToggleChat: () => void;
+  /**
+   * Whether the chat show/hide button may render at all, independent of
+   * `chatEnabled`. Optional and defaults to "still renders" (undefined
+   * !== false) so the inline-embed call site (mount.tsx), which passes
+   * neither prop, is completely unaffected. The floating panel passes
+   * `false` to force a mic-only ControlBar.
+   */
+  showChatToggle?: boolean;
+  /**
+   * Extra class appended after the base `khaveeai-controls` class, for a
+   * caller-scoped positioning override (e.g. the floating panel's
+   * bottom-right mic placement) without touching the shared base rule.
+   */
+  className?: string;
 }) {
   const { isConnected, isMicEnabled, toggleMicrophone } = useRealtime();
 
@@ -30,7 +46,9 @@ export function ControlBar({
   }
 
   return (
-    <div className="khaveeai-controls">
+    <div
+      className={`khaveeai-controls${className ? " " + className : ""}`}
+    >
       <button
         type="button"
         className="khaveeai-control-btn khaveeai-control-btn--mic"
@@ -40,7 +58,7 @@ export function ControlBar({
       >
         {isMicEnabled ? <MicIcon /> : <MicOffIcon />}
       </button>
-      {chatEnabled && (
+      {chatEnabled && showChatToggle !== false && (
         <button
           type="button"
           className="khaveeai-control-btn khaveeai-control-btn--chat"

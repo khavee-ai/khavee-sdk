@@ -613,6 +613,48 @@ final class SettingsPage {
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		// Quick task 260705-p30: floating-widget-only visual config, mirroring
+		// the floating_widget_enabled registration shape exactly.
+		add_settings_field(
+			'floating_bg_color',
+			__( 'Floating background color', 'khaveeai' ),
+			array( $this, 'render_floating_bg_color_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_bg_transparent',
+			__( 'Transparent floating background', 'khaveeai' ),
+			array( $this, 'render_floating_bg_transparent_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_avatar_offset_x',
+			__( 'Floating avatar offset X', 'khaveeai' ),
+			array( $this, 'render_floating_avatar_offset_x_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_avatar_offset_y',
+			__( 'Floating avatar offset Y', 'khaveeai' ),
+			array( $this, 'render_floating_avatar_offset_y_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_avatar_scale',
+			__( 'Floating avatar scale', 'khaveeai' ),
+			array( $this, 'render_floating_avatar_scale_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -710,6 +752,15 @@ final class SettingsPage {
 		// Unlike those transient remove_* flags, this one IS persisted (it's
 		// a durable on/off setting, not a one-shot deletion trigger).
 		$sanitized['floating_widget_enabled'] = isset( $input['floating_widget_enabled'] ) && '1' === (string) $input['floating_widget_enabled'];
+
+		// Quick task 260705-p30: floating-widget-only visual config —
+		// same strict boolean-coercion / isset->cast->fallback shapes used
+		// throughout this method.
+		$sanitized['floating_bg_color']        = isset( $input['floating_bg_color'] ) ? sanitize_text_field( (string) $input['floating_bg_color'] ) : '';
+		$sanitized['floating_bg_transparent']  = isset( $input['floating_bg_transparent'] ) && '1' === (string) $input['floating_bg_transparent'];
+		$sanitized['floating_avatar_offset_x'] = isset( $input['floating_avatar_offset_x'] ) ? (float) $input['floating_avatar_offset_x'] : 0.0;
+		$sanitized['floating_avatar_offset_y'] = isset( $input['floating_avatar_offset_y'] ) ? (float) $input['floating_avatar_offset_y'] : 0.0;
+		$sanitized['floating_avatar_scale']    = isset( $input['floating_avatar_scale'] ) ? (float) $input['floating_avatar_scale'] : 1.0;
 
 		return $sanitized;
 	}
@@ -1008,6 +1059,13 @@ final class SettingsPage {
 		$this->render_section_heading( __( 'Floating Widget', 'khaveeai' ) );
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'Enable floating widget', 'khaveeai' ), array( $this, 'render_floating_widget_field' ) );
+		// Quick task 260705-p30: floating-widget-only visual config, independent
+		// of the global avatar/background settings above.
+		$this->render_form_table_row( __( 'Floating background color', 'khaveeai' ), array( $this, 'render_floating_bg_color_field' ) );
+		$this->render_form_table_row( __( 'Transparent floating background', 'khaveeai' ), array( $this, 'render_floating_bg_transparent_field' ) );
+		$this->render_form_table_row( __( 'Floating avatar offset X', 'khaveeai' ), array( $this, 'render_floating_avatar_offset_x_field' ) );
+		$this->render_form_table_row( __( 'Floating avatar offset Y', 'khaveeai' ), array( $this, 'render_floating_avatar_offset_y_field' ) );
+		$this->render_form_table_row( __( 'Floating avatar scale', 'khaveeai' ), array( $this, 'render_floating_avatar_scale_field' ) );
 		echo '</tbody></table>';
 
 		submit_button();
@@ -1482,6 +1540,119 @@ final class SettingsPage {
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Shows a fixed bottom-right launcher on every front-end page, using the global config above — independent of any block or shortcode placement.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating panel's background color input (quick task
+	 * 260705-p30) — independent of the inline embed's global background
+	 * color above.
+	 *
+	 * @return void
+	 */
+	public function render_floating_bg_color_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_bg_color'] ) ? (string) $settings['floating_bg_color'] : '';
+
+		printf(
+			'<input type="text" id="khaveeai_floating_bg_color" name="%s[floating_bg_color]" value="%s" class="regular-text" placeholder="#6929ff" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Background color for the floating widget\'s avatar area only. Leave blank for the default purple.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating panel's transparent-background checkbox (quick
+	 * task 260705-p30) — mirrors render_floating_widget_field()'s checkbox
+	 * pattern exactly.
+	 *
+	 * @return void
+	 */
+	public function render_floating_bg_transparent_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$enabled  = ! empty( $settings['floating_bg_transparent'] );
+
+		printf(
+			'<label><input type="checkbox" id="khaveeai_floating_bg_transparent" name="%s[floating_bg_transparent]" value="1" %s /> %s</label>',
+			esc_attr( self::OPTION_NAME ),
+			checked( $enabled, true, false ),
+			esc_html__( 'Make the floating widget\'s avatar-area background transparent', 'khaveeai' )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'When enabled, overrides the floating background color above.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating panel's horizontal avatar offset input (quick
+	 * task 260705-p30) — independent of the inline embed's global avatar
+	 * offset X above.
+	 *
+	 * @return void
+	 */
+	public function render_floating_avatar_offset_x_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0;
+
+		printf(
+			'<input type="number" step="0.1" id="khaveeai_floating_avatar_offset_x" name="%s[floating_avatar_offset_x]" value="%s" class="small-text" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Horizontal avatar offset for the floating widget only. 0 = centred.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating panel's vertical avatar offset input (quick task
+	 * 260705-p30) — independent of the inline embed's global avatar offset
+	 * Y above.
+	 *
+	 * @return void
+	 */
+	public function render_floating_avatar_offset_y_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0;
+
+		printf(
+			'<input type="number" step="0.1" id="khaveeai_floating_avatar_offset_y" name="%s[floating_avatar_offset_y]" value="%s" class="small-text" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Vertical avatar offset for the floating widget only. 0 = centred.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating panel's avatar scale input (quick task
+	 * 260705-p30) — independent of the inline embed's global avatar scale
+	 * above.
+	 *
+	 * @return void
+	 */
+	public function render_floating_avatar_scale_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = ( isset( $settings['floating_avatar_scale'] ) && (float) $settings['floating_avatar_scale'] > 0 )
+			? (float) $settings['floating_avatar_scale']
+			: 1.0;
+
+		printf(
+			'<input type="number" step="0.1" id="khaveeai_floating_avatar_scale" name="%s[floating_avatar_scale]" value="%s" class="small-text" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Avatar scale multiplier for the floating widget only. 1.0 = natural size.', 'khaveeai' ) .
 			'</p>';
 	}
 }

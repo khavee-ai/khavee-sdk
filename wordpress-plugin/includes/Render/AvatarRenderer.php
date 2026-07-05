@@ -112,6 +112,15 @@ final class AvatarRenderer {
 		$config             = $this->public_safe( $merged );
 		$config['floating'] = true;
 
+		// Floating-widget-only visual config (quick task 260705-p30): added
+		// AFTER public_safe(), same as the `floating` key above, so these
+		// never leak into render()'s inline-embed public_safe() output.
+		$config['floatingBgColor']        = (string) $merged['floating_bg_color'];
+		$config['floatingBgTransparent']  = (bool) $merged['floating_bg_transparent'];
+		$config['floatingAvatarOffsetX']  = (float) $merged['floating_avatar_offset_x'];
+		$config['floatingAvatarOffsetY']  = (float) $merged['floating_avatar_offset_y'];
+		$config['floatingAvatarScale']    = (float) $merged['floating_avatar_scale'];
+
 		return sprintf(
 			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
 			esc_attr( wp_json_encode( $config ) )
@@ -172,6 +181,18 @@ final class AvatarRenderer {
 		$merged['chat_show']        = (bool) ( $merged['chat_show'] ?? false );
 		$merged['chat_placement']   = isset( $merged['chat_placement'] ) && '' !== $merged['chat_placement']
 			? (string) $merged['chat_placement'] : 'beside';
+
+		// Floating-widget-only visual config (quick task 260705-p30) — same
+		// defensive re-application shape as the block above, kept independent
+		// of the global bg_color/bg_transparent/avatar_scale/avatar_offset_x/y
+		// keys so the floating panel and inline embed never share state.
+		$merged['floating_bg_color']       = isset( $merged['floating_bg_color'] ) ? (string) $merged['floating_bg_color'] : '';
+		$merged['floating_bg_transparent'] = (bool) ( $merged['floating_bg_transparent'] ?? false );
+		$merged['floating_avatar_offset_x'] = isset( $merged['floating_avatar_offset_x'] ) ? (float) $merged['floating_avatar_offset_x'] : 0.0;
+		$merged['floating_avatar_offset_y'] = isset( $merged['floating_avatar_offset_y'] ) ? (float) $merged['floating_avatar_offset_y'] : 0.0;
+		// `> 0`-sentinel pattern (0 means "unset", real default is 1.0), same
+		// as the global avatar_scale field above.
+		$merged['floating_avatar_scale'] = ( $merged['floating_avatar_scale'] ?? 0 ) > 0 ? (float) $merged['floating_avatar_scale'] : 1.0;
 
 		return $merged;
 	}

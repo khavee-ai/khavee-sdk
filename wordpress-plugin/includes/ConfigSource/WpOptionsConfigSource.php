@@ -148,6 +148,15 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			'camera_rotation_y' => isset( $settings['camera_rotation_y'] ) ? (float) $settings['camera_rotation_y'] : self::DEFAULT_CAMERA_ROTATION_Y,
 			'chat_show'        => isset( $settings['chat_show'] )        ? (bool)   $settings['chat_show']        : false,
 			'chat_placement'   => isset( $settings['chat_placement'] )   ? (string) $settings['chat_placement']   : self::DEFAULT_CHAT_PLACEMENT,
+			// Floating-widget-only visual config (quick task 260705-p30) —
+			// independent of the global bg_color/bg_transparent/avatar_scale/
+			// avatar_offset_x/y keys above; the floating panel never falls
+			// back to those, only to these floating_*-prefixed defaults.
+			'floating_bg_color'        => isset( $settings['floating_bg_color'] )        ? (string) $settings['floating_bg_color']        : '',
+			'floating_bg_transparent'  => isset( $settings['floating_bg_transparent'] )  ? (bool)   $settings['floating_bg_transparent']  : false,
+			'floating_avatar_offset_x' => isset( $settings['floating_avatar_offset_x'] ) ? (float)  $settings['floating_avatar_offset_x'] : 0.0,
+			'floating_avatar_offset_y' => isset( $settings['floating_avatar_offset_y'] ) ? (float)  $settings['floating_avatar_offset_y'] : 0.0,
+			'floating_avatar_scale'    => isset( $settings['floating_avatar_scale'] )    ? (float)  $settings['floating_avatar_scale']    : 1.0,
 		];
 	}
 

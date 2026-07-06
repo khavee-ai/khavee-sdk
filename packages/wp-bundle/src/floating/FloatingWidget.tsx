@@ -49,6 +49,7 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
     avatarOffsetX: config.floatingAvatarOffsetX ?? 0.0,
     avatarOffsetY: config.floatingAvatarOffsetY ?? 0.0,
     bgTransparent: config.floatingBgTransparent ?? false,
+    cameraRotationY: config.floatingCameraRotationY ?? 0.0,
   };
 
   return (

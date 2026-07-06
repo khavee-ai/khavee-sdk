@@ -170,6 +170,10 @@ export interface KhaveeAvatarConfig {
   floatingAvatarOffsetY?: number;
   /** Avatar scale multiplier, floating panel only. 1.0 = natural size. */
   floatingAvatarScale?: number;
+  /** Horizontal camera orbit, in degrees, floating panel only. 0 = the
+   * preset's own angle, positive = orbit right. Independent of the
+   * inline-embed's cameraRotationY. */
+  floatingCameraRotationY?: number;
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────
@@ -197,6 +201,41 @@ function orbitAroundTarget(
     position[1],
     target[2] - dx * sin + dz * cos,
   ];
+}
+
+/**
+ * Inverse of `orbitAroundTarget`: given a camera position that has been
+ * orbited (e.g. by dragging OrbitControls in the live preview), reads back
+ * the Y-axis degrees that would reproduce it via
+ * `orbitAroundTarget(basePosition, target, deg)`.
+ *
+ * Takes `basePosition` (the preset's own un-rotated position) rather than
+ * assuming the world origin, because `orbitAroundTarget` rotates relative to
+ * that preset base, not (0,0,0) — the same preset base resolveSceneDefaults()
+ * already resolves via CAMERA_PRESETS[preset].position.
+ *
+ * Symmetric with orbitAroundTarget's trig: baseAzimuth/curAzimuth are each
+ * atan2(dz, dx) around target, and deg is the base-minus-current delta,
+ * normalized to (-180, 180] so it round-trips through orbitAroundTarget.
+ */
+export function angleFromCameraPosition(
+  cameraPosition: [number, number, number],
+  target: [number, number, number],
+  basePosition: [number, number, number]
+): number {
+  const baseAzimuth = Math.atan2(
+    basePosition[2] - target[2],
+    basePosition[0] - target[0]
+  );
+  const curAzimuth = Math.atan2(
+    cameraPosition[2] - target[2],
+    cameraPosition[0] - target[0]
+  );
+  let deg = ((baseAzimuth - curAzimuth) * 180) / Math.PI;
+  // Normalize to (-180, 180].
+  while (deg <= -180) deg += 360;
+  while (deg > 180) deg -= 360;
+  return deg;
 }
 
 // ── Scene default resolver ────────────────────────────────────────────────────

@@ -1300,7 +1300,15 @@ JS;
 		echo '</div>';
 
 		// FLOAT-01 (quick task 260704-77n): site-wide floating chat launcher toggle.
+		// 260706-x6b: two-column layout — fields (left) | sticky live preview
+		// (right) — so the preview stays visible next to the fields instead of
+		// scrolling below them. render_floating_preview_mount()'s own markup
+		// (mount div id/class/data-attribute/dimensions) is unchanged; only its
+		// parent container moves from below the table to this right column.
+		echo '<div class="khaveeai-settings__card">';
 		$this->render_section_heading( __( 'Floating Widget', 'khaveeai' ) );
+		echo '<div class="khaveeai-settings__two-col">';
+
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'Enable floating widget', 'khaveeai' ), array( $this, 'render_floating_widget_field' ) );
 		// Quick task 260705-p30: floating-widget-only visual config, independent
@@ -1316,8 +1324,14 @@ JS;
 		echo '</tbody></table>';
 
 		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
-		// of the already-built `khaveeai-preview` bundle.
+		// of the already-built `khaveeai-preview` bundle. Moved (260706-x6b)
+		// into the sticky right column so it sits beside the fields.
+		echo '<div class="khaveeai-settings__preview-col">';
 		$this->render_floating_preview_mount();
+		echo '</div>';
+
+		echo '</div>'; // .khaveeai-settings__two-col
+		echo '</div>'; // .khaveeai-settings__card
 
 		submit_button();
 		echo '</form>';

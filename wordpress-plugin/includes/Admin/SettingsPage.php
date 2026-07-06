@@ -347,7 +347,15 @@ jQuery( function ( $ ) {
 		initialAvatarUrl = '';
 	}
 
-	function rebuild() {
+	// colorOverride lets the irischange handler below pass the color Iris
+	// just computed (event.ui.color) directly, bypassing colorEl.value —
+	// confirmed live that a palette-swatch click fires `irischange` BEFORE
+	// Iris writes the new color into the input's DOM value (el.value inside
+	// the handler still holds the PREVIOUS click's color, one step behind),
+	// while event.ui.color already carries the correct, current color at
+	// fire time. Reading colorEl.value here would silently rebuild the
+	// preview one click stale on every palette-swatch interaction.
+	function rebuild( colorOverride ) {
 		var colorEl       = document.getElementById( 'khaveeai_floating_bg_color' );
 		var transparentEl = document.getElementById( 'khaveeai_floating_bg_transparent' );
 		var offsetXEl     = document.getElementById( 'khaveeai_floating_avatar_offset_x' );
@@ -357,7 +365,7 @@ jQuery( function ( $ ) {
 		var cfg = {
 			avatarUrl: initialAvatarUrl,
 			bgType: 'color',
-			bgColor: colorEl ? colorEl.value : '#6929ff',
+			bgColor: colorOverride || ( colorEl ? colorEl.value : '#6929ff' ),
 			bgTransparent: transparentEl ? transparentEl.checked : false,
 			avatarScale: scaleEl ? parseFloat( scaleEl.value ) : 1.0,
 			avatarOffsetX: offsetXEl ? parseFloat( offsetXEl.value ) : 0.0,
@@ -380,11 +388,36 @@ jQuery( function ( $ ) {
 		}
 	}
 
-	// wpColorPicker fires `change`/`clear` on swatch interactions and hex
-	// edits made through its own UI.
+	// wpColorPicker's `change`/`clear` options both receive (event, ui) as
+	// arguments — ui.color is present for `change`, absent for `clear` (the
+	// field is blanked instead). Wrap rebuild() rather than pass it directly
+	// so its optional colorOverride param never receives the raw jQuery
+	// event object as a false-truthy value.
 	$( '.khaveeai-color-field' ).wpColorPicker( {
-		change: rebuild,
-		clear: rebuild
+		change: function ( event, ui ) {
+			rebuild( ui && ui.color ? ui.color.toString() : null );
+		},
+		clear: function () {
+			rebuild();
+		}
+	} );
+
+	// wpColorPicker's own `change` option above is NOT invoked when a
+	// discrete palette swatch is clicked inside the popup (confirmed live:
+	// Iris's palette-click handler sets the input's value via jQuery .val()
+	// without dispatching a native `input`/`change` DOM event, and without
+	// routing through the wp-color-picker widget's own `_trigger`, so
+	// neither that callback NOR the belt-and-braces listeners below fire for
+	// that one interaction path — direct hex typing and the gradient/hue
+	// drag both work correctly already). Iris's underlying `irischange`
+	// jQuery custom event DOES fire for every interaction path including
+	// palette clicks, so bind rebuild() to it directly as the reliable
+	// catch-all — passing event.ui.color explicitly, since confirmed live
+	// that `irischange` fires BEFORE Iris writes the new color into the
+	// input's DOM value (colorEl.value inside rebuild() would read the
+	// PREVIOUS click's color, one step behind, without this override).
+	$( '.khaveeai-color-field' ).on( 'irischange', function ( event, ui ) {
+		rebuild( ui && ui.color ? ui.color.toString() : null );
 	} );
 
 	// Belt-and-braces: plain input/change listeners on all five fields so

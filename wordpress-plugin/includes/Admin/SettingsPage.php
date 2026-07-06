@@ -1555,8 +1555,13 @@ final class SettingsPage {
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_bg_color'] ) ? (string) $settings['floating_bg_color'] : '';
 
+		// Quick task 260706-vf4: `khaveeai-color-field` class lets the inline
+		// script (render_page()'s enqueue_settings_assets()) call
+		// wpColorPicker() on this input. It stays a plain type="text" input —
+		// wp-color-picker enhances it in place — so name/id/value semantics
+		// (and therefore sanitize_settings()) are completely unaffected.
 		printf(
-			'<input type="text" id="khaveeai_floating_bg_color" name="%s[floating_bg_color]" value="%s" class="regular-text" placeholder="#6929ff" />',
+			'<input type="text" id="khaveeai_floating_bg_color" name="%s[floating_bg_color]" value="%s" class="regular-text khaveeai-color-field" placeholder="#6929ff" />',
 			esc_attr( self::OPTION_NAME ),
 			esc_attr( $current )
 		);
@@ -1600,10 +1605,15 @@ final class SettingsPage {
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0;
 
+		// Quick task 260706-vf4: range slider (min/max/step mirror editor.js's
+		// avatarOffsetX RangeControl, lines 528-538) plus a sibling <output>
+		// live-readout element. Same id/name as before — sanitize_settings()
+		// and the persisted option shape are unaffected.
 		printf(
-			'<input type="number" step="0.1" id="khaveeai_floating_avatar_offset_x" name="%s[floating_avatar_offset_x]" value="%s" class="small-text" />',
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-1" max="1" step="0.05" id="khaveeai_floating_avatar_offset_x" name="%s[floating_avatar_offset_x]" value="%s" /><output id="khaveeai_floating_avatar_offset_x_out" for="khaveeai_floating_avatar_offset_x">%s</output></span>',
 			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current )
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Horizontal avatar offset for the floating widget only. 0 = centred.', 'khaveeai' ) .
@@ -1622,10 +1632,15 @@ final class SettingsPage {
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0;
 
+		// Quick task 260706-vf4: range slider (min/max/step mirror editor.js's
+		// avatarOffsetY RangeControl, lines 540-548) plus a sibling <output>
+		// live-readout element. Same id/name as before — sanitize_settings()
+		// and the persisted option shape are unaffected.
 		printf(
-			'<input type="number" step="0.1" id="khaveeai_floating_avatar_offset_y" name="%s[floating_avatar_offset_y]" value="%s" class="small-text" />',
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-1" max="1" step="0.05" id="khaveeai_floating_avatar_offset_y" name="%s[floating_avatar_offset_y]" value="%s" /><output id="khaveeai_floating_avatar_offset_y_out" for="khaveeai_floating_avatar_offset_y">%s</output></span>',
 			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current )
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Vertical avatar offset for the floating widget only. 0 = centred.', 'khaveeai' ) .
@@ -1646,10 +1661,16 @@ final class SettingsPage {
 			? (float) $settings['floating_avatar_scale']
 			: 1.0;
 
+		// Quick task 260706-vf4: range slider (min/max/step mirror editor.js's
+		// avatarScale GlobalCustomRange, lines 518-527) plus a sibling
+		// <output> live-readout element. Same id/name as before, and the
+		// `> 0`-sentinel read above is preserved — sanitize_settings() and
+		// the persisted option shape are unaffected.
 		printf(
-			'<input type="number" step="0.1" id="khaveeai_floating_avatar_scale" name="%s[floating_avatar_scale]" value="%s" class="small-text" />',
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0.5" max="2" step="0.05" id="khaveeai_floating_avatar_scale" name="%s[floating_avatar_scale]" value="%s" /><output id="khaveeai_floating_avatar_scale_out" for="khaveeai_floating_avatar_scale">%s</output></span>',
 			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current )
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Avatar scale multiplier for the floating widget only. 1.0 = natural size.', 'khaveeai' ) .

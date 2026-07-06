@@ -227,6 +227,20 @@ final class SettingsPage {
 	private $platform_preview = null;
 
 	/**
+	 * The hook suffix add_menu_page() returns for THIS settings page
+	 * (quick task 260706-vf4). Captured so enqueue_settings_assets() can
+	 * scope the `khaveeai-preview` bundle + wp-color-picker to ONLY this
+	 * admin screen — comparing against a hardcoded
+	 * 'toplevel_page_khaveeai-settings' string would be fragile if the menu
+	 * registration ever changes; the return value is the robust source of
+	 * truth WordPress itself uses for the same purpose (e.g. load-<hook>
+	 * hooks).
+	 *
+	 * @var string|null
+	 */
+	private $hook_suffix = null;
+
+	/**
 	 * @param ConfigSourceInterface $config_source Shared with SessionController
 	 *                                             (Plugin.php wires the same instance).
 	 */
@@ -247,6 +261,11 @@ final class SettingsPage {
 		add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'maybe_register_avatar_upload_filters' ) );
+		// Quick task 260706-vf4: page-scoped preview bundle + color-picker
+		// enqueue for the Floating Widget live preview. admin_enqueue_scripts
+		// fires on EVERY admin page; enqueue_settings_assets() early-returns
+		// unless $hook_suffix matches $this->hook_suffix (set in add_menu_page()).
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_settings_assets' ) );
 	}
 
 	// ── Menu + settings registration ───────────────────────────────────
@@ -260,7 +279,9 @@ final class SettingsPage {
 	 * @return void
 	 */
 	public function add_menu_page(): void {
-		add_menu_page(
+		// Quick task 260706-vf4: capture the hook suffix so
+		// enqueue_settings_assets() can scope asset loading to THIS page only.
+		$this->hook_suffix = add_menu_page(
 			__( 'Khavee AI Avatar', 'khaveeai' ),
 			__( 'Khavee AI Avatar', 'khaveeai' ),
 			'manage_options', // D-02/SET-05: capability gate at registration.
@@ -268,6 +289,126 @@ final class SettingsPage {
 			array( $this, 'render_page' ),
 			'dashicons-microphone'
 		);
+	}
+
+	/**
+	 * Page-scoped enqueue for the Floating Widget live preview (quick task
+	 * 260706-vf4): a SECOND consumer of the `khaveeai-preview` bundle already
+	 * registered by Plugin::register_preview_bundle() (init:9) for the block
+	 * editor. Loads it (+ WP core's color picker) ONLY on THIS admin page —
+	 * scoped via $this->hook_suffix (captured in add_menu_page()) so the
+	 * 400KB+ bundle never loads on any other wp-admin screen.
+	 *
+	 * Does not modify Plugin::register_preview_bundle(), the
+	 * enqueue_block_editor_assets hook, preview.ts, build.mjs, or the
+	 * STUDIO-02 safety grep assertion — those stay exactly as they are.
+	 *
+	 * @param string $hook_suffix The current admin page's hook suffix, passed
+	 *                            in by the admin_enqueue_scripts action.
+	 * @return void
+	 */
+	public function enqueue_settings_assets( $hook_suffix ): void {
+		if ( $hook_suffix !== $this->hook_suffix ) {
+			return; // Not the Khavee settings page — never load the bundle elsewhere.
+		}
+
+		wp_enqueue_script( 'khaveeai-preview' );
+		wp_enqueue_style( 'khaveeai-preview-style' );
+
+		// WP core handles — no new dependency.
+		wp_enqueue_script( 'wp-color-picker' );
+		wp_enqueue_style( 'wp-color-picker' );
+
+		// Attached to the 'wp-color-picker' handle (not a standalone inline
+		// script) so its jQuery dependency is guaranteed already defined when
+		// this runs. Plain vanilla JS + jQuery-for-wpColorPicker only — no
+		// build step, no new file, so it stays out of the release-zip
+		// packaging problem (only build/ and vendor/ are guaranteed
+		// packaged). Rewrites the mount div's data-khaveeai-preview-config
+		// attribute on every change to the five floating fields; the
+		// khaveeai-preview bundle's own MutationObserver
+		// (mountPreview.tsx PreviewHost) re-renders instantly with no page
+		// reload and no WebGL context teardown.
+		$js = <<<'JS'
+jQuery( function ( $ ) {
+	var mount = document.getElementById( 'khaveeai-floating-preview' );
+	if ( ! mount ) {
+		return;
+	}
+
+	// Read the resolved avatarUrl ONCE from the mount div's initial config
+	// (PHP-rendered) so rebuild() never blanks the avatar — none of the
+	// five editable fields carry avatarUrl.
+	var initialAvatarUrl = '';
+	try {
+		var initialConfig = JSON.parse( mount.dataset.khaveeaiPreviewConfig || '{}' );
+		initialAvatarUrl = initialConfig.avatarUrl || '';
+	} catch ( e ) {
+		initialAvatarUrl = '';
+	}
+
+	function rebuild() {
+		var colorEl       = document.getElementById( 'khaveeai_floating_bg_color' );
+		var transparentEl = document.getElementById( 'khaveeai_floating_bg_transparent' );
+		var offsetXEl     = document.getElementById( 'khaveeai_floating_avatar_offset_x' );
+		var offsetYEl     = document.getElementById( 'khaveeai_floating_avatar_offset_y' );
+		var scaleEl       = document.getElementById( 'khaveeai_floating_avatar_scale' );
+
+		var cfg = {
+			avatarUrl: initialAvatarUrl,
+			bgType: 'color',
+			bgColor: colorEl ? colorEl.value : '#6929ff',
+			bgTransparent: transparentEl ? transparentEl.checked : false,
+			avatarScale: scaleEl ? parseFloat( scaleEl.value ) : 1.0,
+			avatarOffsetX: offsetXEl ? parseFloat( offsetXEl.value ) : 0.0,
+			avatarOffsetY: offsetYEl ? parseFloat( offsetYEl.value ) : 0.0
+		};
+
+		mount.dataset.khaveeaiPreviewConfig = JSON.stringify( cfg );
+
+		var offsetXOut = document.getElementById( 'khaveeai_floating_avatar_offset_x_out' );
+		if ( offsetXOut && offsetXEl ) {
+			offsetXOut.textContent = offsetXEl.value;
+		}
+		var offsetYOut = document.getElementById( 'khaveeai_floating_avatar_offset_y_out' );
+		if ( offsetYOut && offsetYEl ) {
+			offsetYOut.textContent = offsetYEl.value;
+		}
+		var scaleOut = document.getElementById( 'khaveeai_floating_avatar_scale_out' );
+		if ( scaleOut && scaleEl ) {
+			scaleOut.textContent = scaleEl.value;
+		}
+	}
+
+	// wpColorPicker fires `change`/`clear` on swatch interactions and hex
+	// edits made through its own UI.
+	$( '.khaveeai-color-field' ).wpColorPicker( {
+		change: rebuild,
+		clear: rebuild
+	} );
+
+	// Belt-and-braces: plain input/change listeners on all five fields so
+	// every keystroke / slider drag / checkbox toggle calls rebuild(), even
+	// if wpColorPicker's own callback ever misses an edit path.
+	var ids = [
+		'khaveeai_floating_bg_color',
+		'khaveeai_floating_bg_transparent',
+		'khaveeai_floating_avatar_offset_x',
+		'khaveeai_floating_avatar_offset_y',
+		'khaveeai_floating_avatar_scale'
+	];
+	ids.forEach( function ( id ) {
+		var el = document.getElementById( id );
+		if ( ! el ) {
+			return;
+		}
+		el.addEventListener( 'input', rebuild );
+		el.addEventListener( 'change', rebuild );
+	} );
+} );
+JS;
+
+		wp_add_inline_script( 'wp-color-picker', $js, 'after' );
 	}
 
 	/**
@@ -1068,6 +1209,10 @@ final class SettingsPage {
 		$this->render_form_table_row( __( 'Floating avatar scale', 'khaveeai' ), array( $this, 'render_floating_avatar_scale_field' ) );
 		echo '</tbody></table>';
 
+		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
+		// of the already-built `khaveeai-preview` bundle.
+		$this->render_floating_preview_mount();
+
 		submit_button();
 		echo '</form>';
 		echo '</div>';
@@ -1675,5 +1820,65 @@ final class SettingsPage {
 		echo '<p class="description">' .
 			esc_html__( 'Avatar scale multiplier for the floating widget only. 1.0 = natural size.', 'khaveeai' ) .
 			'</p>';
+	}
+
+	/**
+	 * Render the Floating Widget live-preview mount point (quick task
+	 * 260706-vf4) — a SECOND consumer of the already-built `khaveeai-preview`
+	 * bundle (same one the Gutenberg block editor uses via editor.js's own
+	 * mount point). This task never touches preview.ts, build.mjs, the
+	 * STUDIO-02 grep assertion, or Plugin::register_preview_bundle().
+	 *
+	 * Maps the five floating_* settings into the GENERIC config keys
+	 * PreviewScene.tsx actually reads — avatarUrl/bgType/bgColor/
+	 * bgTransparent/avatarScale/avatarOffsetX/avatarOffsetY. PreviewScene
+	 * does NOT read the floatingBg* / floatingAvatar* keys; those remain
+	 * AvatarRenderer::render_floating()'s OWN separate output for the real
+	 * runtime floating widget and are untouched by this method.
+	 *
+	 * The bundle's own observeDocument(document) fallback (preview.ts,
+	 * non-iframe path, lines 164-170) scans the TOP admin document for
+	 * [data-khaveeai-preview-config] and auto-mounts this div — no JS call
+	 * is needed here to trigger the initial mount.
+	 * enqueue_settings_assets()'s inline script then rewrites this div's
+	 * data-khaveeai-preview-config attribute live as the five floating
+	 * fields change (mountPreview.tsx's MutationObserver re-renders without
+	 * tearing down the WebGL context).
+	 *
+	 * @return void
+	 */
+	private function render_floating_preview_mount(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+
+		$runtime_config = $this->config_source->get_runtime_config();
+		$avatar_url     = isset( $runtime_config['avatar_url'] ) ? (string) $runtime_config['avatar_url'] : '';
+
+		$bg_color = ( isset( $settings['floating_bg_color'] ) && '' !== (string) $settings['floating_bg_color'] )
+			? (string) $settings['floating_bg_color']
+			: '#6929ff';
+
+		$avatar_scale = ( isset( $settings['floating_avatar_scale'] ) && (float) $settings['floating_avatar_scale'] > 0 )
+			? (float) $settings['floating_avatar_scale']
+			: 1.0;
+
+		$config = array(
+			'avatarUrl'     => $avatar_url,
+			'bgType'        => 'color',
+			'bgColor'       => $bg_color,
+			'bgTransparent' => ! empty( $settings['floating_bg_transparent'] ),
+			'avatarScale'   => $avatar_scale,
+			'avatarOffsetX' => isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0,
+			'avatarOffsetY' => isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0,
+		);
+
+		echo '<p><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';
+		// ~360x520 matches the real .khaveeai-floating-panel proportions
+		// (styles.css: width:360px;height:520px) so the preview is a
+		// faithful representation of the actual floating widget.
+		printf(
+			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:360px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;"></div>',
+			esc_attr( wp_json_encode( $config ) )
+		);
 	}
 }

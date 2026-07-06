@@ -1274,24 +1274,30 @@ JS;
 		// heading. The existing field renderers are called DIRECTLY — they
 		// already emit only the input + description, never a label, so the
 		// <th> below (standard WP form-table convention) supplies the label.
-		$this->render_section_heading( __( 'Connection', 'khaveeai' ) );
+		echo '<div class="khaveeai-settings__card">';
+		$this->render_section_heading( __( 'Connection', 'khaveeai' ), __( 'OpenAI + Khavee Platform API keys', 'khaveeai' ) );
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'OpenAI API Key', 'khaveeai' ), array( $this, 'render_api_key_field' ) );
 		$this->render_form_table_row( __( 'Remove Key', 'khaveeai' ), array( $this, 'render_remove_key_field' ) );
 		$this->render_form_table_row( __( 'Khavee Platform API Key', 'khaveeai' ), array( $this, 'render_platform_api_key_field' ) );
 		$this->render_form_table_row( __( 'Remove Platform Key', 'khaveeai' ), array( $this, 'render_remove_platform_key_field' ) );
 		echo '</tbody></table>';
+		echo '</div>';
 
-		$this->render_section_heading( __( 'Personality & Voice', 'khaveeai' ) );
+		echo '<div class="khaveeai-settings__card">';
+		$this->render_section_heading( __( 'Personality & Voice', 'khaveeai' ), __( 'How your avatar speaks and behaves', 'khaveeai' ) );
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'Personality / Instructions', 'khaveeai' ), array( $this, 'render_instructions_field' ) );
 		$this->render_form_table_row( __( 'Voice', 'khaveeai' ), array( $this, 'render_voice_field' ) );
 		echo '</tbody></table>';
+		echo '</div>';
 
-		$this->render_section_heading( __( 'Avatar', 'khaveeai' ) );
+		echo '<div class="khaveeai-settings__card">';
+		$this->render_section_heading( __( 'Avatar', 'khaveeai' ), __( 'The 3D model your avatar uses', 'khaveeai' ) );
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'Avatar (VRM/GLB)', 'khaveeai' ), array( $this, 'render_avatar_field' ) );
 		echo '</tbody></table>';
+		echo '</div>';
 
 		// FLOAT-01 (quick task 260704-77n): site-wide floating chat launcher toggle.
 		$this->render_section_heading( __( 'Floating Widget', 'khaveeai' ) );
@@ -1400,18 +1406,33 @@ JS;
 	}
 
 	/**
-	 * Emit one uppercase, muted, bottom-bordered section heading matching the
-	 * mockup's .section-heading style (inline styles — no separate stylesheet
-	 * enqueued for this page).
+	 * Emit one card-title heading (quick task 260706-x6b redesign), using the
+	 * `.khaveeai-settings__card-title` class defined in
+	 * render_settings_page_styles(). Replaces the prior uppercase/bordered
+	 * `<h2>` (Task 1's stylesheet is scoped under `.khaveeai-settings`, so this
+	 * heading only ever appears inside that wrapper). Optionally emits a short
+	 * muted one-line description underneath for scannability.
 	 *
-	 * @param string $label Section label (already translated by the caller).
+	 * Used for all 4 sections (Connection, Personality & Voice, Avatar,
+	 * Floating Widget) — Task 2 wraps the first three in
+	 * `.khaveeai-settings__card`, Task 3 reuses this same heading for the
+	 * Floating Widget card.
+	 *
+	 * @param string $label       Section label (already translated by the caller).
+	 * @param string $description Optional short muted description (already translated).
 	 * @return void
 	 */
-	private function render_section_heading( string $label ): void {
+	private function render_section_heading( string $label, string $description = '' ): void {
 		printf(
-			'<h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#757575;margin:24px 0 14px;padding-bottom:8px;border-bottom:1px solid #dcdcde;">%s</h2>',
+			'<h2 class="khaveeai-settings__card-title">%s</h2>',
 			esc_html( $label )
 		);
+		if ( '' !== $description ) {
+			printf(
+				'<p class="khaveeai-settings__card-description">%s</p>',
+				esc_html( $description )
+			);
+		}
 	}
 
 	/**

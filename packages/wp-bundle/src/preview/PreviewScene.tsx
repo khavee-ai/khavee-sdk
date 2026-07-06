@@ -23,7 +23,7 @@
  *   bgColor / bgImage: applied to the container div CSS, NOT to scene.background
  *   (cheaper, simpler, avoids three.js background clear-color interaction).
  */
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
@@ -31,6 +31,8 @@ import * as THREE from "three";
 import { KhaveeProvider, VRMAvatar, useVRMExpressions } from "@khaveeai/react";
 import {
   resolveSceneDefaults,
+  angleFromCameraPosition,
+  CAMERA_PRESETS,
   IDLE_ANIMATION_URL,
   type KhaveeAvatarConfig,
 } from "../config";
@@ -92,6 +94,27 @@ function CameraController({
   return null;
 }
 
+// ── CameraRefCapture ──────────────────────────────────────────────────────────
+
+/**
+ * Mirrors the live R3F camera object into a ref so code OUTSIDE the Canvas
+ * (e.g. the OrbitControls onEnd handler wired up in PreviewSceneInner) can
+ * read the camera's current position without itself needing to be inside
+ * the Canvas's useThree() context.
+ *
+ * Purely a read-side sibling of CameraController — it never mutates the
+ * camera and does not participate in the config-driven reset behavior.
+ */
+function CameraRefCapture({
+  cameraRef,
+}: {
+  cameraRef: React.MutableRefObject<THREE.Camera | null>;
+}): null {
+  const { camera } = useThree();
+  cameraRef.current = camera;
+  return null;
+}
+
 // ── Preview-talking viseme cycler ─────────────────────────────────────────────
 
 const VISEME_SEQUENCE = ["aa", "ih", "ou", "ee", "oh"] as const;
@@ -142,12 +165,49 @@ function usePreviewTalking(enabled: boolean): void {
  * <PreviewScene> exists so useVRMExpressions() (and thus usePreviewTalking)
  * is called within the provider's subtree (React rules of hooks).
  */
-function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
+function PreviewSceneInner({
+  config,
+  onCameraAngleChange,
+}: {
+  config: PreviewAvatarConfig;
+  onCameraAngleChange?: (deg: number) => void;
+}) {
   const sceneDefaults = resolveSceneDefaults(config);
   const isTalking = config.previewTalking ?? false;
 
   // Viseme cycler — must be inside KhaveeProvider context (Pitfall 4 avoidance).
   usePreviewTalking(isTalking);
+
+  // Live camera mirror for the OrbitControls onEnd readback below — see
+  // CameraRefCapture's doc comment for why this needs to live outside the
+  // Canvas's own useThree() context.
+  const liveCameraRef = useRef<THREE.Camera | null>(null);
+
+  /**
+   * Fires once when the user releases a drag/zoom on the preview's
+   * OrbitControls (NOT per-frame — onChange would write-thrash the slider
+   * on every render). Reads the live camera's current position back into a
+   * Y-axis degrees value via the inverse of orbitAroundTarget, and reports
+   * it to the caller (mountPreview.tsx bridges this to a DOM CustomEvent so
+   * the plain-JS Settings page can hear it). CameraController's own reset
+   * effect is untouched — this is a read-only sibling.
+   */
+  const handleOrbitEnd = () => {
+    const camera = liveCameraRef.current;
+    if (!camera || !onCameraAngleChange) return;
+    const cameraPosition: [number, number, number] = [
+      camera.position.x,
+      camera.position.y,
+      camera.position.z,
+    ];
+    const basePosition = CAMERA_PRESETS[sceneDefaults.cameraPreset].position;
+    const deg = angleFromCameraPosition(
+      cameraPosition,
+      sceneDefaults.cameraTarget,
+      basePosition
+    );
+    onCameraAngleChange(deg);
+  };
 
   // ── Container styling (background + dimensions) ──────────────────────────
 
@@ -216,12 +276,19 @@ function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
           target={sceneDefaults.cameraTarget}
           fov={sceneDefaults.cameraFov}
         />
+        <CameraRefCapture cameraRef={liveCameraRef} />
         {/* Lets the author freely orbit/zoom the preview to check angles.
             makeDefault registers this as the R3F default controls instance;
             CameraController still owns the canonical position/target/fov
             whenever the config-driven values change (e.g. a new camera
-            preset), so switching presets resets any manual orbiting. */}
-        <OrbitControls target={sceneDefaults.cameraTarget} makeDefault />
+            preset), so switching presets resets any manual orbiting.
+            onEnd (fires once per drag/zoom release, not per-frame) reads
+            the live camera back into a Y-angle via handleOrbitEnd. */}
+        <OrbitControls
+          target={sceneDefaults.cameraTarget}
+          makeDefault
+          onEnd={handleOrbitEnd}
+        />
         {/* ── Lighting ─────────────────────────────────────────────────── */}
         {/* ambient: config-driven Part A Lighting. directional: matches Phase-8 mount.tsx:59-60. */}
         <ambientLight intensity={sceneDefaults.lightIntensity} />
@@ -325,11 +392,24 @@ function PreviewSceneInner({ config }: { config: PreviewAvatarConfig }) {
  *
  * @param config - The parsed KhaveeAvatarConfig (extended with previewTalking)
  *   from the data-khaveeai-preview-config attribute on the mount-point div.
+ * @param onCameraAngleChange - Optional callback fired once per drag/zoom
+ *   release on the preview's OrbitControls, with the resulting Y-axis
+ *   degrees (see PreviewSceneInner's handleOrbitEnd). Used by mountPreview.tsx
+ *   to bridge the drag gesture out to the plain-JS Settings page.
  */
-export function PreviewScene({ config }: { config: KhaveeAvatarConfig }) {
+export function PreviewScene({
+  config,
+  onCameraAngleChange,
+}: {
+  config: KhaveeAvatarConfig;
+  onCameraAngleChange?: (deg: number) => void;
+}) {
   return (
     <KhaveeProvider>
-      <PreviewSceneInner config={config as PreviewAvatarConfig} />
+      <PreviewSceneInner
+        config={config as PreviewAvatarConfig}
+        onCameraAngleChange={onCameraAngleChange}
+      />
     </KhaveeProvider>
   );
 }

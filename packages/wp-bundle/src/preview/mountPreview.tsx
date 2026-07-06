@@ -10,6 +10,17 @@
  * Instead of unmounting/remounting the React root (which creates a new WebGL
  * context each time), the observer pushes fresh config into React state.
  * This keeps a single Canvas/WebGL context alive for the lifetime of the block.
+ *
+ * Drag-orbit-to-angle bridge (quick task 260706-wop):
+ * PreviewHost passes PreviewScene an `onCameraAngleChange` callback that
+ * fires once per drag/zoom release on the preview's OrbitControls. This is
+ * the ONLY React-to-plain-JS bridge in this file: the callback re-dispatches
+ * the angle as a `khaveeai-preview-camera-angle` CustomEvent on hostEl, which
+ * the Settings page's own inline JS (SettingsPage.php's enqueue_settings_assets)
+ * listens for to write the dragged angle back into the "Floating camera
+ * angle" slider and re-run rebuild(). This is generic and additive — the
+ * Gutenberg block's host div has no listener for this event, so its
+ * behavior is unchanged.
  */
 import React, { useState, useEffect } from "react";
 import type { Root } from "react-dom/client";
@@ -52,7 +63,16 @@ function PreviewHost({ initialConfig, hostEl }: PreviewHostProps) {
     return () => observer.disconnect();
   }, [hostEl]);
 
-  return <PreviewScene config={config} />;
+  return (
+    <PreviewScene
+      config={config}
+      onCameraAngleChange={(deg) =>
+        hostEl.dispatchEvent(
+          new CustomEvent("khaveeai-preview-camera-angle", { detail: { deg } })
+        )
+      }
+    />
+  );
 }
 
 // ── mountEditorPreview ─────────────────────────────────────────────────────────

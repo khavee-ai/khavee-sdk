@@ -361,6 +361,7 @@ jQuery( function ( $ ) {
 		var offsetXEl     = document.getElementById( 'khaveeai_floating_avatar_offset_x' );
 		var offsetYEl     = document.getElementById( 'khaveeai_floating_avatar_offset_y' );
 		var scaleEl       = document.getElementById( 'khaveeai_floating_avatar_scale' );
+		var rotEl         = document.getElementById( 'khaveeai_floating_camera_rotation_y' );
 
 		var cfg = {
 			avatarUrl: initialAvatarUrl,
@@ -369,7 +370,8 @@ jQuery( function ( $ ) {
 			bgTransparent: transparentEl ? transparentEl.checked : false,
 			avatarScale: scaleEl ? parseFloat( scaleEl.value ) : 1.0,
 			avatarOffsetX: offsetXEl ? parseFloat( offsetXEl.value ) : 0.0,
-			avatarOffsetY: offsetYEl ? parseFloat( offsetYEl.value ) : 0.0
+			avatarOffsetY: offsetYEl ? parseFloat( offsetYEl.value ) : 0.0,
+			cameraRotationY: rotEl ? parseFloat( rotEl.value ) : 0.0
 		};
 
 		mount.dataset.khaveeaiPreviewConfig = JSON.stringify( cfg );
@@ -385,6 +387,10 @@ jQuery( function ( $ ) {
 		var scaleOut = document.getElementById( 'khaveeai_floating_avatar_scale_out' );
 		if ( scaleOut && scaleEl ) {
 			scaleOut.textContent = scaleEl.value;
+		}
+		var rotOut = document.getElementById( 'khaveeai_floating_camera_rotation_y_out' );
+		if ( rotOut && rotEl ) {
+			rotOut.textContent = rotEl.value;
 		}
 	}
 
@@ -428,7 +434,8 @@ jQuery( function ( $ ) {
 		'khaveeai_floating_bg_transparent',
 		'khaveeai_floating_avatar_offset_x',
 		'khaveeai_floating_avatar_offset_y',
-		'khaveeai_floating_avatar_scale'
+		'khaveeai_floating_avatar_scale',
+		'khaveeai_floating_camera_rotation_y'
 	];
 	ids.forEach( function ( id ) {
 		var el = document.getElementById( id );
@@ -437,6 +444,27 @@ jQuery( function ( $ ) {
 		}
 		el.addEventListener( 'input', rebuild );
 		el.addEventListener( 'change', rebuild );
+	} );
+
+	// Quick task 260706-wop: closes the drag-orbit loop. The khaveeai-preview
+	// bundle's mountPreview.tsx dispatches this CustomEvent on the mount div
+	// once per drag/zoom release on the preview's OrbitControls (PreviewScene.tsx
+	// onEnd -> angleFromCameraPosition). Write the read-back angle into the
+	// slider + its readout, then rebuild() — which writes the SAME angle back
+	// into the preview config, so CameraController re-applies the angle it was
+	// just read from (no oscillation: onEnd only fires on user interaction,
+	// never on this programmatic reset).
+	mount.addEventListener( 'khaveeai-preview-camera-angle', function ( e ) {
+		var d = Math.round( e.detail.deg );
+		var el = document.getElementById( 'khaveeai_floating_camera_rotation_y' );
+		if ( el ) {
+			el.value = d;
+		}
+		var out = document.getElementById( 'khaveeai_floating_camera_rotation_y_out' );
+		if ( out ) {
+			out.textContent = d;
+		}
+		rebuild();
 	} );
 } );
 JS;
@@ -829,6 +857,14 @@ JS;
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		add_settings_field(
+			'floating_camera_rotation_y',
+			__( 'Floating camera angle', 'khaveeai' ),
+			array( $this, 'render_floating_camera_rotation_y_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -935,6 +971,7 @@ JS;
 		$sanitized['floating_avatar_offset_x'] = isset( $input['floating_avatar_offset_x'] ) ? (float) $input['floating_avatar_offset_x'] : 0.0;
 		$sanitized['floating_avatar_offset_y'] = isset( $input['floating_avatar_offset_y'] ) ? (float) $input['floating_avatar_offset_y'] : 0.0;
 		$sanitized['floating_avatar_scale']    = isset( $input['floating_avatar_scale'] ) ? (float) $input['floating_avatar_scale'] : 1.0;
+		$sanitized['floating_camera_rotation_y'] = isset( $input['floating_camera_rotation_y'] ) ? (float) $input['floating_camera_rotation_y'] : 0.0;
 
 		return $sanitized;
 	}
@@ -1240,6 +1277,9 @@ JS;
 		$this->render_form_table_row( __( 'Floating avatar offset X', 'khaveeai' ), array( $this, 'render_floating_avatar_offset_x_field' ) );
 		$this->render_form_table_row( __( 'Floating avatar offset Y', 'khaveeai' ), array( $this, 'render_floating_avatar_offset_y_field' ) );
 		$this->render_form_table_row( __( 'Floating avatar scale', 'khaveeai' ), array( $this, 'render_floating_avatar_scale_field' ) );
+		// Quick task 260706-wop: floating-only camera angle, also drivable by
+		// dragging/orbiting the live preview below (bidirectional).
+		$this->render_form_table_row( __( 'Floating camera angle', 'khaveeai' ), array( $this, 'render_floating_camera_rotation_y_field' ) );
 		echo '</tbody></table>';
 
 		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
@@ -1856,6 +1896,35 @@ JS;
 	}
 
 	/**
+	 * Render the floating panel's camera angle input (quick task
+	 * 260706-wop) — independent of the inline embed's global camera
+	 * rotation. Also drivable by dragging/orbiting the live preview below;
+	 * enqueue_settings_assets()'s inline JS listens for the preview's
+	 * `khaveeai-preview-camera-angle` CustomEvent and writes the dragged
+	 * angle back into this slider (see that method's doc comment).
+	 *
+	 * @return void
+	 */
+	public function render_floating_camera_rotation_y_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : 0.0;
+
+		// Mirrors render_floating_avatar_scale_field()'s slider+output pattern
+		// verbatim. min/max/step match the (-180,180] range angleFromCameraPosition
+		// (packages/wp-bundle/src/config.ts) normalizes drag-read angles into.
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-180" max="180" step="1" id="khaveeai_floating_camera_rotation_y" name="%s[floating_camera_rotation_y]" value="%s" /><output id="khaveeai_floating_camera_rotation_y_out" for="khaveeai_floating_camera_rotation_y">%s</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Camera angle in degrees for the floating widget only. Dragging/orbiting the live preview below also updates this.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
 	 * Render the Floating Widget live-preview mount point (quick task
 	 * 260706-vf4) — a SECOND consumer of the already-built `khaveeai-preview`
 	 * bundle (same one the Gutenberg block editor uses via editor.js's own
@@ -1903,6 +1972,7 @@ JS;
 			'avatarScale'   => $avatar_scale,
 			'avatarOffsetX' => isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0,
 			'avatarOffsetY' => isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0,
+			'cameraRotationY' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : 0.0,
 		);
 
 		echo '<p><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';

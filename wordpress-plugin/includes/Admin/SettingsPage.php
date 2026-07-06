@@ -1237,7 +1237,34 @@ JS;
 
 		wp_enqueue_media(); // D-01: loads wp.media JS for the avatar picker (added by 07-03).
 
-		echo '<div class="wrap">';
+		// REDESIGN 260706-x6b: the following element IDs/classes/data-attributes
+		// are read/written by inline JS registered in enqueue_settings_assets()
+		// (the rebuild()/wpColorPicker/irischange/CustomEvent wiring, ~lines
+		// 332-469) and render_avatar_field()'s wp.media picker script (~lines
+		// 1670-1728). They MUST NOT change (id, name, or class) during any
+		// future visual/layout edit to this page — only their surrounding
+		// container markup/CSS may change:
+		//   - #khaveeai-floating-preview (mount div; also carries
+		//     data-khaveeai-preview-config and dispatches the
+		//     "khaveeai-preview-camera-angle" CustomEvent)
+		//   - .khaveeai-color-field (class on #khaveeai_floating_bg_color — the
+		//     wpColorPicker() target)
+		//   - #khaveeai_floating_bg_color, #khaveeai_floating_bg_transparent,
+		//     #khaveeai_floating_avatar_offset_x (+ _out),
+		//     #khaveeai_floating_avatar_offset_y (+ _out),
+		//     #khaveeai_floating_avatar_scale (+ _out),
+		//     #khaveeai_floating_camera_rotation_y (+ _out)
+		//   - #khaveeai_avatar_picker_button, #khaveeai_avatar_attachment_id,
+		//     #khaveeai_avatar_current
+		//   - Not JS-read, but tied to name="khaveeai_settings[...]"
+		//     sanitize_settings() keys — ids must stay unchanged regardless:
+		//     #khaveeai_api_key, #khaveeai_remove_key, #khaveeai_platform_api_key,
+		//     #khaveeai_remove_platform_key, #khaveeai_instructions,
+		//     #khaveeai_voice, #khaveeai_remove_avatar,
+		//     #khaveeai_floating_widget_enabled
+
+		echo '<div class="wrap khaveeai-settings">';
+		$this->render_settings_page_styles();
 		echo '<h1>' . esc_html__( 'Khavee AI Avatar', 'khaveeai' ) . '</h1>';
 		echo '<form method="post" action="options.php">';
 		settings_fields( self::OPTION_GROUP );
@@ -1289,6 +1316,87 @@ JS;
 		submit_button();
 		echo '</form>';
 		echo '</div>';
+	}
+
+	/**
+	 * Emit the page-scoped branded stylesheet (quick task 260706-x6b).
+	 *
+	 * Everything here is scoped under `.khaveeai-settings` (the wrapper class
+	 * added to the page's `<div class="wrap">` in render_page()) so nothing
+	 * leaks into other wp-admin chrome. Mirrors packages/wp-bundle/styles.css's
+	 * design language — solid `#6929ff` accent, `#dde1ea` borders, 20px/12px
+	 * radii, flat surfaces only (no gradients, no box-shadows).
+	 *
+	 * Printed directly in render_page() (not wp_add_inline_style()) so it is
+	 * colocated with the markup and guaranteed to load only on this page,
+	 * since render_page() only runs here. Does not touch any existing field
+	 * renderer, element id, or name[] attribute.
+	 *
+	 * @return void
+	 */
+	private function render_settings_page_styles(): void {
+		echo '<style>
+.khaveeai-settings__card {
+	background: #fff;
+	border: 1px solid #dde1ea;
+	border-radius: 12px;
+	padding: 22px 24px;
+	margin: 20px 0;
+}
+.khaveeai-settings__card-title {
+	font-size: 15px;
+	font-weight: 600;
+	color: #1e1e1e;
+	margin: 0 0 4px;
+	padding-left: 12px;
+	border-left: 3px solid #6929ff;
+	line-height: 1.3;
+}
+.khaveeai-settings__card-description {
+	font-size: 13px;
+	color: #646970;
+	margin: 4px 0 16px 15px;
+}
+.khaveeai-settings__card .form-table {
+	margin-top: 8px;
+}
+.khaveeai-settings__card .form-table th {
+	color: #3c434a;
+	font-weight: 600;
+	padding: 16px 10px 16px 0;
+}
+.khaveeai-settings__card .form-table td {
+	padding: 12px 10px;
+}
+.khaveeai-settings__card .form-table tr {
+	border-bottom: 1px solid #f0f0f1;
+}
+.khaveeai-settings__card .form-table tr:last-child {
+	border-bottom: none;
+}
+.khaveeai-settings__card .description {
+	color: #646970;
+}
+.khaveeai-settings__two-col {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 380px;
+	gap: 24px;
+	align-items: start;
+}
+.khaveeai-settings__preview-col {
+	position: sticky;
+	top: 32px;
+}
+@media (max-width: 1100px) {
+	.khaveeai-settings__two-col {
+		grid-template-columns: 1fr;
+	}
+	.khaveeai-settings__preview-col {
+		position: static;
+		top: auto;
+	}
+}
+</style>';
 	}
 
 	/**

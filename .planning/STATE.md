@@ -100,6 +100,7 @@ None yet.
 | 260704-77n | Add a site-wide floating chat launcher (Settings toggle + wp_footer hook + FloatingWidget launcher/panel wrapping the existing avatar+chat pieces); live verification caught and fixed a GLB-load-failure/WebGL-context-loss regression that unmounted the whole widget (new AvatarErrorBoundary) | 2026-07-04 | 800b62d | [260704-77n-build-a-site-wide-floating-chat-launcher](./quick/260704-77n-build-a-site-wide-floating-chat-launcher/) |
 | 260705-p30 | Floating widget controls: remove unread dot, remove chat toggle, reposition mic bottom-right (floating-only, ControlBar gained showChatToggle/className props defaulting to inline-embed's current behavior), plus floating-specific bg color/transparency/avatar offset/scale settings independent of the global avatar config | 2026-07-05 | a77913b | [260705-p30-floating-widget-controls](./quick/260705-p30-floating-widget-controls/) |
 | 260706-vf4 | Live visual preview for floating widget Settings page: WP color picker + range sliders replacing blind text/number inputs, 360x520 live avatar preview reusing the existing khaveeai-preview bundle's generic DOM-observer path (zero bundle/build changes needed); live verification caught and fixed a real staleness bug in color-palette swatch clicks (Iris's irischange event fires before writing the new color into the DOM value) | 2026-07-06 | f310d5d | [260706-vf4-live-preview-floating-widget-settings](./quick/260706-vf4-live-preview-floating-widget-settings/) |
+| 260706-wop | Live camera-angle drag control for the floating widget Settings-page preview: orbit-drag in the preview writes back to a new floating-only "Floating camera angle" slider (bidirectional, via a new inverse-rotation math helper + a CustomEvent bridge since the preview mounts outside any React tree the Settings page controls), fully wired PHP layer, verified end-to-end including the actual live front-end floating widget | 2026-07-06 | 6b4f9e0 | [260706-wop-live-camera-angle-drag-preview](./quick/260706-wop-live-camera-angle-drag-preview/) |
 
 ## Deferred Items
 
@@ -115,5 +116,5 @@ Last session: 2026-07-02T11:07:09.730Z
 Stopped at: context exhaustion at 78% (2026-07-02)
 Resume file: None
 
-Last activity: 2026-07-06 - Completed quick task 260706-vf4: Live preview for floating widget Settings page (WP color picker + sliders, 360x520 avatar preview, fixed a real palette-swatch staleness bug found during live verification)
+Last activity: 2026-07-06 - Completed quick task 260706-wop: Live camera-angle drag control for the floating widget Settings-page preview (bidirectional orbit-drag <-> slider, verified end-to-end on the live front-end widget)
 </content>

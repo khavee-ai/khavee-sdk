@@ -120,6 +120,7 @@ final class AvatarRenderer {
 		$config['floatingAvatarOffsetX']  = (float) $merged['floating_avatar_offset_x'];
 		$config['floatingAvatarOffsetY']  = (float) $merged['floating_avatar_offset_y'];
 		$config['floatingAvatarScale']    = (float) $merged['floating_avatar_scale'];
+		$config['floatingCameraRotationY'] = (float) $merged['floating_camera_rotation_y'];
 
 		return sprintf(
 			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
@@ -193,6 +194,7 @@ final class AvatarRenderer {
 		// `> 0`-sentinel pattern (0 means "unset", real default is 1.0), same
 		// as the global avatar_scale field above.
 		$merged['floating_avatar_scale'] = ( $merged['floating_avatar_scale'] ?? 0 ) > 0 ? (float) $merged['floating_avatar_scale'] : 1.0;
+		$merged['floating_camera_rotation_y'] = isset( $merged['floating_camera_rotation_y'] ) ? (float) $merged['floating_camera_rotation_y'] : 0.0;
 
 		return $merged;
 	}

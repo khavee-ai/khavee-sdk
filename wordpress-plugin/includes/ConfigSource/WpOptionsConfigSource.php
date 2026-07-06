@@ -157,6 +157,7 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			'floating_avatar_offset_x' => isset( $settings['floating_avatar_offset_x'] ) ? (float)  $settings['floating_avatar_offset_x'] : 0.0,
 			'floating_avatar_offset_y' => isset( $settings['floating_avatar_offset_y'] ) ? (float)  $settings['floating_avatar_offset_y'] : 0.0,
 			'floating_avatar_scale'    => isset( $settings['floating_avatar_scale'] )    ? (float)  $settings['floating_avatar_scale']    : 1.0,
+			'floating_camera_rotation_y' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : self::DEFAULT_CAMERA_ROTATION_Y,
 		];
 	}
 

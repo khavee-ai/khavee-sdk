@@ -98,6 +98,7 @@ None yet.
 | 260703-slv | Add Khavee Platform API key integration to WordPress plugin config resolution (PlatformConfigSource decorator over WpOptionsConfigSource) | 2026-07-03 | bf16df8 | [260703-slv-add-khavee-platform-api-key-integration-](./quick/260703-slv-add-khavee-platform-api-key-integration-/) |
 | 260704-05c | Redesign admin Settings page + block sidebar UI (sectioned layout, per-field "Synced from Platform" pills + override disclosures, sidebar Global default/Custom segmented toggles) | 2026-07-04 | 37a985e | [260704-05c-redesign-the-khavee-admin-settings-page-](./quick/260704-05c-redesign-the-khavee-admin-settings-page-/) |
 | 260704-77n | Add a site-wide floating chat launcher (Settings toggle + wp_footer hook + FloatingWidget launcher/panel wrapping the existing avatar+chat pieces); live verification caught and fixed a GLB-load-failure/WebGL-context-loss regression that unmounted the whole widget (new AvatarErrorBoundary) | 2026-07-04 | 800b62d | [260704-77n-build-a-site-wide-floating-chat-launcher](./quick/260704-77n-build-a-site-wide-floating-chat-launcher/) |
+| 260705-p30 | Floating widget controls: remove unread dot, remove chat toggle, reposition mic bottom-right (floating-only, ControlBar gained showChatToggle/className props defaulting to inline-embed's current behavior), plus floating-specific bg color/transparency/avatar offset/scale settings independent of the global avatar config | 2026-07-05 | a77913b | [260705-p30-floating-widget-controls](./quick/260705-p30-floating-widget-controls/) |
 
 ## Deferred Items
 
@@ -113,5 +114,5 @@ Last session: 2026-07-02T11:07:09.730Z
 Stopped at: context exhaustion at 78% (2026-07-02)
 Resume file: None
 
-Last activity: 2026-07-04 - Completed quick task 260704-77n: Site-wide floating chat launcher (Settings toggle, wp_footer hook, FloatingWidget) + live-verification regression fix (AvatarErrorBoundary)
+Last activity: 2026-07-05 - Completed quick task 260705-p30: Floating widget controls (removed unread dot + chat toggle, repositioned mic, added floating-specific bg/avatar customization settings)
 </content>

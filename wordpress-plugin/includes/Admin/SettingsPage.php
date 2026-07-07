@@ -1285,6 +1285,10 @@ JS;
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'Avatar (VRM/GLB)', 'khaveeai' ), array( $this, 'render_avatar_field' ) );
 		echo '</tbody></table>';
+		// Quick task 260707-0u6 item 3: passive live preview of the global
+		// avatar, reusing the SAME khaveeai-preview bundle mount mechanism as
+		// render_floating_preview_mount() — no second preview mechanism.
+		$this->render_avatar_section_preview_mount();
 		echo '</div>';
 
 		// FLOAT-01 (quick task 260704-77n): site-wide floating chat launcher toggle.
@@ -2021,6 +2025,48 @@ JS;
 		echo '<p class="description">' .
 			esc_html__( 'Camera angle in degrees for the floating widget only. Dragging/orbiting the live preview below also updates this.', 'khaveeai' ) .
 			'</p>';
+	}
+
+	/**
+	 * Render a small, passive live preview of the GLOBAL avatar inside the
+	 * Avatar section's card (quick task 260707-0u6 item 3) — reuses the SAME
+	 * khaveeai-preview bundle mount mechanism render_floating_preview_mount()
+	 * uses (each mount is its own WebGL context; a second mount div with
+	 * data-khaveeai-preview-config on the same admin page is fine and is
+	 * auto-picked-up by the bundle's observeDocument(document) scan). This is
+	 * a passive "here's your model" preview with no editable visual fields —
+	 * the Avatar section has no floating/global visual sliders, so no new
+	 * inline JS/live-wiring is added here.
+	 *
+	 * Uses a DISTINCT mount id (#khaveeai-avatar-preview, never
+	 * #khaveeai-floating-preview) so it cannot collide with the floating
+	 * preview mount or anything in the JS-read id list in render_page()'s
+	 * "DO NOT CHANGE THESE IDS" comment block. Does not touch
+	 * render_floating_preview_mount(), enqueue_settings_assets(), preview.ts,
+	 * or the build.
+	 *
+	 * @return void
+	 */
+	private function render_avatar_section_preview_mount(): void {
+		$runtime_config = $this->config_source->get_runtime_config();
+		$avatar_url     = isset( $runtime_config['avatar_url'] ) ? (string) $runtime_config['avatar_url'] : '';
+
+		$config = array(
+			'avatarUrl'       => $avatar_url,
+			'bgType'          => 'color',
+			'bgColor'         => '#f6f7f9', // Neutral light default — passive "here's your model" preview.
+			'bgTransparent'   => false,
+			'avatarScale'     => 1.0,
+			'avatarOffsetX'   => 0.0,
+			'avatarOffsetY'   => 0.0,
+			'cameraRotationY' => 0.0,
+		);
+
+		echo '<p style="margin-top:16px;"><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';
+		printf(
+			'<div id="khaveeai-avatar-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:280px;height:340px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;"></div>',
+			esc_attr( wp_json_encode( $config ) )
+		);
 	}
 
 	/**

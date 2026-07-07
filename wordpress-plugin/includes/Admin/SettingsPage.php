@@ -753,14 +753,6 @@ JS;
 			'khaveeai_main'
 		);
 
-		add_settings_field(
-			'remove_key',
-			__( 'Remove Key', 'khaveeai' ),
-			array( $this, 'render_remove_key_field' ),
-			self::PAGE_SLUG,
-			'khaveeai_main'
-		);
-
 		// Quick-260703-slv: a second, separate secret — the Khavee Platform
 		// API key — masked/removable exactly like the OpenAI key above, but
 		// gated on a `khavee_` prefix instead of `sk-` (T-QK-01/T-QK-05).
@@ -768,14 +760,6 @@ JS;
 			'platform_api_key',
 			__( 'Khavee Platform API Key', 'khaveeai' ),
 			array( $this, 'render_platform_api_key_field' ),
-			self::PAGE_SLUG,
-			'khaveeai_main'
-		);
-
-		add_settings_field(
-			'remove_platform_key',
-			__( 'Remove Platform Key', 'khaveeai' ),
-			array( $this, 'render_remove_platform_key_field' ),
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
@@ -875,10 +859,11 @@ JS;
 	 * Orchestrates per-field sanitization. Reads the existing stored option
 	 * for the non-key fields (so an absent field on a partial POST preserves
 	 * prior values), resolves the existing api_key via the injected
-	 * ConfigSourceInterface, interprets the D-06 remove_key checkbox flag,
-	 * and returns the merged sanitized array. NEVER calls update_option()
-	 * directly — register_setting()'s returned sanitize_callback value is
-	 * what WordPress persists.
+	 * ConfigSourceInterface, and returns the merged sanitized array.
+	 * Blank-field-and-save is the key-removal signal (Quick-260707-0u6 item 2)
+	 * — there is no separate remove-key checkbox flag to interpret anymore.
+	 * NEVER calls update_option() directly — register_setting()'s returned
+	 * sanitize_callback value is what WordPress persists.
 	 *
 	 * `model` is deliberately NOT written here (D-03) — it remains at
 	 * WpOptionsConfigSource::DEFAULT_MODEL, untouched by this page.
@@ -901,18 +886,18 @@ JS;
 
 		$existing_api_key    = $this->config_source->get_api_key();
 		$submitted_api_key   = isset( $input['api_key'] ) ? (string) $input['api_key'] : '';
-		$remove_requested    = isset( $input['remove_key'] ) && '1' === (string) $input['remove_key'];
 		$submitted_instr     = isset( $input['instructions'] ) ? (string) $input['instructions'] : '';
 		$submitted_voice     = isset( $input['voice'] ) ? (string) $input['voice'] : '';
 
 		// Quick-260703-slv: the platform key is unrelated to the OpenAI
 		// api_key above — read its existing value from the raw stored option
 		// blob (NOT via ConfigSourceInterface, which never exposes it), mirror
-		// the same submitted-value/remove-checkbox decision order as the
-		// OpenAI key (D-05/D-06/D-08, but the format gate is `khavee_` not `sk-`).
+		// the same submitted-value decision order as the OpenAI key (D-05/D-08,
+		// but the format gate is `khavee_` not `sk-`). Quick-260707-0u6 item 2:
+		// blank-field-and-save is now the removal signal for both keys — the
+		// separate remove_key/remove_platform_key checkboxes are gone.
 		$existing_platform_key          = isset( $existing_option['platform_api_key'] ) ? (string) $existing_option['platform_api_key'] : '';
 		$submitted_platform_key         = isset( $input['platform_api_key'] ) ? (string) $input['platform_api_key'] : '';
-		$remove_platform_requested      = isset( $input['remove_platform_key'] ) && '1' === (string) $input['remove_platform_key'];
 
 		$existing_attachment_id   = isset( $existing_option['avatar_attachment_id'] ) ? (int) $existing_option['avatar_attachment_id'] : 0;
 		$submitted_attachment_id  = $input['avatar_attachment_id'] ?? '';
@@ -920,8 +905,8 @@ JS;
 
 		$sanitized = $existing_option; // Preserve any prior keys (model untouched per D-03).
 
-		$sanitized['api_key']           = $this->sanitize_api_key( $submitted_api_key, $existing_api_key, $remove_requested );
-		$sanitized['platform_api_key']  = $this->sanitize_platform_api_key( $submitted_platform_key, $existing_platform_key, $remove_platform_requested );
+		$sanitized['api_key']           = $this->sanitize_api_key( $submitted_api_key, $existing_api_key );
+		$sanitized['platform_api_key']  = $this->sanitize_platform_api_key( $submitted_platform_key, $existing_platform_key );
 		$sanitized['instructions']      = sanitize_textarea_field( $submitted_instr );
 
 		// CR-01/SET-03: a submitted voice is persisted ONLY when it is one of
@@ -957,10 +942,10 @@ JS;
 		}
 
 		// FLOAT-01 (quick task 260704-77n, T-77n-02): strict boolean coercion —
-		// isset() + '1'===(string) cast, matching the existing checkbox read
-		// shape used by remove_key/remove_platform_key/remove_avatar above.
-		// Unlike those transient remove_* flags, this one IS persisted (it's
-		// a durable on/off setting, not a one-shot deletion trigger).
+		// isset() + '1'===(string) cast, matching the checkbox read shape used
+		// by remove_avatar above. Unlike that transient remove_avatar flag,
+		// this one IS persisted (it's a durable on/off setting, not a
+		// one-shot deletion trigger).
 		$sanitized['floating_widget_enabled'] = isset( $input['floating_widget_enabled'] ) && '1' === (string) $input['floating_widget_enabled'];
 
 		// Quick task 260705-p30: floating-widget-only visual config —
@@ -1073,37 +1058,34 @@ JS;
 
 	/**
 	 * Sanitize a submitted API key value against the masked-placeholder +
-	 * format rules (D-05/D-06/D-07/D-08).
+	 * format rules (D-05/D-07/D-08; D-06 superseded by Quick-260707-0u6 item 2).
 	 *
 	 * Signature chosen for pure-function testability: takes the existing key
-	 * and the remove-request flag as plain parameters rather than resolving
-	 * them internally (mirrors OpenAiDirectTokenProvider::mint_session's
-	 * $api_key-parameter pattern from 07-PATTERNS.md). This lets the bare-PHP
-	 * harness assert on the masking/sanitize logic without a ConfigSource
-	 * instance — only the class needs to be loadable.
+	 * as a plain parameter rather than resolving it internally (mirrors
+	 * OpenAiDirectTokenProvider::mint_session's $api_key-parameter pattern
+	 * from 07-PATTERNS.md). This lets the bare-PHP harness assert on the
+	 * masking/sanitize logic without a ConfigSource instance — only the class
+	 * needs to be loadable.
 	 *
-	 * Decision order:
-	 *  1. D-06: if remove_requested is true, return '' (deliberate removal
-	 *     via the separate checkbox — never inferred from an emptied field).
-	 *  2. D-05: if the submitted value equals mask_api_key(existing), the
+	 * Decision order (Quick-260707-0u6 item 2 — blank-and-save IS the removal
+	 * signal now; the separate "Remove Key" checkbox is gone):
+	 *  1. D-05: if the submitted value equals mask_api_key(existing), the
 	 *     admin saved the form without touching the key field — return
 	 *     existing unchanged so the masked placeholder is not stored.
-	 *  3. D-08: a genuinely new value that is empty-after-trim or does not
-	 *     start with `sk-` is rejected via add_settings_error() and the
-	 *     existing key is kept (no overwrite with a bad value).
+	 *  2. If the submitted value is '' after trim, the admin deliberately
+	 *     blanked the field and saved — return '' (removal). This INVERTS
+	 *     the old D-06 "emptied field is NOT deletion" behavior, which relied
+	 *     on a separate checkbox that no longer exists.
+	 *  3. D-08: a genuinely new, non-blank value that does not start with
+	 *     `sk-` is rejected via add_settings_error() and the existing key is
+	 *     kept (no overwrite with a bad value).
 	 *  4. Otherwise the new value is valid — return it trimmed.
 	 *
-	 * @param mixed  $submitted        The raw submitted field value.
-	 * @param string $existing         The currently-stored API key.
-	 * @param bool   $remove_requested Whether the D-06 remove-key checkbox was checked.
-	 * @return string The sanitized key (existing, new, or '' on deliberate removal).
+	 * @param mixed  $submitted The raw submitted field value.
+	 * @param string $existing  The currently-stored API key.
+	 * @return string The sanitized key (existing, new, or '' on blank-and-save removal).
 	 */
-	public function sanitize_api_key( $submitted, string $existing, bool $remove_requested = false ): string {
-		// D-06: deliberate removal via the dedicated checkbox control.
-		if ( $remove_requested ) {
-			return '';
-		}
-
+	public function sanitize_api_key( $submitted, string $existing ): string {
 		$submitted = is_string( $submitted ) ? trim( $submitted ) : '';
 		$masked    = self::mask_api_key( $existing );
 
@@ -1112,8 +1094,14 @@ JS;
 			return $existing;
 		}
 
-		// D-08: light format check on a genuinely NEW value only.
-		if ( '' === $submitted || 0 !== strpos( $submitted, 'sk-' ) ) {
+		// Blank-and-save is the deliberate removal signal (replaces the old
+		// checkbox-driven $remove_requested branch).
+		if ( '' === $submitted ) {
+			return '';
+		}
+
+		// D-08: light format check on a genuinely NEW, non-blank value only.
+		if ( 0 !== strpos( $submitted, 'sk-' ) ) {
 			add_settings_error(
 				self::OPTION_NAME,
 				'khaveeai_api_key_invalid_format',
@@ -1127,28 +1115,24 @@ JS;
 
 	/**
 	 * Sanitize a submitted Khavee Platform API key value (Quick-260703-slv,
-	 * T-QK-01/T-QK-05).
+	 * T-QK-01/T-QK-05; blank-removal semantics added by Quick-260707-0u6 item 2).
 	 *
 	 * Same decision order as sanitize_api_key(), with the format gate
 	 * checking the `khavee_` prefix instead of `sk-`:
-	 *  1. Deliberate removal via the remove_platform_key checkbox.
-	 *  2. Unchanged masked field (submitted === mask_platform_key(existing))
+	 *  1. Unchanged masked field (submitted === mask_platform_key(existing))
 	 *     → preserve the existing key.
-	 *  3. A genuinely new value that is empty-after-trim or does not start
-	 *     with `khavee_` is rejected via add_settings_error() and the
-	 *     existing key is kept.
+	 *  2. Blank-and-save (submitted is '' after trim) → deliberate removal,
+	 *     returns ''.
+	 *  3. A genuinely new, non-blank value that does not start with
+	 *     `khavee_` is rejected via add_settings_error() and the existing key
+	 *     is kept.
 	 *  4. Otherwise the new value is valid — return it trimmed.
 	 *
-	 * @param mixed  $submitted        The raw submitted field value.
-	 * @param string $existing         The currently-stored platform API key.
-	 * @param bool   $remove_requested Whether the remove_platform_key checkbox was checked.
-	 * @return string The sanitized key (existing, new, or '' on deliberate removal).
+	 * @param mixed  $submitted The raw submitted field value.
+	 * @param string $existing  The currently-stored platform API key.
+	 * @return string The sanitized key (existing, new, or '' on blank-and-save removal).
 	 */
-	public function sanitize_platform_api_key( $submitted, string $existing, bool $remove_requested = false ): string {
-		if ( $remove_requested ) {
-			return '';
-		}
-
+	public function sanitize_platform_api_key( $submitted, string $existing ): string {
 		$submitted = is_string( $submitted ) ? trim( $submitted ) : '';
 		$masked    = self::mask_platform_key( $existing );
 
@@ -1156,7 +1140,11 @@ JS;
 			return $existing;
 		}
 
-		if ( '' === $submitted || 0 !== strpos( $submitted, 'khavee_' ) ) {
+		if ( '' === $submitted ) {
+			return '';
+		}
+
+		if ( 0 !== strpos( $submitted, 'khavee_' ) ) {
 			add_settings_error(
 				self::OPTION_NAME,
 				'khaveeai_platform_key_invalid_format',
@@ -1258,10 +1246,12 @@ JS;
 		//     #khaveeai_avatar_current
 		//   - Not JS-read, but tied to name="khaveeai_settings[...]"
 		//     sanitize_settings() keys — ids must stay unchanged regardless:
-		//     #khaveeai_api_key, #khaveeai_remove_key, #khaveeai_platform_api_key,
-		//     #khaveeai_remove_platform_key, #khaveeai_instructions,
-		//     #khaveeai_voice, #khaveeai_remove_avatar,
+		//     #khaveeai_api_key, #khaveeai_platform_api_key,
+		//     #khaveeai_instructions, #khaveeai_voice, #khaveeai_remove_avatar,
 		//     #khaveeai_floating_widget_enabled
+		//     (Quick-260707-0u6 item 2: #khaveeai_remove_key and
+		//     #khaveeai_remove_platform_key are removed — blank-and-save is
+		//     now the removal signal, no separate checkbox.)
 
 		echo '<div class="wrap khaveeai-settings">';
 		$this->render_settings_page_styles();
@@ -1278,9 +1268,7 @@ JS;
 		$this->render_section_heading( __( 'Connection', 'khaveeai' ), __( 'OpenAI + Khavee Platform API keys', 'khaveeai' ) );
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'OpenAI API Key', 'khaveeai' ), array( $this, 'render_api_key_field' ) );
-		$this->render_form_table_row( __( 'Remove Key', 'khaveeai' ), array( $this, 'render_remove_key_field' ) );
 		$this->render_form_table_row( __( 'Khavee Platform API Key', 'khaveeai' ), array( $this, 'render_platform_api_key_field' ) );
-		$this->render_form_table_row( __( 'Remove Platform Key', 'khaveeai' ), array( $this, 'render_remove_platform_key_field' ) );
 		echo '</tbody></table>';
 		echo '</div>';
 
@@ -1485,8 +1473,9 @@ JS;
 	 * Render the masked API key input (SET-01/D-05/D-07).
 	 *
 	 * The value attribute is ALWAYS mask_api_key()'s output — never the raw
-	 * key. An emptied field is NOT a deletion signal (D-06); the separate
-	 * remove_key checkbox handles deliberate removal.
+	 * key. Blank-field-and-save is the deliberate removal signal
+	 * (Quick-260707-0u6 item 2; supersedes the old separate remove_key
+	 * checkbox).
 	 *
 	 * @return void
 	 */
@@ -1499,25 +1488,7 @@ JS;
 			esc_attr( $masked )
 		);
 		echo '<p class="description">' .
-			esc_html__( 'Enter your OpenAI API key (must start with "sk-"). The saved key is shown masked for security.', 'khaveeai' ) .
-			'</p>';
-	}
-
-	/**
-	 * Render the D-06 "Remove key" checkbox control. Checking this on save
-	 * clears the stored key; leaving it unchecked preserves whatever the
-	 * sanitize_api_key() placeholder/fresh-key logic decided.
-	 *
-	 * @return void
-	 */
-	public function render_remove_key_field(): void {
-		printf(
-			'<label><input type="checkbox" id="khaveeai_remove_key" name="%s[remove_key]" value="1" /> %s</label>',
-			esc_attr( self::OPTION_NAME ),
-			esc_html__( 'Clear the saved API key (deliberate removal)', 'khaveeai' )
-		);
-		echo '<p class="description">' .
-			esc_html__( 'Check this box and save to remove the stored API key. An emptied key field alone does NOT clear the key.', 'khaveeai' ) .
+			esc_html__( 'Enter your OpenAI API key (must start with "sk-"). The saved key is shown masked for security. Leave the field blank and save to remove the stored key.', 'khaveeai' ) .
 			'</p>';
 	}
 
@@ -1544,26 +1515,7 @@ JS;
 			esc_attr( $masked )
 		);
 		echo '<p class="description">' .
-			esc_html__( 'Optional. When connected, Voice, Instructions, and Avatar below are driven live from this project — remove the key to configure them manually instead.', 'khaveeai' ) .
-			'</p>';
-	}
-
-	/**
-	 * Render the "Remove Platform Key" checkbox control. Checking this on
-	 * save clears the stored platform key; leaving it unchecked preserves
-	 * whatever sanitize_platform_api_key()'s placeholder/fresh-key logic
-	 * decided (Quick-260703-slv, mirrors render_remove_key_field()).
-	 *
-	 * @return void
-	 */
-	public function render_remove_platform_key_field(): void {
-		printf(
-			'<label><input type="checkbox" id="khaveeai_remove_platform_key" name="%s[remove_platform_key]" value="1" /> %s</label>',
-			esc_attr( self::OPTION_NAME ),
-			esc_html__( 'Clear the saved Platform API key (deliberate removal)', 'khaveeai' )
-		);
-		echo '<p class="description">' .
-			esc_html__( 'Check this box and save to remove the stored Platform API key. An emptied key field alone does NOT clear the key.', 'khaveeai' ) .
+			esc_html__( 'Optional. When connected, Voice, Instructions, and Avatar below are driven live from this project. The saved key is shown masked for security. Leave the field blank and save to remove the stored key (and disconnect from the Platform).', 'khaveeai' ) .
 			'</p>';
 	}
 
@@ -1885,10 +1837,10 @@ JS;
 
 	/**
 	 * Render the "Enable floating widget" checkbox (FLOAT-01, quick task
-	 * 260704-77n) — mirrors render_remove_key_field()'s checkbox pattern,
-	 * but unlike that transient removal flag, this value IS persisted
-	 * (read back via get_option() into `checked()`, not re-derived each
-	 * save from a one-shot request flag).
+	 * 260704-77n) — mirrors render_avatar_field()'s remove_avatar checkbox
+	 * pattern, but unlike that transient removal flag, this value IS
+	 * persisted (read back via get_option() into `checked()`, not re-derived
+	 * each save from a one-shot request flag).
 	 *
 	 * @return void
 	 */

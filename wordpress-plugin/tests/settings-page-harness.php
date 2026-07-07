@@ -525,7 +525,7 @@ run_case(
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'sk-prod-live-key-9999';
 		$masked   = SettingsPage::mask_api_key( $existing );
-		return $existing === $page->sanitize_api_key( $masked, $existing, false );
+		return $existing === $page->sanitize_api_key( $masked, $existing );
 	}
 );
 
@@ -538,7 +538,7 @@ run_case(
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'sk-old-key-aaaa';
 		// A genuinely new key with surrounding whitespace — must come back trimmed.
-		return 'sk-newkey1234' === $page->sanitize_api_key( '  sk-newkey1234  ', $existing, false );
+		return 'sk-newkey1234' === $page->sanitize_api_key( '  sk-newkey1234  ', $existing );
 	}
 );
 
@@ -550,7 +550,7 @@ run_case(
 		khaveeai_test_reset_state();
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'sk-keep-this-one-1234';
-		$result   = $page->sanitize_api_key( 'notsk-prefixed', $existing, false );
+		$result   = $page->sanitize_api_key( 'notsk-prefixed', $existing );
 		// Return value must be the existing key (no overwrite with the bad value).
 		$return_ok = $existing === $result;
 		// And a settings error must have been registered (D-08 surfaces inline).
@@ -559,36 +559,38 @@ run_case(
 	}
 );
 
-// ── Case 12: sanitize_api_key does NOT treat an emptied field as deletion (D-06) ──
+// ── Case 12: sanitize_api_key treats a blank field as a deliberate removal (Quick-260707-0u6 item 2) ──
 //
-// An empty submission that is NOT the mask of an empty existing key must
-// return the existing key unchanged. Deletion is a separate, deliberate
-// remove_key control (D-06) — never inferred from an emptied field.
+// INVERTED from the old D-06 "emptied field is NOT deletion" behavior: since
+// the separate remove_key checkbox is gone, blank-field-and-save IS now the
+// removal signal (ordinary web-form expectation).
 
 run_case(
-	'sanitize_api_key: an emptied field is NOT a deletion signal — returns existing unchanged (D-06)',
+	'sanitize_api_key: a blank submission with a non-empty existing key removes the key (blank-and-save = removal)',
 	function () {
 		khaveeai_test_reset_state();
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'sk-do-not-wipe-0000';
-		// An empty/whitespace-only submission, with the remove flag OFF, and an
-		// existing key that is NOT empty (so '' is not its own mask). Must keep
-		// the existing key, not clear it.
-		return $existing === $page->sanitize_api_key( '', $existing, false );
+		// An empty/whitespace-only submission, with an existing key that is NOT
+		// empty (so '' is not its own mask) — must now return '' (removed).
+		return '' === $page->sanitize_api_key( '', $existing );
 	}
 );
 
-// ── Case 13: sanitize_api_key clears the key ONLY when the remove_key flag is set (D-06) ──
+// ── Case 13: sanitize_api_key: blank submission on an already-empty key stays empty ──
+//
+// Rewritten for the new no-remove-param signature (Quick-260707-0u6 item 2).
+// mask_api_key('') === '', so a blank submission against an already-empty
+// existing key also naturally hits the "submitted === masked" branch —
+// either path yields ''.
 
 run_case(
-	'sanitize_api_key: returns empty string only when remove_requested is true (D-06 deliberate removal)',
+	'sanitize_api_key: blank submission with an already-empty existing key stays "" (masked-preservation and blank-removal agree)',
 	function () {
 		khaveeai_test_reset_state();
 		$page     = __khaveeai_build_settings_page();
-		$existing = 'sk-clear-me-5555';
-		// With the remove flag ON, the result is '' regardless of the submitted
-		// field value — the checkbox is the deletion signal, not the field.
-		return '' === $page->sanitize_api_key( SettingsPage::mask_api_key( $existing ), $existing, true );
+		$existing = '';
+		return '' === $page->sanitize_api_key( '', $existing );
 	}
 );
 
@@ -951,15 +953,19 @@ run_case(
 	}
 );
 
-// ── Case 36: sanitize_platform_api_key clears the key ONLY when remove flag is set ──
+// ── Case 36: sanitize_platform_api_key removes the key on a blank submission (Quick-260707-0u6 item 2) ──
+//
+// INVERTED from the old remove-flag-driven behavior: the remove_platform_key
+// checkbox is gone, so blank-field-and-save is now the removal signal,
+// mirroring sanitize_api_key()'s Case 12.
 
 run_case(
-	'sanitize_platform_api_key: remove flag true -> "" (deliberate removal)',
+	'sanitize_platform_api_key: blank submission with a non-empty existing key removes the key (blank-and-save = removal)',
 	function () {
 		khaveeai_test_reset_state();
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'khavee_proj1_' . str_repeat( 'a', 64 );
-		return '' === $page->sanitize_platform_api_key( SettingsPage::mask_platform_key( $existing ), $existing, true );
+		return '' === $page->sanitize_platform_api_key( '', $existing );
 	}
 );
 
@@ -972,7 +978,7 @@ run_case(
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'khavee_proj2_' . str_repeat( 'b', 64 );
 		$masked   = SettingsPage::mask_platform_key( $existing );
-		return $existing === $page->sanitize_platform_api_key( $masked, $existing, false );
+		return $existing === $page->sanitize_platform_api_key( $masked, $existing );
 	}
 );
 
@@ -984,7 +990,7 @@ run_case(
 		khaveeai_test_reset_state();
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'khavee_proj3_' . str_repeat( 'c', 64 );
-		return $existing === $page->sanitize_platform_api_key( 'not-prefixed-value', $existing, false );
+		return $existing === $page->sanitize_platform_api_key( 'not-prefixed-value', $existing );
 	}
 );
 
@@ -997,7 +1003,19 @@ run_case(
 		$page     = __khaveeai_build_settings_page();
 		$existing = 'khavee_proj4_' . str_repeat( 'd', 64 );
 		$fresh    = 'khavee_proj5_' . str_repeat( 'e', 64 );
-		return $fresh === $page->sanitize_platform_api_key( '  ' . $fresh . '  ', $existing, false );
+		return $fresh === $page->sanitize_platform_api_key( '  ' . $fresh . '  ', $existing );
+	}
+);
+
+// ── Case 40: sanitize_platform_api_key: blank submission on an already-empty key stays empty ──
+
+run_case(
+	'sanitize_platform_api_key: blank submission with an already-empty existing key stays "" (masked-preservation and blank-removal agree)',
+	function () {
+		khaveeai_test_reset_state();
+		$page     = __khaveeai_build_settings_page();
+		$existing = '';
+		return '' === $page->sanitize_platform_api_key( '', $existing );
 	}
 );
 

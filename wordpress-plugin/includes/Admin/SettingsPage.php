@@ -371,7 +371,13 @@ jQuery( function ( $ ) {
 			avatarScale: scaleEl ? parseFloat( scaleEl.value ) : 1.0,
 			avatarOffsetX: offsetXEl ? parseFloat( offsetXEl.value ) : 0.0,
 			avatarOffsetY: offsetYEl ? parseFloat( offsetYEl.value ) : 0.0,
-			cameraRotationY: rotEl ? parseFloat( rotEl.value ) : 0.0
+			cameraRotationY: rotEl ? parseFloat( rotEl.value ) : 0.0,
+			// Quick task 260708-1ws: preserved on every field change so the
+			// floating preview keeps its header+200px-avatar+chat structure
+			// instead of reverting to the plain-avatar layout on the first
+			// interaction. containerWidth/containerHeight are NOT re-added
+			// here — unused in floating mode.
+			previewMode: 'floating'
 		};
 
 		mount.dataset.khaveeaiPreviewConfig = JSON.stringify( cfg );
@@ -2111,6 +2117,14 @@ JS;
 	 * AvatarRenderer::render_floating()'s OWN separate output for the real
 	 * runtime floating widget and are untouched by this method.
 	 *
+	 * Quick task 260708-1ws: also emits `previewMode: 'floating'`, which
+	 * makes PreviewScene.tsx render PreviewFloatingWidget — the same
+	 * header + fixed 200px avatar area + flexed chat structure (and exact
+	 * `.khaveeai-floating-*` CSS classes) as the real front-end
+	 * FloatingWidget.tsx, including the example chat transcript (previously
+	 * a separate PHP-rendered mock chat block below this mount div, now
+	 * removed — the chat renders inside the React tree instead).
+	 *
 	 * The bundle's own observeDocument(document) fallback (preview.ts,
 	 * non-iframe path, lines 164-170) scans the TOP admin document for
 	 * [data-khaveeai-preview-config] and auto-mounts this div — no JS call
@@ -2146,12 +2160,15 @@ JS;
 			'avatarOffsetX' => isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0,
 			'avatarOffsetY' => isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0,
 			'cameraRotationY' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : 0.0,
-			// Quick task 260708-0rs: without an explicit height, PreviewScene.tsx's
-			// container div has no resolvable height for the R3F Canvas's
-			// height:100% wrapper to inherit, so the canvas was collapsing to
-			// ~180px instead of filling this mount div's own 360x520 inline size.
-			'containerWidth'  => 360,
-			'containerHeight' => 520,
+			// Quick task 260708-1ws: signals PreviewScene.tsx to render
+			// PreviewFloatingWidget (header + fixed 200px avatar area + flexed
+			// chat, matching the real .khaveeai-floating-panel structure)
+			// instead of the plain-avatar layout. containerWidth/containerHeight
+			// are intentionally OMITTED here — in floating mode PreviewScene no
+			// longer applies them; the .khaveeai-floating-panel +
+			// .khaveeai-floating-avatar-area CSS classes fully determine sizing
+			// (fixed 360x520 panel with a 200px avatar area).
+			'previewMode' => 'floating',
 		);
 
 		echo '<p><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';
@@ -2169,55 +2186,5 @@ JS;
 			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:360px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;"></div>',
 			esc_attr( wp_json_encode( $config ) )
 		);
-
-		$this->render_floating_preview_mock_chat();
-	}
-
-	/**
-	 * Emit a STATIC, non-interactive mock chat transcript below the floating
-	 * preview's avatar mount (quick task 260707-0u6 item 6) so the preview
-	 * shows both the avatar and a representative chat, matching the real
-	 * floating widget's visual chat layout.
-	 *
-	 * Reuses the SAME compiled floating/chat classes already loaded on this
-	 * page via the khaveeai-preview-style stylesheet (build/khaveeai-preview.css,
-	 * compiled from packages/wp-bundle/styles.css's .khaveeai-chat* rules) —
-	 * no new stylesheet, no JS, no input row/send button, not wired to any
-	 * chat logic. Constrained to the 360px preview panel's width.
-	 *
-	 * Quick task 260707-oyu item 2: matches ChatBox.tsx's real DOM nesting
-	 * (see packages/wp-bundle/src/ui/ChatBox.tsx) — a
-	 * .khaveeai-chat__header ("AI Assistant") above a bounded, scrollable
-	 * .khaveeai-chat__transcript. The prior version's inline width/max-height
-	 * overrides (removing the bound entirely) defeated .khaveeai-chat--below's
-	 * own CSS (styles.css: max-height 400px, margin:16px, a bounded
-	 * overflow:hidden flex column) AND omitted the header entirely, so the
-	 * bubbles rendered loose/unbounded instead of inside a contained chat
-	 * card. No inline style override is needed here — .khaveeai-chat--below's
-	 * default width:calc(100% - 32px) already fits comfortably inside the
-	 * ~360px preview column.
-	 *
-	 * @return void
-	 */
-	private function render_floating_preview_mock_chat(): void {
-		echo '<div class="khaveeai-chat khaveeai-chat--below">';
-		echo '<div class="khaveeai-chat__header">' . esc_html__( 'AI Assistant', 'khaveeai' ) . '</div>';
-		echo '<div class="khaveeai-chat__transcript">';
-
-		printf(
-			'<div class="khaveeai-chat__bubble khaveeai-chat__bubble--assistant">%s</div>',
-			esc_html__( 'Hi! How can I help you today?', 'khaveeai' )
-		);
-		printf(
-			'<div class="khaveeai-chat__bubble khaveeai-chat__bubble--user">%s</div>',
-			esc_html__( 'What are your opening hours?', 'khaveeai' )
-		);
-		printf(
-			'<div class="khaveeai-chat__bubble khaveeai-chat__bubble--assistant">%s</div>',
-			esc_html__( "We're open 9am to 6pm, Monday to Friday.", 'khaveeai' )
-		);
-
-		echo '</div>'; // .khaveeai-chat__transcript
-		echo '</div>'; // .khaveeai-chat
 	}
 }

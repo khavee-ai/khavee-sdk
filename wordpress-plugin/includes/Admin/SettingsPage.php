@@ -2169,10 +2169,23 @@ JS;
 	 * no new stylesheet, no JS, no input row/send button, not wired to any
 	 * chat logic. Constrained to the 360px preview panel's width.
 	 *
+	 * Quick task 260707-oyu item 2: matches ChatBox.tsx's real DOM nesting
+	 * (see packages/wp-bundle/src/ui/ChatBox.tsx) — a
+	 * .khaveeai-chat__header ("AI Assistant") above a bounded, scrollable
+	 * .khaveeai-chat__transcript. The prior version's inline width/max-height
+	 * overrides (removing the bound entirely) defeated .khaveeai-chat--below's
+	 * own CSS (styles.css: max-height 400px, margin:16px, a bounded
+	 * overflow:hidden flex column) AND omitted the header entirely, so the
+	 * bubbles rendered loose/unbounded instead of inside a contained chat
+	 * card. No inline style override is needed here — .khaveeai-chat--below's
+	 * default width:calc(100% - 32px) already fits comfortably inside the
+	 * ~360px preview column.
+	 *
 	 * @return void
 	 */
 	private function render_floating_preview_mock_chat(): void {
-		echo '<div class="khaveeai-chat khaveeai-chat--below" style="width:360px;margin:12px 0 0;max-height:none;">';
+		echo '<div class="khaveeai-chat khaveeai-chat--below">';
+		echo '<div class="khaveeai-chat__header">' . esc_html__( 'AI Assistant', 'khaveeai' ) . '</div>';
 		echo '<div class="khaveeai-chat__transcript">';
 
 		printf(

@@ -2135,5 +2135,42 @@ JS;
 			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:360px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;"></div>',
 			esc_attr( wp_json_encode( $config ) )
 		);
+
+		$this->render_floating_preview_mock_chat();
+	}
+
+	/**
+	 * Emit a STATIC, non-interactive mock chat transcript below the floating
+	 * preview's avatar mount (quick task 260707-0u6 item 6) so the preview
+	 * shows both the avatar and a representative chat, matching the real
+	 * floating widget's visual chat layout.
+	 *
+	 * Reuses the SAME compiled floating/chat classes already loaded on this
+	 * page via the khaveeai-preview-style stylesheet (build/khaveeai-preview.css,
+	 * compiled from packages/wp-bundle/styles.css's .khaveeai-chat* rules) —
+	 * no new stylesheet, no JS, no input row/send button, not wired to any
+	 * chat logic. Constrained to the 360px preview panel's width.
+	 *
+	 * @return void
+	 */
+	private function render_floating_preview_mock_chat(): void {
+		echo '<div class="khaveeai-chat khaveeai-chat--below" style="width:360px;margin:12px 0 0;max-height:none;">';
+		echo '<div class="khaveeai-chat__transcript">';
+
+		printf(
+			'<div class="khaveeai-chat__bubble khaveeai-chat__bubble--assistant">%s</div>',
+			esc_html__( 'Hi! How can I help you today?', 'khaveeai' )
+		);
+		printf(
+			'<div class="khaveeai-chat__bubble khaveeai-chat__bubble--user">%s</div>',
+			esc_html__( 'What are your opening hours?', 'khaveeai' )
+		);
+		printf(
+			'<div class="khaveeai-chat__bubble khaveeai-chat__bubble--assistant">%s</div>',
+			esc_html__( "We're open 9am to 6pm, Monday to Friday.", 'khaveeai' )
+		);
+
+		echo '</div>'; // .khaveeai-chat__transcript
+		echo '</div>'; // .khaveeai-chat
 	}
 }

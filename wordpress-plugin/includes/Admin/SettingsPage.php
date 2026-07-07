@@ -2078,6 +2078,12 @@ JS;
 			'avatarOffsetX'   => 0.0,
 			'avatarOffsetY'   => 0.0,
 			'cameraRotationY' => 0.0,
+			// Quick task 260708-0rs: without an explicit height, PreviewScene.tsx's
+			// container div has no resolvable height for the R3F Canvas's
+			// height:100% wrapper to inherit, so the canvas was collapsing to
+			// ~140px instead of filling this mount div's own 280x340 inline size.
+			'containerWidth'  => 280,
+			'containerHeight' => 340,
 		);
 
 		// Quick task 260707-oyu item 1: margin-top:16px dropped — this heading
@@ -2140,6 +2146,12 @@ JS;
 			'avatarOffsetX' => isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0,
 			'avatarOffsetY' => isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0,
 			'cameraRotationY' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : 0.0,
+			// Quick task 260708-0rs: without an explicit height, PreviewScene.tsx's
+			// container div has no resolvable height for the R3F Canvas's
+			// height:100% wrapper to inherit, so the canvas was collapsing to
+			// ~180px instead of filling this mount div's own 360x520 inline size.
+			'containerWidth'  => 360,
+			'containerHeight' => 520,
 		);
 
 		echo '<p><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';

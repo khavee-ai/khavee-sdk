@@ -1280,16 +1280,30 @@ JS;
 		echo '</tbody></table>';
 		echo '</div>';
 
+		// Quick task 260707-oyu item 1: two-column layout — fields (left) |
+		// sticky live preview (right) — mirroring the Floating Widget card's
+		// .khaveeai-settings__two-col / .khaveeai-settings__preview-col pattern
+		// EXACTLY (same classes/widths/breakpoints; see render_settings_page_styles()).
+		// render_avatar_section_preview_mount()'s own markup (mount div
+		// id/class/data-attribute/dimensions) is unchanged; only its parent
+		// container moves from below the table to this right column.
 		echo '<div class="khaveeai-settings__card">';
 		$this->render_section_heading( __( 'Avatar', 'khaveeai' ), __( 'The 3D model your avatar uses', 'khaveeai' ) );
+		echo '<div class="khaveeai-settings__two-col">';
+
 		echo '<table class="form-table" role="presentation"><tbody>';
 		$this->render_form_table_row( __( 'Avatar (VRM/GLB)', 'khaveeai' ), array( $this, 'render_avatar_field' ) );
 		echo '</tbody></table>';
+
 		// Quick task 260707-0u6 item 3: passive live preview of the global
 		// avatar, reusing the SAME khaveeai-preview bundle mount mechanism as
 		// render_floating_preview_mount() — no second preview mechanism.
+		echo '<div class="khaveeai-settings__preview-col">';
 		$this->render_avatar_section_preview_mount();
 		echo '</div>';
+
+		echo '</div>'; // .khaveeai-settings__two-col
+		echo '</div>'; // .khaveeai-settings__card
 
 		// FLOAT-01 (quick task 260704-77n): site-wide floating chat launcher toggle.
 		// 260706-x6b: two-column layout — fields (left) | sticky live preview
@@ -2062,7 +2076,11 @@ JS;
 			'cameraRotationY' => 0.0,
 		);
 
-		echo '<p style="margin-top:16px;"><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';
+		// Quick task 260707-oyu item 1: margin-top:16px dropped — this heading
+		// now sits at the top of its own .khaveeai-settings__preview-col column
+		// (sibling to the fields column, not stacked below the form-table), so
+		// the extra top spacing is no longer needed.
+		echo '<p><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';
 		printf(
 			'<div id="khaveeai-avatar-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:280px;height:340px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;"></div>',
 			esc_attr( wp_json_encode( $config ) )

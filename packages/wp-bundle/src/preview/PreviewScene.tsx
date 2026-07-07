@@ -17,9 +17,13 @@
  * Quick task 260708-1ws: the actual Canvas/camera/lighting/VRMAvatar fragment
  * (previously inlined here as PreviewSceneInner's `avatarArea`) now lives in
  * PreviewAvatarCanvas.tsx so it can be shared between this plain layout
- * (Avatar-section / Gutenberg block editor previews) and the floating-widget
- * preview's fixed-200px avatar area — both render inside the SAME
- * <KhaveeProvider> this file owns.
+ * (Avatar-section / Gutenberg block editor previews) and
+ * PreviewFloatingWidget's fixed-200px avatar area — both render inside the
+ * SAME <KhaveeProvider> this file owns. `previewMode: "floating"` (set ONLY
+ * by SettingsPage.php's floating mount) branches PreviewSceneInner to
+ * PreviewFloatingWidget; every other caller (Avatar-section mount, Gutenberg
+ * block editor) leaves previewMode unset and keeps the plain-layout
+ * rendering below unchanged.
  *
  * Background (Pitfall 6 — transparent-background):
  *   The container div's CSS `background` (transparent | config.bgColor |
@@ -61,6 +65,7 @@ import { KhaveeProvider } from "@khaveeai/react";
 import type { KhaveeAvatarConfig } from "../config";
 import { PreviewChatBox } from "./PreviewChatBox";
 import { PreviewAvatarCanvas } from "./PreviewAvatarCanvas";
+import { PreviewFloatingWidget } from "./PreviewFloatingWidget";
 
 // ── Preview-only config extension ─────────────────────────────────────────────
 
@@ -72,17 +77,30 @@ import { PreviewAvatarCanvas } from "./PreviewAvatarCanvas";
 export interface PreviewAvatarConfig extends KhaveeAvatarConfig {
   /** When true, the no-audio viseme cycler runs at ~4Hz. Default false. */
   previewTalking?: boolean;
+  /**
+   * When set to "floating", PreviewSceneInner renders PreviewFloatingWidget
+   * (the real front-end FloatingWidget.tsx's structure/CSS classes, preview-
+   * safe) instead of the plain-layout preview below. Emitted ONLY by
+   * SettingsPage.php's render_floating_preview_mount() config array and its
+   * inline rebuild() cfg object — the Avatar-section mount and the
+   * Gutenberg block editor never set this, so they keep the plain-avatar
+   * layout. Preview-only; NOT part of the published-page config transport
+   * (KhaveeAvatarConfig).
+   */
+  previewMode?: "floating";
 }
 
 // ── PreviewSceneInner ─────────────────────────────────────────────────────────
 
 /**
- * Inner component rendered inside <KhaveeProvider>. Holds the plain
- * containerStyle + optional khaveeai-layout + chat composition, using the
- * shared PreviewAvatarCanvas fragment for the avatar area in both the
- * chatShow and no-chat branches. The split from <PreviewScene> exists so
- * PreviewAvatarCanvas's hooks (useVRMExpressions() via usePreviewTalking)
- * are called within the provider's subtree (React rules of hooks).
+ * Inner component rendered inside <KhaveeProvider>. Branches to
+ * PreviewFloatingWidget when config.previewMode === "floating"; otherwise
+ * renders the plain containerStyle + optional khaveeai-layout + chat
+ * composition, using the shared PreviewAvatarCanvas fragment for the avatar
+ * area in both the chatShow and no-chat branches. The split from
+ * <PreviewScene> exists so PreviewAvatarCanvas's hooks (useVRMExpressions()
+ * via usePreviewTalking) are called within the provider's subtree (React
+ * rules of hooks).
  */
 function PreviewSceneInner({
   config,
@@ -91,6 +109,19 @@ function PreviewSceneInner({
   config: PreviewAvatarConfig;
   onCameraAngleChange?: (deg: number) => void;
 }) {
+  // Floating-widget parity layout (quick task 260708-1ws): fixed 360x520
+  // panel sizing comes entirely from .khaveeai-floating-panel's own CSS —
+  // do NOT apply the plain containerStyle dimensions or khaveeai-layout
+  // wrapper in this mode.
+  if (config.previewMode === "floating") {
+    return (
+      <PreviewFloatingWidget
+        config={config}
+        onCameraAngleChange={onCameraAngleChange}
+      />
+    );
+  }
+
   // ── Container styling (background + dimensions) ──────────────────────────
 
   const containerStyle: React.CSSProperties = {

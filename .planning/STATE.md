@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: WordPress Plugin
 status: executing
-stopped_at: context exhaustion at 78% (2026-07-02)
-last_updated: "2026-07-02T11:07:09.735Z"
+stopped_at: context exhaustion at 75% (2026-07-07)
+last_updated: "2026-07-07T09:12:18.091Z"
 last_activity: 2026-06-25 -- Phase 09 execution started
 progress:
   total_phases: 9
@@ -82,6 +82,7 @@ None yet.
 
 ### Blockers/Concerns
 
+- Follow-up needed on 260707-0u6: 3 issues reported by user after live re-test — (1) Avatar-section preview must move to the right side of its fields, matching the Floating Widget section's two-column layout pattern; (2) mock chat bubbles in the Floating Widget preview must be properly nested inside a chat-box container (check `packages/wp-bundle/src/ui/ChatBox.tsx` for the real nesting structure); (3) transparent-toggle bug is still broken despite the `key`-prop remount fix in commit `5a39d51` — needs genuine from-scratch root-cause investigation (the fix code is confirmed present and compiled into the bundle, so it's not a stale-build issue; check whether `PreviewScene.tsx`'s `containerStyle.background` CSS property, separate from the Canvas WebGL context, is the actual stuck property)
 - Phase 5 (v1.0): VAD-loopback cooldown (currently a 500ms magic number tuned for OpenAI TTS) cannot be validated against JaiTTS until that service exists — must explicitly retest, not assume
 - Phase 6: The public REST token route must be genuinely anonymous (`permission_callback => '__return_true'`) — WP nonce-based auth does not protect anonymous visitors and silently breaks under page caching; rate limiting/daily cap must be designed in from the first implementation, not retrofitted
 - Phase 6: No official OpenAI documentation specifies per-IP/per-mint rate limits for the ephemeral-token endpoint — defensive rate-limiting design must be validated against actual OpenAI behavior at implementation time
@@ -102,6 +103,7 @@ None yet.
 | 260706-vf4 | Live visual preview for floating widget Settings page: WP color picker + range sliders replacing blind text/number inputs, 360x520 live avatar preview reusing the existing khaveeai-preview bundle's generic DOM-observer path (zero bundle/build changes needed); live verification caught and fixed a real staleness bug in color-palette swatch clicks (Iris's irischange event fires before writing the new color into the DOM value) | 2026-07-06 | f310d5d | [260706-vf4-live-preview-floating-widget-settings](./quick/260706-vf4-live-preview-floating-widget-settings/) |
 | 260706-wop | Live camera-angle drag control for the floating widget Settings-page preview: orbit-drag in the preview writes back to a new floating-only "Floating camera angle" slider (bidirectional, via a new inverse-rotation math helper + a CustomEvent bridge since the preview mounts outside any React tree the Settings page controls), fully wired PHP layer, verified end-to-end including the actual live front-end floating widget | 2026-07-06 | 6b4f9e0 | [260706-wop-live-camera-angle-drag-preview](./quick/260706-wop-live-camera-angle-drag-preview/) |
 | 260706-x6b | Settings page visual redesign: card-based sections with branded flat-purple styling (mirrors packages/wp-bundle/styles.css's design tokens), two-column sticky-preview layout for the Floating Widget section only (fields left, live preview right, no scroll needed), responsive single-column fallback on narrow viewports; pure presentation pass, zero functional changes (all element IDs the 260706-vf4/260706-wop live-preview JS depends on verified intact) | 2026-07-06 | b60e2b4 | [260706-x6b-settings-page-redesign](./quick/260706-x6b-settings-page-redesign/) |
+| 260707-0u6 | Settings page fixes batch: floating-preview clarifying caption, removed Remove-Key checkboxes in favor of blank-and-save removal, live avatar preview in Avatar section, purple accent-color on range/checkbox inputs, static mock chat transcript in Floating Widget preview, transparent-toggle bug fix attempt #1 (Canvas `key`-prop remount). Automated checks all pass; live human verification incomplete — user's live re-test surfaced 3 outstanding problems (avatar preview layout position, mock chat not nested in chat-box wrapper, transparent-toggle bug still occurring) carried forward as a follow-up task | 2026-07-07 | 724663c (merge c3c8896) | [260707-0u6-settings-page-fixes-batch](./quick/260707-0u6-settings-page-fixes-batch/) |
 
 ## Deferred Items
 
@@ -113,8 +115,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T11:07:09.730Z
-Stopped at: context exhaustion at 78% (2026-07-02)
+Last session: 2026-07-07T09:12:18.084Z
+Stopped at: context exhaustion at 75% (2026-07-07)
 Resume file: None
 
 Last activity: 2026-07-06 - Completed quick task 260706-x6b: Settings page visual redesign (branded card layout, two-column sticky preview for Floating Widget, verified zero functional regression)

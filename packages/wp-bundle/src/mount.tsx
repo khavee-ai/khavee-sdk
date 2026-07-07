@@ -96,6 +96,15 @@ export function AvatarScene({ config }: { config: KhaveeAvatarConfig }) {
 
   return (
     <Canvas
+      // Quick task 260707-0u6 item 4: same fix as PreviewScene.tsx — `key`
+      // scoped ONLY to bgTransparent forces a Canvas remount (fresh
+      // WebGLRenderer with the correct `alpha` context attribute) exactly on
+      // that transition. R3F's `gl` prop is initialization-only and is never
+      // reactively re-applied to an already-created renderer, so unchecking
+      // "Transparent floating background" previously left the canvas frozen
+      // with its original alpha context until an unrelated repaint (e.g. an
+      // OrbitControls drag) papered over the mismatch.
+      key={config.bgTransparent === true ? "gl-alpha" : "gl-opaque"}
       camera={{ position: scene.cameraPosition, fov: scene.cameraFov }}
       gl={config.bgTransparent === true ? { alpha: true } : undefined}
     >

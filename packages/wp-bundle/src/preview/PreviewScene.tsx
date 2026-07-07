@@ -267,6 +267,17 @@ function PreviewSceneInner({
   const avatarArea = (
     <>
       <Canvas
+        // Quick task 260707-0u6 item 4: `key` scoped ONLY to bgTransparent —
+        // forces React to unmount/remount just the Canvas (and thus recreate
+        // its WebGLRenderer with the correct `alpha` context attribute) on
+        // that specific transition, without remounting on every other
+        // slider/color edit (which would defeat mountPreview.tsx's
+        // no-teardown MutationObserver design). See root-cause note above:
+        // R3F's `gl` prop is initialization-only (like `camera`, Pitfall 7)
+        // — it is never reactively re-applied to an already-created
+        // WebGLRenderer, so without this key the alpha context stays frozen
+        // at whatever bgTransparent was true at first mount.
+        key={config.bgTransparent ? "gl-alpha" : "gl-opaque"}
         camera={{ position: sceneDefaults.cameraPosition, fov: sceneDefaults.cameraFov }}
         gl={canvasGl}
         style={canvasStyle}

@@ -19,9 +19,41 @@
  *   live realtime session. A "Preview talking" pill label overlays the corner.
  *
  * Background (Pitfall 6 — transparent-background):
- *   bgTransparent: <Canvas gl={{ alpha: true }}> + container div background:transparent
- *   bgColor / bgImage: applied to the container div CSS, NOT to scene.background
- *   (cheaper, simpler, avoids three.js background clear-color interaction).
+ *   The Canvas ALWAYS renders with gl={{ alpha: true }} — a CONSTANT prop
+ *   (no key-based remount; see the root-cause note below). All of the actual
+ *   transparent-vs-opaque switching happens on the CONTAINER div's CSS
+ *   `background` (transparent | config.bgColor | url(...)), never on
+ *   scene.background or the renderer's alpha context (cheaper, simpler,
+ *   avoids three.js background clear-color interaction).
+ *
+ *   Quick task 260707-oyu root-cause note (genuine fix, replacing the
+ *   disproven `key`-prop hypothesis from commit 5a39d51): the prior code
+ *   branched `gl={config.bgTransparent ? { alpha: true } : undefined}` under
+ *   a `key={bgTransparent ? "gl-alpha" : "gl-opaque"}`, on the theory that
+ *   the "opaque" branch needed its OWN forced-remount WebGLRenderer with a
+ *   different alpha context. Traced directly against the installed
+ *   @react-three/fiber source (dist/react-three-fiber.cjs.dev.js — the
+ *   renderer-creation `defaultProps` object hardcodes `alpha: true`, and
+ *   `new THREE.WebGLRenderer({ ...defaultProps, ...glConfig })` with
+ *   `glConfig === undefined` is a no-op spread) proves the "opaque" branch's
+ *   `gl={undefined}` NEVER produced an opaque context — it was ALWAYS
+ *   `alpha: true`, identical to the "transparent" branch. (three.js's own
+ *   WebGLBackground module further confirms `clearAlpha` defaults to `0`
+ *   whenever `alpha === true`, so the canvas has ALWAYS cleared to fully
+ *   transparent in both branches — exactly matching the file's own design:
+ *   the canvas never blocks the container's CSS background.) The `key` prop
+ *   therefore forced a full Canvas/WebGLRenderer/VRM-reload teardown+rebuild
+ *   on EVERY checkbox toggle for zero actual alpha-context benefit — directly
+ *   contradicting mountPreview.tsx's own stated design goal of keeping a
+ *   SINGLE persistent WebGL context alive for the block's lifetime, and is
+ *   the most plausible source of a toggle sequence going genuinely "stuck"
+ *   (repeated WebGL context churn is a known trigger for context loss/
+ *   exhaustion in browsers). The real fix: drop the `key` and the
+ *   differentiated `gl` value entirely — the Canvas now mounts ONCE with a
+ *   constant `gl={{ alpha: true }}`, and the container div's `background`
+ *   CSS (already recomputed correctly on every render from live `config`,
+ *   below) does 100% of the actual visible transparent/opaque switching,
+ *   with no Canvas remount required.
  */
 import React, { useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
@@ -237,8 +269,11 @@ function PreviewSceneInner({
   }
 
   // ── Canvas props ──────────────────────────────────────────────────────────
+  // Quick task 260707-oyu: no more differentiated/keyed `gl` value here — see
+  // the file-header root-cause note. `gl={{ alpha: true }}` is now a CONSTANT
+  // passed to the Canvas below; the container's `background` CSS above (not
+  // the Canvas) does 100% of the actual transparent/opaque switching.
 
-  const canvasGl = config.bgTransparent ? { alpha: true } : undefined;
   const canvasStyle: React.CSSProperties | undefined = config.bgTransparent
     ? { background: "transparent" }
     : undefined;
@@ -267,19 +302,19 @@ function PreviewSceneInner({
   const avatarArea = (
     <>
       <Canvas
-        // Quick task 260707-0u6 item 4: `key` scoped ONLY to bgTransparent —
-        // forces React to unmount/remount just the Canvas (and thus recreate
-        // its WebGLRenderer with the correct `alpha` context attribute) on
-        // that specific transition, without remounting on every other
-        // slider/color edit (which would defeat mountPreview.tsx's
-        // no-teardown MutationObserver design). See root-cause note above:
-        // R3F's `gl` prop is initialization-only (like `camera`, Pitfall 7)
-        // — it is never reactively re-applied to an already-created
-        // WebGLRenderer, so without this key the alpha context stays frozen
-        // at whatever bgTransparent was true at first mount.
-        key={config.bgTransparent ? "gl-alpha" : "gl-opaque"}
+        // Quick task 260707-oyu (genuine fix, see file-header root-cause
+        // note): NO `key` here anymore — commit 5a39d51's key-based remount
+        // was proven (via @react-three/fiber + three.js source trace) to
+        // change nothing about the renderer's actual alpha/transparency
+        // behavior (both branches were already `alpha: true`), while forcing
+        // a full Canvas/WebGLRenderer/VRM-reload teardown+rebuild on every
+        // single checkbox toggle — the most plausible cause of a toggle
+        // sequence going genuinely stuck (WebGL context churn). The Canvas
+        // now mounts ONCE with a constant `gl={{ alpha: true }}`; the
+        // container div's `background` CSS (set above from live `config` on
+        // every render) is what actually switches transparent vs opaque.
         camera={{ position: sceneDefaults.cameraPosition, fov: sceneDefaults.cameraFov }}
-        gl={canvasGl}
+        gl={{ alpha: true }}
         style={canvasStyle}
       >
         <CameraController

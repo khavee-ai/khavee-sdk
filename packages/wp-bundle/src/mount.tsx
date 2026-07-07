@@ -79,7 +79,9 @@ export type { KhaveeAvatarConfig } from "./config";
 // Transparent-background (Pitfall 6 — RESEARCH): gl={{ alpha: true }} on Canvas
 // enables alpha blending in WebGL. The container's CSS background is set on the
 // .khaveeai-root div (NOT via scene.background — three.js scene.background
-// overrides the WebGL clear colour, defeating gl.alpha).
+// overrides the WebGL clear colour, defeating gl.alpha). This is now a
+// CONSTANT Canvas prop (no key-based remount) — see the root-cause note on
+// the Canvas element below for why.
 //
 // Lip-sync (STUDIO-04): no new code here. VRMAvatar inside KhaveeProvider means
 // useRealtime auto-wires onAudioData → RealtimeAudioAnalyzer →
@@ -96,17 +98,25 @@ export function AvatarScene({ config }: { config: KhaveeAvatarConfig }) {
 
   return (
     <Canvas
-      // Quick task 260707-0u6 item 4: same fix as PreviewScene.tsx — `key`
-      // scoped ONLY to bgTransparent forces a Canvas remount (fresh
-      // WebGLRenderer with the correct `alpha` context attribute) exactly on
-      // that transition. R3F's `gl` prop is initialization-only and is never
-      // reactively re-applied to an already-created renderer, so unchecking
-      // "Transparent floating background" previously left the canvas frozen
-      // with its original alpha context until an unrelated repaint (e.g. an
-      // OrbitControls drag) papered over the mismatch.
-      key={config.bgTransparent === true ? "gl-alpha" : "gl-opaque"}
+      // Quick task 260707-oyu (genuine fix, replacing the disproven
+      // 260707-0u6 `key`-prop hypothesis — see PreviewScene.tsx's file-header
+      // root-cause note for the full source-level trace): the prior
+      // `key={bgTransparent ? "gl-alpha" : "gl-opaque"}` +
+      // `gl={bgTransparent ? { alpha: true } : undefined}` branching assumed
+      // the "opaque" (`gl={undefined}`) case produced a genuinely non-alpha
+      // WebGLRenderer. It never did — @react-three/fiber's own
+      // renderer-creation defaults hardcode `alpha: true` regardless, so
+      // `gl={undefined}` was ALWAYS identical to `gl={{ alpha: true }}`. The
+      // `key` therefore forced a full Canvas/WebGLRenderer/VRM-reload
+      // teardown+rebuild on every single checkbox toggle for zero actual
+      // alpha-context change — the more plausible source of a toggle
+      // sequence going genuinely stuck (repeated WebGL context churn). Fix:
+      // no `key`, a CONSTANT `gl={{ alpha: true }}` — the container's
+      // `background` CSS (containerStyle, computed in mountAvatarInstance()
+      // below from live config) is what actually switches transparent vs
+      // opaque, with no Canvas remount required.
       camera={{ position: scene.cameraPosition, fov: scene.cameraFov }}
-      gl={config.bgTransparent === true ? { alpha: true } : undefined}
+      gl={{ alpha: true }}
     >
       {/* lightIntensity is config-driven (c.lightIntensity ?? 1.0); was hardcoded 1 */}
       <ambientLight intensity={scene.lightIntensity} />

@@ -1416,6 +1416,10 @@ JS;
 		top: auto;
 	}
 }
+.khaveeai-settings input[type="range"],
+.khaveeai-settings input[type="checkbox"] {
+	accent-color: #6929ff;
+}
 </style>';
 	}
 
@@ -2119,6 +2123,13 @@ JS;
 		);
 
 		echo '<p><strong>' . esc_html__( 'Live preview', 'khaveeai' ) . '</strong></p>';
+		// Quick task 260707-0u6 item 1: clarify that dragging orbits the CAMERA,
+		// not the avatar — the sliders (offset X/Y, scale) are what move the
+		// avatar itself. Additive markup only; no id/name/data-attribute/behavior
+		// change to the mount div below.
+		echo '<p class="description" style="margin-top:-6px;margin-bottom:10px;">' .
+			esc_html__( 'Drag to rotate the camera view. Use the sliders on the left to reposition and resize the avatar itself.', 'khaveeai' ) .
+			'</p>';
 		// ~360x520 matches the real .khaveeai-floating-panel proportions
 		// (styles.css: width:360px;height:520px) so the preview is a
 		// faithful representation of the actual floating widget.

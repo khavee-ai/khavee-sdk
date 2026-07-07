@@ -3,9 +3,102 @@ import { useFBX, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lerp } from "three/src/math/MathUtils.js";
 import { useKhavee } from "./KhaveeProvider";
 import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
+
+// ── Per-instance VRM loading (bypasses drei's useGLTF global cache) ──
+//
+// useGLTF caches the PARSED GLTF result (including userData.vrm) in a
+// module-global cache keyed by URL (@react-three/fiber's useLoader ->
+// suspend-react). Two <VRMAvatar src="same-url"> instances therefore get
+// the SAME scene/VRM object back — mounting the same THREE.Object3D via
+// <primitive object={scene}> into two React trees reparents it to whichever
+// instance mounts second, leaving the first Canvas empty. See
+// .planning/quick/260708-16h-vrmavatar-shared-scene-instance-fix/260708-16h-RESEARCH.md
+// for full source-verified diagnosis and why scene.clone()/SkeletonUtils.clone
+// are insufficient (the VRM object's humanoid/expressionManager/lookAt/
+// springBoneManager still reference the ORIGINAL bones).
+//
+// Fix: fetch each URL's raw GLB ArrayBuffer at most once (module-level
+// cache), then run an INDEPENDENT GLTFLoader.parse() per component instance
+// with a fresh VRMLoaderPlugin registration. This produces a genuinely
+// independent scene+VRM pair per instance with no manual bone re-linking.
+
+/** Module-level cache: fetch each avatar URL's GLB buffer at most once, regardless of how many VRMAvatar instances reference it. */
+const glbBufferCache = new Map<string, Promise<ArrayBuffer>>();
+
+function fetchGlbBuffer(url: string): Promise<ArrayBuffer> {
+  let cached = glbBufferCache.get(url);
+  if (!cached) {
+    cached = fetch(url).then((res) => {
+      if (!res.ok) {
+        throw new Error(`Failed to fetch VRM/GLB: ${url} (${res.status})`);
+      }
+      return res.arrayBuffer();
+    });
+    glbBufferCache.set(url, cached);
+  }
+  return cached;
+}
+
+interface VRMParseResult {
+  scene: THREE.Group;
+  userData: { vrm?: VRM; [key: string]: any };
+}
+
+/**
+ * useLoadVRM - Parse a VRM/GLB file into an independent scene+VRM pair for this component instance.
+ *
+ * Unlike drei's `useGLTF`, this does NOT share a module-global cache of the
+ * PARSED result across instances/Canvases - each call runs its own
+ * `GLTFLoader.parse()` (with `VRMLoaderPlugin` registered), so multiple
+ * simultaneous instances referencing the same URL each get their own
+ * scene/VRM object instead of stealing it from one another.
+ *
+ * @param src - URL or path to the .vrm/.glb file
+ * @returns `{ scene, userData }` once parsed, or `null` while loading/on error
+ */
+function useLoadVRM(src: string): VRMParseResult | null {
+  const [result, setResult] = useState<VRMParseResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let localScene: THREE.Group | null = null;
+    setResult(null); // reset to loading state when src changes
+
+    fetchGlbBuffer(src)
+      .then((buffer) => {
+        const loader = new GLTFLoader();
+        // @ts-ignore - VRM loader type compatibility issue (same cast used previously)
+        loader.register((parser: any) => new VRMLoaderPlugin(parser));
+        return loader.parseAsync(buffer, "");
+      })
+      .then((gltf) => {
+        if (cancelled) {
+          VRMUtils.deepDispose(gltf.scene);
+          return;
+        }
+        localScene = gltf.scene;
+        setResult({ scene: gltf.scene, userData: gltf.userData });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error(`[VRMAvatar] Failed to load ${src}:`, error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (localScene) {
+        VRMUtils.deepDispose(localScene);
+      }
+    };
+  }, [src]);
+
+  return result;
+}
 
 // Define GLTF type locally
 interface GLTFResult {
@@ -196,14 +289,9 @@ export function VRMAvatar({
   const blinkAnimationRef = useRef(0);
 
 
-  const { scene, userData } = useGLTF(src, undefined, undefined, (loader) => {
-    // @ts-ignore - VRM loader type compatibility issue
-    loader.register((parser: any) => {
-      return new VRMLoaderPlugin(parser);
-    });
-  });
-
-  const currentVrm: VRM = userData.vrm;
+  const parsed = useLoadVRM(src);
+  const scene = parsed?.scene;
+  const currentVrm = parsed?.userData.vrm as VRM | undefined;
 
   // SDK automatically loads FBX and GLB files from URLs!
   const loadedAnimations = useAnimationFiles(animations);
@@ -345,7 +433,7 @@ export function VRMAvatar({
   }, [currentAnimation]);
 
   useEffect(() => {
-    if (!currentVrm) return;
+    if (!currentVrm || !scene) return;
 
     // Update VRM in context
     setVrm(currentVrm);
@@ -437,7 +525,7 @@ export function VRMAvatar({
 
   return (
     <group position={position} rotation={rotation} scale={scale} {...props}>
-      <primitive object={scene} />
+      {scene && <primitive object={scene} />}
     </group>
   );
 }

@@ -430,7 +430,13 @@ export function VRMAvatar({
         currentActionRef.current = newAction;
       }
     }
-  }, [currentAnimation]);
+    // processedClips is included so this retries once the mixer/clips become
+    // ready asynchronously (useLoadVRM no longer guarantees synchronous
+    // readiness the way Suspense-based useGLTF did) — without it, "idle"
+    // (the default currentAnimation, which never changes on its own) would
+    // never get (re)applied once the mixer actually exists, leaving the
+    // avatar stuck in its raw bind pose.
+  }, [currentAnimation, processedClips]);
 
   useEffect(() => {
     if (!currentVrm || !scene) return;

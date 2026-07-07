@@ -442,8 +442,12 @@ jQuery( function ( $ ) {
 		if ( ! el ) {
 			return;
 		}
-		el.addEventListener( 'input', rebuild );
-		el.addEventListener( 'change', rebuild );
+		// Quick task 260707-wa2: passing `rebuild` directly as the listener
+		// leaks the native DOM Event into rebuild()'s `colorOverride` param
+		// (the browser invokes it as rebuild(event)); wrap in a zero-arg
+		// closure so colorOverride is always undefined here.
+		el.addEventListener( 'input', function () { rebuild(); } );
+		el.addEventListener( 'change', function () { rebuild(); } );
 	} );
 
 	// Quick task 260706-wop: closes the drag-orbit loop. The khaveeai-preview

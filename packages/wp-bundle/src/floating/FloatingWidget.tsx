@@ -60,12 +60,7 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
       <div className="khaveeai-floating-panel">
         {/* ── Header ────────────────────────────────────────────────────── */}
         <div className="khaveeai-floating-header">
-          <div>
-            <div className="khaveeai-floating-header-title">AI Assistant</div>
-            <div className="khaveeai-floating-header-sub">
-              Usually replies instantly
-            </div>
-          </div>
+          <div className="khaveeai-floating-header-title">AI Assistant</div>
           <button
             type="button"
             className="khaveeai-floating-close"

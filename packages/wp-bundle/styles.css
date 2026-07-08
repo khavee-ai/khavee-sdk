@@ -478,7 +478,7 @@
 
 .khaveeai-floating-header {
   flex-shrink: 0;
-  padding: 16px 18px;
+  padding: 12px 18px;
   background: #6929ff;
   color: #ffffff;
   display: flex;
@@ -489,12 +489,6 @@
 .khaveeai-floating-header-title {
   font-size: 15px;
   font-weight: 600;
-}
-
-.khaveeai-floating-header-sub {
-  font-size: 12px;
-  opacity: 0.85;
-  margin-top: 2px;
 }
 
 .khaveeai-floating-close {

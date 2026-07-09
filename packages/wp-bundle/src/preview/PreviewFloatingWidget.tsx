@@ -16,9 +16,8 @@
  * hook, which throws given the preview's null-provider KhaveeProvider
  * (STUDIO-02). Instead:
  *   - The avatar area uses the shared, preview-safe PreviewAvatarCanvas.
- *   - The "Click to talk" CTA is a static, non-functional stand-in button
- *     (same idle markup/classes as the front-end's idle overlay, but with
- *     no click handler and no session start).
+ *     (No "Click to talk" CTA — removed per user request; the preview
+ *     shows only the avatar, not the front-end's session-start affordance.)
  *   - The chat slot uses PreviewChatBox with a static example transcript
  *     (no live session hook, no live conversation).
  *
@@ -95,17 +94,6 @@ export function PreviewFloatingWidget({
         }}
       >
         <PreviewAvatarCanvas config={config} onCameraAngleChange={onCameraAngleChange} />
-
-        {/* Static CTA stand-in — mirrors the front-end idle overlay's markup
-            (.khaveeai-overlay > .khaveeai-cta-button "Click to talk")
-            with no click handler and no session-start call. Non-functional
-            by design (STUDIO-02: no live-session import in the preview
-            bundle). */}
-        <div className="khaveeai-overlay">
-          <button type="button" className="khaveeai-cta-button">
-            Click to talk
-          </button>
-        </div>
       </div>
 
       {/* ── Chat ──────────────────────────────────────────────────────── */}

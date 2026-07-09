@@ -1,8 +1,13 @@
 {
   "name": "@khaveeai/providers-mock",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Mock providers for KhaveeAI development",
-  "keywords": ["mock", "provider", "development", "testing"],
+  "keywords": [
+    "mock",
+    "provider",
+    "development",
+    "testing"
+  ],
   "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
   "repository": {
     "type": "git",

@@ -1,8 +1,16 @@
 {
   "name": "@khaveeai/react",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "React components and hooks for VRM AI avatars",
-  "keywords": ["react", "vrm", "avatar", "ai", "3d", "hooks", "components"],
+  "keywords": [
+    "react",
+    "vrm",
+    "avatar",
+    "ai",
+    "3d",
+    "hooks",
+    "components"
+  ],
   "homepage": "https://github.com/khavee-ai/khavee-sdk#readme",
   "repository": {
     "type": "git",

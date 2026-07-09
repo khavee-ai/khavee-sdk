@@ -1,8 +1,14 @@
 {
   "name": "@khaveeai/core",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Core VRM AI avatar functionality",
-  "keywords": ["vrm", "avatar", "ai", "3d", "animation"],
+  "keywords": [
+    "vrm",
+    "avatar",
+    "ai",
+    "3d",
+    "animation"
+  ],
   "homepage": "https://github.com/khavee-ai/khavee-sdk#readme",
   "repository": {
     "type": "git",

@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-generic-stt-tts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Generic composable STT/LLM/TTS pipeline provider for Khavee AI SDK",
   "author": "KhaveeAI <support@khaveeai.com>",
   "license": "MIT",

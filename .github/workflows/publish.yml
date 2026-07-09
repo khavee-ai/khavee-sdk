@@ -99,7 +99,10 @@ jobs:
 
       - name: Bump changed package versions (manual trigger only)
         if: github.event_name == 'workflow_dispatch' && steps.changes.outputs.has_changes == 'true'
-        run: pnpm ${{ steps.changes.outputs.filters }} exec npm version ${{ github.event.inputs.version_type }} --no-git-tag-version
+        # pnpm's own `version` command, not `exec npm version` — plain npm
+        # doesn't understand the workspace:* protocol these packages use for
+        # their internal @khaveeai/* deps and errors with EUNSUPPORTEDPROTOCOL.
+        run: pnpm ${{ steps.changes.outputs.filters }} version ${{ github.event.inputs.version_type }} --no-git-tag-version
 
       - name: Build changed packages
         if: steps.changes.outputs.has_changes == 'true'

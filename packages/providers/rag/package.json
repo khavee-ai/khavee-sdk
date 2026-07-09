@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-rag",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "RAG (Retrieval-Augmented Generation) provider for Khavee AI SDK",
   "keywords": [
     "rag",

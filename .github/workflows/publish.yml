@@ -1,4 +1,9 @@
-name: Publish to NPM
+name: Publish SDK to NPM
+
+# Publishes only the SDK packages (core, react, providers/*) that actually
+# changed since the last successful publish. Never touches packages/wp-bundle
+# (private, skipped by pnpm publish anyway) or wordpress-plugin/ (not part of
+# the pnpm workspace at all).
 
 on:
   push:
@@ -7,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       version_type:
-        description: 'Version type to bump'
+        description: 'Version bump type'
         required: true
         default: 'patch'
         type: choice
@@ -19,43 +24,115 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          registry-url: 'https://registry.npmjs.org'
-          
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
           version: latest
-          
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
       - name: Install dependencies
-        run: pnpm install
-        
-      - name: Build packages
-        run: pnpm run build:packages
-        
-      - name: Run tests (if available)
-        run: pnpm run test || echo "No tests defined"
-        
-      - name: Version bump (if manual trigger)
-        if: github.event_name == 'workflow_dispatch'
-        run: pnpm run version:${{ github.event.inputs.version_type }}
-        
+        run: pnpm install --frozen-lockfile
+
+      # Diffs the whole range since the last successful publish (a moving
+      # `sdk-published` tag), not just the latest commit — covers however
+      # many commits/merges landed in between. Only checks each package's
+      # own directory, so a change to core does NOT cascade a bump to
+      # react/providers even though they depend on it via workspace:*.
+      - name: Determine changed SDK packages
+        id: changes
+        run: |
+          declare -A PKG_DIRS=(
+            ["packages/core"]="@khaveeai/core"
+            ["packages/react"]="@khaveeai/react"
+            ["packages/providers/openai-realtime"]="@khaveeai/providers-openai-realtime"
+            ["packages/providers/openai-stt-tts"]="@khaveeai/providers-openai-stt-tts"
+            ["packages/providers/generic-stt-tts"]="@khaveeai/providers-generic-stt-tts"
+            ["packages/providers/mock"]="@khaveeai/providers-mock"
+            ["packages/providers/pgvector"]="@khaveeai/providers-pgvector"
+            ["packages/providers/rag"]="@khaveeai/providers-rag"
+          )
+
+          if git rev-parse sdk-published >/dev/null 2>&1; then
+            LAST_TAG="sdk-published"
+            echo "Diffing against last publish marker: $LAST_TAG"
+          else
+            LAST_TAG=""
+            echo "No sdk-published marker found — first run, treating all packages as changed"
+          fi
+
+          FILTERS=""
+          for dir in "${!PKG_DIRS[@]}"; do
+            name="${PKG_DIRS[$dir]}"
+            if [ -z "$LAST_TAG" ] || ! git diff --quiet "$LAST_TAG"..HEAD -- "$dir"; then
+              echo "Changed: $name ($dir)"
+              FILTERS="$FILTERS --filter=$name"
+            fi
+          done
+
+          if [ -z "$FILTERS" ]; then
+            echo "No SDK package changes since last publish — nothing to do."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "filters=$FILTERS" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump changed package versions (manual trigger only)
+        if: github.event_name == 'workflow_dispatch' && steps.changes.outputs.has_changes == 'true'
+        run: pnpm ${{ steps.changes.outputs.filters }} exec npm version ${{ github.event.inputs.version_type }} --no-git-tag-version
+
+      - name: Build changed packages
+        if: steps.changes.outputs.has_changes == 'true'
+        run: pnpm ${{ steps.changes.outputs.filters }} run build
+
+      - name: Run tests (changed packages only, skip if none)
+        if: steps.changes.outputs.has_changes == 'true'
+        run: pnpm ${{ steps.changes.outputs.filters }} run test --if-present
+
+      # Commit the bump BEFORE publishing, not after — if publish then fails,
+      # version numbers may skip ahead but git and npm never drift out of sync.
+      - name: Commit and push version bump (manual trigger only)
+        if: github.event_name == 'workflow_dispatch' && steps.changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/core/package.json packages/react/package.json packages/providers/*/package.json
+          if git diff --cached --quiet; then
+            echo "No version changes to commit"
+          else
+            git commit -m "chore: bump SDK package versions (${{ github.event.inputs.version_type }})"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
       - name: Publish to NPM
-        run: pnpm run publish:all
+        if: steps.changes.outputs.has_changes == 'true'
+        run: pnpm ${{ steps.changes.outputs.filters }} publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          
-      - name: Create GitHub Release
+
+      # Move the marker to HEAD so the next run's diff starts from here.
+      - name: Move sdk-published marker
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git tag -f sdk-published
+          git push origin sdk-published --force
+
+      - name: Create GitHub Release (tag push only)
         if: github.event_name == 'push'
         uses: actions/create-release@v1
         env:

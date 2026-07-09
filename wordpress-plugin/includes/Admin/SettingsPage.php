@@ -1580,14 +1580,67 @@ JS;
 	 * Emit the read-only, dashed-border platform-value preview box matching
 	 * the mockup's .managed-field style.
 	 *
-	 * @param string $value Already-plain-text value to display (escaped here).
+	 * @param string $value           Already-plain-text value to display (escaped here).
+	 * @param bool   $render_markdown When true, renders `## `/`### ` headings and `- ` bullets
+	 *                                (the subset PlatformClient::build_personality_instructions()
+	 *                                actually emits) and preserves line breaks, inside a bounded
+	 *                                scrollable box — used for the composed multi-section
+	 *                                Instructions preview, which is long and otherwise renders
+	 *                                as one unbroken run-on paragraph (HTML collapses raw
+	 *                                newlines). Other managed fields (voice, avatar name) stay
+	 *                                on the plain single-line path.
 	 * @return void
 	 */
-	private function render_managed_field_preview( string $value ): void {
+	private function render_managed_field_preview( string $value, bool $render_markdown = false ): void {
+		if ( $render_markdown ) {
+			printf(
+				'<div style="border:1px dashed #d7cdfb;background:#fbfaff;border-radius:4px;padding:10px 12px;font-size:13px;color:#4a3a8a;line-height:1.6;margin-top:6px;max-height:280px;overflow-y:auto;">%s</div>',
+				$this->render_markdown_lite( $value ) // Escaped internally, per-line.
+			);
+			return;
+		}
+
 		printf(
 			'<div style="border:1px dashed #d7cdfb;background:#fbfaff;border-radius:4px;padding:10px 12px;font-size:13px;color:#4a3a8a;line-height:1.5;margin-top:6px;">%s</div>',
 			esc_html( $value )
 		);
+	}
+
+	/**
+	 * Minimal markdown-subset-to-HTML renderer, scoped to exactly what
+	 * PlatformClient::build_personality_instructions() emits: `## `/`### `
+	 * headings, `- ` bullets, and blank-line paragraph breaks. Every line is
+	 * escaped via esc_html() before any tag is added — this is NOT a general
+	 * CommonMark parser, just enough structure so the composed instructions
+	 * are readable instead of one run-on paragraph.
+	 *
+	 * @param string $value Raw instructions text (may contain \n).
+	 * @return string Safe HTML (each text fragment already escaped).
+	 */
+	private function render_markdown_lite( string $value ): string {
+		$lines      = explode( "\n", $value );
+		$html_lines = array();
+
+		foreach ( $lines as $line ) {
+			$trimmed = trim( $line );
+
+			if ( '' === $trimmed ) {
+				$html_lines[] = '';
+				continue;
+			}
+
+			if ( preg_match( '/^###\s+(.*)$/', $trimmed, $m ) ) {
+				$html_lines[] = '<strong style="display:block;margin-top:10px;font-size:12px;">' . esc_html( $m[1] ) . '</strong>';
+			} elseif ( preg_match( '/^##\s+(.*)$/', $trimmed, $m ) ) {
+				$html_lines[] = '<strong style="display:block;margin-top:14px;font-size:14px;">' . esc_html( $m[1] ) . '</strong>';
+			} elseif ( preg_match( '/^-\s+(.*)$/', $trimmed, $m ) ) {
+				$html_lines[] = '&bull;&nbsp;' . esc_html( $m[1] );
+			} else {
+				$html_lines[] = esc_html( $line );
+			}
+		}
+
+		return implode( '<br>', $html_lines );
 	}
 
 	/**
@@ -1618,7 +1671,7 @@ JS;
 
 		if ( $synced ) {
 			$this->render_synced_pill();
-			$this->render_managed_field_preview( (string) $this->platform_preview['fields']['instructions'] );
+			$this->render_managed_field_preview( (string) $this->platform_preview['fields']['instructions'], true );
 			echo '<details style="margin-top:8px;">';
 			echo '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#6929ff;">' .
 				esc_html__( 'Override locally →', 'khaveeai' ) .

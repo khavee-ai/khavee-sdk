@@ -392,7 +392,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           // noise/speech and natural pauses than threshold-based server_vad.
           turn_detection: {
             type: "semantic_vad" as const,
-            eagerness: this.config.vad?.eagerness ?? "auto",
+            eagerness: this.config.vadTuning?.eagerness ?? "auto",
             create_response: true,
             interrupt_response: true,
           },

@@ -33,10 +33,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Pinned to the major version used locally (lockfileVersion 9 / pnpm
+      # 10.x observed) instead of "latest" — pnpm 11 requires Node >=22.13
+      # (node:sqlite) and crashes outright on the Node 20 set up below.
+      # Must run before actions/setup-node's cache:pnpm, which shells out to
+      # `pnpm store path` to locate the cache directory.
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: latest
+          version: '10'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

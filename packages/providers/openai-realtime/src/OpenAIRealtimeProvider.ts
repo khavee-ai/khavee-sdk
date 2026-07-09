@@ -102,12 +102,23 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       this.setChatStatus("starting");
       this.hasHeardFirstGreeting = false;
 
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.audioStream = stream;
-
-      // Mute mic initially (will be enabled after first greeting)
-      stream.getAudioTracks().forEach((track) => (track.enabled = false));
+      // Request microphone access. Denied/unavailable mics no longer abort the
+      // whole session — the user can still type. `enableMicrophone()` re-prompts
+      // and reconnects with audio if they change their mind later.
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        this.audioStream = stream;
+        // Mute mic initially (will be enabled after first greeting)
+        stream.getAudioTracks().forEach((track) => (track.enabled = false));
+      } catch (micError) {
+        console.warn(
+          "OpenAIRealtimeProvider: microphone unavailable, continuing in text-only mode",
+          micError,
+        );
+        this.audioStream = null;
+      }
 
       // Create peer connection
       const pc = new RTCPeerConnection({
@@ -128,8 +139,10 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         this.handleDataChannelMessage(event);
       };
 
-      // Add microphone track
-      pc.addTrack(stream.getTracks()[0]);
+      // Add microphone track (skipped in text-only mode — no mic permission)
+      if (this.audioStream) {
+        pc.addTrack(this.audioStream.getTracks()[0]);
+      }
 
       // Setup audio output analysis for lip sync
       this.setupAudioOutputAnalysis(pc);
@@ -275,6 +288,13 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       throw new Error("Connection not ready");
     }
 
+    // If the AI is mid-response (speaking or generating), a typed message
+    // should cut it off rather than queue behind it or cross-talk with it.
+    if (this.chatStatus === "speaking" || this.chatStatus === "thinking") {
+      this.interrupt();
+      this.finalizeLastAssistantMessage();
+    }
+
     const messageId = uuidv4();
 
     // Add to conversation
@@ -360,7 +380,12 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         input: {
           transcription: {
             model: "gpt-4o-transcribe",
-            language: this.config.language || "en",
+            // Omit `language` when not explicitly configured so the model
+            // auto-detects per utterance — defaulting to "en" mistranscribed
+            // any non-English speech (e.g. Thai visitors) as English phonemes.
+            ...(this.config.language
+              ? { language: this.config.language }
+              : {}),
           },
         },
         output: {
@@ -659,12 +684,14 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   }
 
   /**
-   * Toggle microphone on/off
+   * Toggle microphone on/off. If no mic stream exists yet (permission was
+   * denied/skipped at connect time), delegates to enableMicrophone() to
+   * re-request permission instead of silently no-opping.
    */
-  toggleMicrophone(): boolean {
+  async toggleMicrophone(): Promise<boolean> {
     if (!this.audioStream) {
-      console.warn("No audio stream available - microphone cannot be toggled");
-      return false;
+      await this.enableMicrophone();
+      return this.isMicrophoneEnabled();
     }
 
     const isEnabled = this.audioStream.getAudioTracks()[0]?.enabled ?? false;
@@ -679,12 +706,22 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   }
 
   /**
-   * Enable microphone manually
+   * Enable microphone manually. If the session started without a mic stream
+   * (user denied/skipped permission at connect time), this re-requests
+   * permission and reconnects so the new session includes the audio track —
+   * rather than silently failing forever.
    */
-  enableMicrophone(): void {
+  async enableMicrophone(): Promise<void> {
     if (!this.audioStream) {
-      console.warn("No audio stream available - microphone cannot be enabled");
-      return;
+      console.log(
+        "No audio stream — requesting microphone permission and reconnecting",
+      );
+      await this.disconnect();
+      await this.connect();
+      if (!this.audioStream) {
+        // Still denied — stay in text-only mode, caller's onError already fired.
+        return;
+      }
     }
 
     this.audioStream

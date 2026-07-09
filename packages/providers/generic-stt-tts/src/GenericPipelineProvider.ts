@@ -238,19 +238,19 @@ export class GenericPipelineProvider implements RealtimeProvider {
   /**
    * Toggle the microphone on/off.
    */
-  toggleMicrophone(): boolean {
+  async toggleMicrophone(): Promise<boolean> {
     if (this.micEnabled) {
       this.disableMicrophone();
       return false;
     } else {
-      this.enableMicrophone();
+      await this.enableMicrophone();
       return true;
     }
   }
 
   /** Enable the microphone. */
-  enableMicrophone(): void {
-    void this.vad.resume();
+  async enableMicrophone(): Promise<void> {
+    await this.vad.resume();
     this.micEnabled = true;
   }
 

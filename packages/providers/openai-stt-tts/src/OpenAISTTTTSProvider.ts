@@ -171,19 +171,19 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
   /**
    * Toggle the microphone on/off.
    */
-  toggleMicrophone(): boolean {
+  async toggleMicrophone(): Promise<boolean> {
     if (this.micEnabled) {
       this.disableMicrophone();
       return false;
     } else {
-      this.enableMicrophone();
+      await this.enableMicrophone();
       return true;
     }
   }
 
   /** Enable the microphone. */
-  enableMicrophone(): void {
-    void this.audioRecorder.resume();
+  async enableMicrophone(): Promise<void> {
+    await this.audioRecorder.resume();
     this.micEnabled = true;
   }
 

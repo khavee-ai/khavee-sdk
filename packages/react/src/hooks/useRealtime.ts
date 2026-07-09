@@ -26,6 +26,11 @@ export function useRealtime() {
   const [isThinking, setIsThinking] = useState(false);
   const [isMicEnabled, setIsMicEnabled] = useState(false);
 
+  // Connect-failure cooldown: after a failed connect() attempt, block retries
+  // for a few seconds instead of letting rapid re-clicks race the same failure.
+  const [connectError, setConnectError] = useState<Error | null>(null);
+  const [retryCooldownSeconds, setRetryCooldownSeconds] = useState(0);
+
   // Lip sync state
   const [currentPhoneme, setCurrentPhoneme] = useState<PhonemeData | null>(
     null
@@ -43,13 +48,21 @@ export function useRealtime() {
   useEffect(() => {
     const provider = realtimeProvider;
 
-    // Preserve any existing onChatStatusChange (e.g. KhaveeProvider's) so both
-    // receive updates. React runs parent effects before child effects, so
-    // KhaveeProvider's callback is already set when this runs.
+    // Preserve any existing onChatStatusChange/onError (e.g. KhaveeProvider's,
+    // or a consumer's own 402-handling) so both receive updates. React runs
+    // parent effects before child effects, so upstream callbacks are already
+    // set when this runs.
     const upstreamChatStatusChange = provider.onChatStatusChange;
+    const upstreamOnError = provider.onError;
 
     provider.onConnect = () => {
       setIsConnected(true);
+      setConnectError(null);
+    };
+    provider.onError = (error) => {
+      upstreamOnError?.(error);
+      setConnectError(error);
+      setRetryCooldownSeconds(5);
     };
     provider.onDisconnect = () => {
       setIsConnected(false);
@@ -113,6 +126,7 @@ export function useRealtime() {
       provider.onDisconnect = undefined;
       provider.onConversationUpdate = undefined;
       provider.onChatStatusChange = upstreamChatStatusChange;
+      provider.onError = upstreamOnError;
       provider.onVolumeChange = undefined;
       provider.onAudioData = undefined;
 
@@ -126,10 +140,23 @@ export function useRealtime() {
     };
   }, [realtimeProvider]); // Remove lipSyncAnalyzer from dependencies to prevent recreation
 
+  // Count the retry cooldown down to 0, one second at a time.
+  useEffect(() => {
+    if (retryCooldownSeconds <= 0) return;
+    const timer = setTimeout(
+      () => setRetryCooldownSeconds((s) => Math.max(0, s - 1)),
+      1000
+    );
+    return () => clearTimeout(timer);
+  }, [retryCooldownSeconds]);
+
   // Actions
   const connect = useCallback(async () => {
+    // Block re-clicks while a prior failure's cooldown is still counting down —
+    // avoids hammering the same failing connect() attempt back-to-back.
+    if (retryCooldownSeconds > 0) return;
     await realtimeProvider.connect();
-  }, [realtimeProvider]);
+  }, [realtimeProvider, retryCooldownSeconds]);
 
   const disconnect = useCallback(async () => {
     await realtimeProvider.disconnect();
@@ -153,16 +180,18 @@ export function useRealtime() {
     [realtimeProvider]
   );
 
-  // Microphone control functions
-  const toggleMicrophone = useCallback(() => {
-    const newState = realtimeProvider.toggleMicrophone();
+  // Microphone control functions. Both are async now: if no mic stream exists
+  // yet (permission denied/skipped at connect time), the provider re-prompts
+  // and reconnects, so these may take as long as a full reconnect.
+  const toggleMicrophone = useCallback(async () => {
+    const newState = await realtimeProvider.toggleMicrophone();
     setIsMicEnabled(newState);
     return newState;
   }, [realtimeProvider]);
 
-  const enableMicrophone = useCallback(() => {
-    realtimeProvider.enableMicrophone();
-    setIsMicEnabled(true);
+  const enableMicrophone = useCallback(async () => {
+    await realtimeProvider.enableMicrophone();
+    setIsMicEnabled(realtimeProvider.isMicrophoneEnabled());
   }, [realtimeProvider]);
 
   const disableMicrophone = useCallback(() => {
@@ -227,6 +256,8 @@ export function useRealtime() {
     isThinking,
     currentPhoneme, // Add lip sync state
     isMicEnabled, // Add microphone state
+    connectError, // Last connect() failure, if any
+    retryCooldownSeconds, // Seconds remaining before connect() is allowed again
 
     // Actions
     connect,

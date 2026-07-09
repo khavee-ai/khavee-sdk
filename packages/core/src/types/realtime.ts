@@ -116,8 +116,11 @@ export interface RealtimeProvider extends RealtimeEvents {
   } | null;
 
   // Microphone control
-  toggleMicrophone(): boolean;
-  enableMicrophone(): void;
+  // Async: if no mic stream exists yet (permission was denied/skipped when the
+  // session first connected), these re-request permission and reconnect so the
+  // session picks up the audio track — see OpenAIRealtimeProvider for details.
+  toggleMicrophone(): Promise<boolean>;
+  enableMicrophone(): Promise<void>;
   disableMicrophone(): void;
   isMicrophoneEnabled(): boolean;
 }

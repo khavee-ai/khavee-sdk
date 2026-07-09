@@ -36,48 +36,70 @@ import {
   CAMERA_PRESETS,
   IDLE_ANIMATION_URL,
 } from "../config";
+import { CameraController } from "../CameraController";
 import type { PreviewAvatarConfig } from "./PreviewScene";
 
-// ── CameraController ─────────────────────────────────────────────────────────
+// CameraController now lives in ../CameraController.tsx — shared verbatim
+// with mount.tsx's AvatarScene (published page) so the two rendering paths
+// can never drift on camera aim again (camera-framing-mismatch debug
+// session root cause: react-three-fiber's own default-camera setup
+// hardcodes camera.lookAt(0, 0, 0) once at Canvas creation, ignoring
+// resolveSceneDefaults().cameraTarget entirely; mount.tsx previously had
+// no equivalent correction).
+
+// ── CanvasStyleSync ───────────────────────────────────────────────────────────
 
 /**
- * Imperatively syncs the R3F camera to position/target/fov on every change.
+ * Root cause fix (debug session: camera-framing-mismatch,
+ * .planning/debug/camera-framing-mismatch.md): this preview bundle
+ * (khaveeai-preview.js) is loaded and EXECUTES in the TOP wp-admin window's
+ * JS realm (WordPress's block.json `editorScript` field is never injected
+ * into the Gutenberg block-canvas iframe — see preview.ts's file header),
+ * while the mount-point div it renders into physically lives INSIDE
+ * `iframe[name="editor-canvas"]` — a separate JS realm/document. React
+ * creates the `<canvas>` DOM node via that div's own `ownerDocument` (the
+ * iframe's document), so the live THREE.WebGLRenderer's `domElement` is an
+ * iframe-realm HTMLCanvasElement instance.
  *
- * R3F's <Canvas camera={{...}}> prop is initialization-only (Pitfall 7: camera
- * prop not reactive). This component uses useThree() to access the live camera
- * object and useEffect to call camera.position.set / camera.lookAt /
- * camera.updateProjectionMatrix imperatively whenever the props change.
+ * @react-three/fiber's own Canvas-resize subscription
+ * (node_modules/@react-three/fiber/dist/events-*.cjs.dev.js: `const
+ * updateStyle = typeof HTMLCanvasElement !== 'undefined' && gl.domElement
+ * instanceof HTMLCanvasElement; gl.setSize(size.width, size.height,
+ * updateStyle);`) gates whether it sets `canvas.style.width/height` on a
+ * cross-realm `instanceof HTMLCanvasElement` check — the bare
+ * `HTMLCanvasElement` identifier resolves against the TOP window's
+ * constructor (since that's where this bundled code executes), so it never
+ * matches an iframe-realm canvas. `updateStyle` is therefore always
+ * `false` here, and three.js's `WebGLRenderer.setSize()` never applies a
+ * CSS size — the canvas falls back to its intrinsic size, which equals its
+ * `width`/`height` HTML ATTRIBUTES (correctly `containerCSSSize *
+ * devicePixelRatio`, i.e. the draw-buffer resolution) interpreted directly
+ * AS CSS pixels. At devicePixelRatio===1 this coincidentally equals the
+ * intended CSS size (hiding the bug entirely — every prior debug session
+ * self-verification ran at the default dpr=1 and found nothing). At
+ * devicePixelRatio===2 (a real Retina/HiDPI display) the canvas renders at
+ * exactly 2x its intended CSS footprint in both dimensions, overflowing/
+ * getting clipped by ancestor containers — producing a "zoomed in" crop
+ * (full body appears as head+shoulders only), reproduced and measured via
+ * CDP with `--force-device-scale-factor=2`.
  *
- * Uses individual array-element deps ([pos[0], pos[1], pos[2], ...]) rather
- * than the tuple refs so the effect does not re-run when resolveSceneDefaults
- * returns a new tuple reference with identical values.
- *
- * STUDIO-02 safety: does NOT call useRealtime(), does NOT import any khaveeai
- * provider — only useThree from @react-three/fiber and THREE from three.
+ * This component bypasses the broken cross-realm instanceof gate entirely
+ * by unconditionally applying R3F's own already-correct `size` state
+ * (CSS pixels, from react-use-measure's getBoundingClientRect — never
+ * itself wrong) straight onto the canvas element's inline style, on every
+ * size change. Scoped to this file only: mount.tsx's AvatarScene (published
+ * page) mounts in the same document realm as its own script, so its
+ * instanceof check already succeeds there and needs no correction.
  */
-function CameraController({
-  position,
-  target,
-  fov,
-}: {
-  position: [number, number, number];
-  target: [number, number, number];
-  fov: number;
-}): null {
-  const { camera } = useThree();
+function CanvasStyleSync(): null {
+  const size = useThree((state) => state.size);
+  const gl = useThree((state) => state.gl);
 
   useEffect(() => {
-    camera.position.set(position[0], position[1], position[2]);
-    camera.lookAt(target[0], target[1], target[2]);
-    if (camera instanceof THREE.PerspectiveCamera) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
-    // Individual element deps avoid re-firing when a new tuple reference
-    // is created with the same values (resolveSceneDefaults returns new
-    // tuple objects on every render).
+    gl.domElement.style.width = `${size.width}px`;
+    gl.domElement.style.height = `${size.height}px`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera, position[0], position[1], position[2], target[0], target[1], target[2], fov]);
+  }, [gl, size.width, size.height]);
 
   return null;
 }
@@ -240,6 +262,7 @@ export function PreviewAvatarCanvas({
           target={sceneDefaults.cameraTarget}
           fov={sceneDefaults.cameraFov}
         />
+        <CanvasStyleSync />
         <CameraRefCapture cameraRef={liveCameraRef} />
         {/* Lets the author freely orbit/zoom the preview to check angles.
             makeDefault registers this as the R3F default controls instance;

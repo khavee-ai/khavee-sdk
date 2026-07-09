@@ -68,6 +68,7 @@ import { AvatarErrorBoundary } from "./ui/AvatarErrorBoundary";
 import { resolveSceneDefaults, IDLE_ANIMATION_URL } from "./config";
 import type { KhaveeAvatarConfig } from "./config";
 import { FloatingWidget } from "./floating/FloatingWidget";
+import { CameraController } from "./CameraController";
 
 // Re-export so index.ts:17 `import type { KhaveeAvatarConfig } from "./mount"` continues to work.
 export type { KhaveeAvatarConfig } from "./config";
@@ -118,6 +119,20 @@ export function AvatarScene({ config }: { config: KhaveeAvatarConfig }) {
       camera={{ position: scene.cameraPosition, fov: scene.cameraFov }}
       gl={{ alpha: true }}
     >
+      {/* camera-framing-mismatch debug session root-cause fix: the `camera`
+          prop above is initialization-only — react-three-fiber's own
+          default-camera setup additionally hardcodes camera.lookAt(0, 0, 0)
+          once at Canvas creation, ignoring scene.cameraTarget entirely
+          (see CameraController.tsx's file header for the full source-level
+          trace). Without this component, the published page's camera aim
+          silently diverged from the editor preview (which already applied
+          this same correction via PreviewAvatarCanvas.tsx) even though
+          position/fov were already identical between the two paths. */}
+      <CameraController
+        position={scene.cameraPosition}
+        target={scene.cameraTarget}
+        fov={scene.cameraFov}
+      />
       {/* lightIntensity is config-driven (c.lightIntensity ?? 1.0); was hardcoded 1 */}
       <ambientLight intensity={scene.lightIntensity} />
       <directionalLight position={[10, 10, 5]} intensity={scene.directional} />

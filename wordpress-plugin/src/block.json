@@ -67,6 +67,10 @@
 			"type": "string",
 			"default": ""
 		},
+		"cameraRotationY": {
+			"type": "number",
+			"default": 0
+		},
 		"chatShow": {
 			"type": "boolean",
 			"default": false

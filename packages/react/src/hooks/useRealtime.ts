@@ -140,6 +140,33 @@ export function useRealtime() {
     };
   }, [realtimeProvider]); // Remove lipSyncAnalyzer from dependencies to prevent recreation
 
+  // Backgrounding (tab switch, app switch, screen lock) just mutes the mic —
+  // the session/connection stays alive so coming back doesn't cost a full
+  // reconnect. Actual navigation-away/tab-close still tears the session down.
+  // Does not auto-unmute on return — matches how most call apps behave, and
+  // avoids the mic silently starting to listen again with no fresh user action.
+  useEffect(() => {
+    const provider = realtimeProvider;
+
+    const muteIfHidden = () => {
+      if (document.visibilityState === "hidden") {
+        provider.disableMicrophone();
+        setIsMicEnabled(false);
+      }
+    };
+    const disconnectOnUnload = () => {
+      void provider.disconnect();
+    };
+
+    document.addEventListener("visibilitychange", muteIfHidden);
+    window.addEventListener("pagehide", disconnectOnUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", muteIfHidden);
+      window.removeEventListener("pagehide", disconnectOnUnload);
+    };
+  }, [realtimeProvider]);
+
   // Count the retry cooldown down to 0, one second at a time.
   useEffect(() => {
     if (retryCooldownSeconds <= 0) return;

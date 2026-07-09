@@ -387,6 +387,15 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
               ? { language: this.config.language }
               : {}),
           },
+          // semantic_vad waits for a semantically complete utterance rather
+          // than a fixed silence window — more robust to stray background
+          // noise/speech and natural pauses than threshold-based server_vad.
+          turn_detection: {
+            type: "semantic_vad" as const,
+            eagerness: this.config.vad?.eagerness ?? "auto",
+            create_response: true,
+            interrupt_response: true,
+          },
         },
         output: {
           format: {

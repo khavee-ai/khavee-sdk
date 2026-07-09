@@ -45,6 +45,18 @@ export interface RealtimeConfig {
   speed?: number;
   enableLipSync?: boolean;
   language?: string;
+  /**
+   * Turn-detection tuning. Uses OpenAI's semantic_vad — waits for a
+   * semantically complete utterance instead of a fixed silence duration,
+   * which is more robust to natural pauses and stray background noise than
+   * threshold-based server_vad.
+   */
+  vad?: {
+    /** How eagerly the model decides the user is done talking. "low" waits
+     * for more context (fewer false cutoffs/triggers); "high" responds
+     * faster. Defaults to "auto". */
+    eagerness?: "low" | "medium" | "high" | "auto";
+  };
   /** When true, fetch an ephemeral token from the backend before connecting. */
   useProxy?: boolean;
   /**

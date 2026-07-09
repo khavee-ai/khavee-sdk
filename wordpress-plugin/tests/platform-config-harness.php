@@ -6,7 +6,9 @@
  * minimal global stubs for the WP options/transient/HTTP API functions these
  * classes use, then exercises:
  *   - PlatformClient::map_platform_fields() — the pure field-mapping table
- *     (voiceProfile -> voice/instructions, model -> avatar_url, lightIntensity
+ *     (voiceProfile.openaiVoice -> voice, personality+voiceProfile -> a
+ *     composed multi-section instructions string via
+ *     build_personality_instructions(), model -> avatar_url, lightIntensity
  *     -> light_intensity, backgroundType/backgroundValue -> bg_*), including
  *     the "absent/blank platform value must not overlay" rule.
  *   - PlatformClient::fetch_preview() — cached wp_remote_get() + envelope
@@ -312,10 +314,114 @@ run_case(
 );
 
 run_case(
-	'map_platform_fields: voiceProfile.instructionPrompt maps to instructions',
+	'map_platform_fields: voiceProfile.instructionPrompt alone composes a full instructions string (not a raw passthrough)',
 	function () {
 		$result = PlatformClient::map_platform_fields( array( 'voiceProfile' => array( 'instructionPrompt' => 'Be kind and concise.' ) ) );
-		return isset( $result['instructions'] ) && 'Be kind and concise.' === $result['instructions'];
+		if ( ! isset( $result['instructions'] ) ) {
+			return false;
+		}
+		$instructions = $result['instructions'];
+		// The voice-tone fragment must be folded into the composition...
+		$has_voice_fragment = false !== strpos( $instructions, 'Be kind and concise.' );
+		// ...alongside the personality-side defaults (proving composition
+		// happened, not a 1:1 passthrough of instructionPrompt).
+		$has_default_name   = false !== strpos( $instructions, 'Assistant' );
+		$has_default_traits = false !== strpos( $instructions, 'not specified' );
+		// And it must NOT be literally equal to the raw instructionPrompt.
+		$not_raw_passthrough = 'Be kind and concise.' !== $instructions;
+
+		return $has_voice_fragment && $has_default_name && $has_default_traits && $not_raw_passthrough;
+	}
+);
+
+run_case(
+	'map_platform_fields: full composition with personality + voiceProfile (thai) includes both inputs and the Thai rules section',
+	function () {
+		$result = PlatformClient::map_platform_fields(
+			array(
+				'personality'  => array(
+					'displayName'          => 'Nong Milk',
+					'description'          => 'A cheerful virtual streamer.',
+					'traits'               => array( 'playful', 'curious' ),
+					'backgroundStory'      => 'Grew up near the river in Ayutthaya.',
+					'formality'            => 'casual',
+					'includeEmojis'        => true,
+					'responseLength'       => 'brief',
+					'exampleConversations' => array(
+						array(
+							'question' => 'Hello!',
+							'answer'   => 'Hiii, good to see you!',
+						),
+					),
+				),
+				'voiceProfile' => array(
+					'instructionPrompt' => 'Speak with a warm, upbeat tone.',
+					'language'           => 'thai',
+					'mood'               => 'cheerful',
+				),
+			)
+		);
+
+		if ( ! isset( $result['instructions'] ) ) {
+			return false;
+		}
+		$instructions = $result['instructions'];
+
+		return false !== strpos( $instructions, 'Nong Milk' )
+			&& false !== strpos( $instructions, 'playful' )
+			&& false !== strpos( $instructions, 'Grew up near the river in Ayutthaya.' )
+			&& false !== strpos( $instructions, 'Speak with a warm, upbeat tone.' )
+			&& false !== strpos( $instructions, 'Thai Speech Rules' );
+	}
+);
+
+run_case(
+	'map_platform_fields: personality present but voiceProfile absent still composes and emits instructions',
+	function () {
+		$result = PlatformClient::map_platform_fields(
+			array(
+				'personality' => array(
+					'displayName' => 'Solo Personality',
+					'traits'      => array( 'calm' ),
+				),
+			)
+		);
+
+		if ( ! isset( $result['instructions'] ) ) {
+			return false;
+		}
+		$instructions = $result['instructions'];
+
+		return false !== strpos( $instructions, 'Solo Personality' )
+			&& false !== strpos( $instructions, 'Follow the voice settings naturally.' );
+	}
+);
+
+run_case(
+	'map_platform_fields: neither personality nor voiceProfile present emits no instructions key',
+	function () {
+		$result = PlatformClient::map_platform_fields( array() );
+		return ! array_key_exists( 'instructions', $result );
+	}
+);
+
+run_case(
+	'map_platform_fields: voiceProfile.language=english (non-thai) omits the Thai rules section',
+	function () {
+		$result = PlatformClient::map_platform_fields(
+			array(
+				'voiceProfile' => array(
+					'instructionPrompt' => 'Speak clearly.',
+					'language'           => 'english',
+				),
+			)
+		);
+
+		if ( ! isset( $result['instructions'] ) ) {
+			return false;
+		}
+
+		return false === strpos( $result['instructions'], 'Thai Speech Rules' );
 	}
 );
 
@@ -559,8 +665,13 @@ run_case(
 		$source  = new PlatformConfigSource( $wrapped );
 		$result  = $source->get_runtime_config();
 
+		// 'instructions' is now a full composed multi-section string (see
+		// PlatformClient::build_personality_instructions()), not a raw
+		// passthrough of voiceProfile.instructionPrompt — assert the
+		// voice-tone fragment is folded into the composition instead of an
+		// exact-string match.
 		$mapped_ok = 'verse' === $result['voice']
-			&& 'From platform' === $result['instructions']
+			&& isset( $result['instructions'] ) && false !== strpos( $result['instructions'], 'From platform' )
 			&& 'https://platform.test/avatar.glb' === $result['avatar_url']
 			&& 3.0 === $result['light_intensity']
 			&& 'color' === $result['bg_type']

@@ -127,7 +127,11 @@ jobs:
 
       - name: Run tests (changed packages only, skip if none)
         if: steps.changes.outputs.has_changes == 'true'
-        run: pnpm ${{ steps.changes.outputs.filters }} run test --if-present
+        # --if-present must precede the script name — placed after, pnpm
+        # forwards it through as a CLI arg to the underlying test runner
+        # (vitest) instead of consuming it itself, which then errors on an
+        # unrecognized flag.
+        run: pnpm ${{ steps.changes.outputs.filters }} run --if-present test
 
       # Commit the bump BEFORE publishing, not after — if publish then fails,
       # version numbers may skip ahead but git and npm never drift out of sync.

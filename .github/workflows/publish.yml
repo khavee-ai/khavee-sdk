@@ -81,11 +81,13 @@ jobs:
           fi
 
           FILTERS=""
+          DIRS=""
           for dir in "${!PKG_DIRS[@]}"; do
             name="${PKG_DIRS[$dir]}"
             if [ -z "$LAST_TAG" ] || ! git diff --quiet "$LAST_TAG"..HEAD -- "$dir"; then
               echo "Changed: $name ($dir)"
               FILTERS="$FILTERS --filter=$name"
+              DIRS="$DIRS $dir"
             fi
           done
 
@@ -95,14 +97,29 @@ jobs:
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "filters=$FILTERS" >> "$GITHUB_OUTPUT"
+            echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
           fi
 
+      # Neither `pnpm exec npm version` (npm chokes on the workspace:*
+      # protocol these packages' internal @khaveeai/* deps use,
+      # EUNSUPPORTEDPROTOCOL) nor `pnpm <filter> version` (pnpm treats
+      # "version" as a missing package script when --filter is present, not
+      # its own subcommand) work here — bump the version field directly.
       - name: Bump changed package versions (manual trigger only)
         if: github.event_name == 'workflow_dispatch' && steps.changes.outputs.has_changes == 'true'
-        # pnpm's own `version` command, not `exec npm version` — plain npm
-        # doesn't understand the workspace:* protocol these packages use for
-        # their internal @khaveeai/* deps and errors with EUNSUPPORTEDPROTOCOL.
-        run: pnpm ${{ steps.changes.outputs.filters }} version ${{ github.event.inputs.version_type }} --no-git-tag-version
+        run: |
+          for dir in ${{ steps.changes.outputs.dirs }}; do
+            current=$(jq -r .version "$dir/package.json")
+            IFS='.' read -r major minor patch <<< "$current"
+            case "${{ github.event.inputs.version_type }}" in
+              major) new="$((major+1)).0.0" ;;
+              minor) new="$major.$((minor+1)).0" ;;
+              patch) new="$major.$minor.$((patch+1))" ;;
+            esac
+            echo "$dir: $current -> $new"
+            jq --arg v "$new" '.version = $v' "$dir/package.json" > "$dir/package.json.tmp"
+            mv "$dir/package.json.tmp" "$dir/package.json"
+          done
 
       - name: Build changed packages
         if: steps.changes.outputs.has_changes == 'true'

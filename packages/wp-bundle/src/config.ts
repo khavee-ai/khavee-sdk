@@ -268,9 +268,23 @@ export function resolveSceneDefaults(c: KhaveeAvatarConfig) {
     rotationDeg === 0
       ? basePosition
       : orbitAroundTarget(basePosition, cameraTarget, rotationDeg);
+  // `> 0` (not `??`): Gutenberg ALWAYS populates lightIntensity/avatarScale
+  // with their block.json schema default (0) even when the author never
+  // touched the slider, so `c.lightIntensity`/`c.avatarScale` are a real,
+  // present `0` here — never `null`/`undefined` — and `??` cannot catch it.
+  // This is the SAME "0 means unset" sentinel convention already used by
+  // wordpress-plugin/includes/Block/AvatarBlock.php's render_callback
+  // (`( $attributes['avatarScale'] ?? 0 ) > 0 ? ... : null`) for the
+  // published-page path, and by editor.js's own RangeControl display logic
+  // (`value: live.avatarScale > 0 ? ... : undefined`). Without this, every
+  // block/preview that hasn't had these two sliders explicitly dragged
+  // resolves avatarScale=0 -> <VRMAvatar scale={[0,0,0]}> (invisible avatar,
+  // no error, indistinguishable by eye from a stuck load) and
+  // lightIntensity=0 (unlit) in the editor preview specifically (fix for
+  // "avatar never appears in editor preview" bug, debugged 2026-07-09).
   return {
-    lightIntensity: c.lightIntensity ?? LIGHT_INTENSITY.default,
-    avatarScale: c.avatarScale ?? 1.0,
+    lightIntensity: c.lightIntensity && c.lightIntensity > 0 ? c.lightIntensity : LIGHT_INTENSITY.default,
+    avatarScale: c.avatarScale && c.avatarScale > 0 ? c.avatarScale : 1.0,
     avatarOffsetX: c.avatarOffsetX ?? 0.0,
     avatarOffsetY: c.avatarOffsetY ?? 0.0,
     cameraPreset: preset,

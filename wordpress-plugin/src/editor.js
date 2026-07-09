@@ -261,6 +261,25 @@ function Edit( { attributes, setAttributes } ) {
 	const avatarUrl = avatarMedia?.source_url ?? '';
 	const bgImageUrl = bgImageMedia?.source_url ?? '';
 
+	// ── Platform/global-default fallback (editor-preview-only) ───────────
+	// window.khaveeaiGlobalConfig (Plugin.php:210-214) already carries the
+	// platform-overlaid get_runtime_config() output — GlobalCustomRange
+	// above already reads it for the numeric sliders' "Global default"
+	// display text, but nothing previously fed it into the actual preview
+	// config, so avatarUrl/background stayed blank in the editor even with
+	// a connected Khavee Platform key resolving real values — they only
+	// ever appeared after publishing, via AvatarRenderer::render()'s
+	// server-side fallthrough to that same get_runtime_config(). Mirrors
+	// that same "block's own value wins if set, else platform/global"
+	// precedence here. All leaf values are strings (WP_Scripts::localize()
+	// casts every scalar via (string) before JSON-encoding).
+	const globalConfig = getGlobalConfig();
+	const resolvedAvatarUrl = avatarUrl || globalConfig.avatar_url || '';
+	const usingGlobalBg = bgType === '';
+	const resolvedBgType = usingGlobalBg ? ( globalConfig.bg_type || 'color' ) : bgType;
+	const resolvedBgColor = usingGlobalBg ? ( globalConfig.bg_color || '' ) : bgColor;
+	const resolvedBgTransparent = usingGlobalBg ? globalConfig.bg_transparent === '1' : bgTransparent;
+
 	// ── Editor-only local state (not persisted as block attributes) ──────
 	// previewTalking drives a mouth-animation demo in the editor preview.
 	// It is NOT a block attribute — it only lives for the duration of the
@@ -332,13 +351,13 @@ function Edit( { attributes, setAttributes } ) {
 		voice,
 		instructions,
 		avatar,
-		avatarUrl,
+		avatarUrl: resolvedAvatarUrl,
 		containerWidth:  live.containerWidth,
 		containerHeight: live.containerHeight,
 		fullWidth,
-		bgType,
-		bgColor,
-		bgTransparent,
+		bgType: resolvedBgType,
+		bgColor: resolvedBgColor,
+		bgTransparent: resolvedBgTransparent,
 		bgImageId,
 		bgImageUrl,
 		lightIntensity:  live.lightIntensity,
@@ -640,8 +659,18 @@ function Edit( { attributes, setAttributes } ) {
 			'div',
 			{
 				'data-khaveeai-preview-config': previewConfig,
+				// containerHeight=0 ("global default") is safe to leave unset on
+				// the published page — normal page flow just sizes the block to
+				// its content. Inside the editor canvas that same "no explicit
+				// height" state has no resolvable ancestor for .khaveeai-layout's
+				// height:100% (styles.css ~L412), so the mount div balloons to
+				// whatever the tallest flex child (usually the chat panel) wants
+				// instead of the avatar canvas and chat panel stretching to match
+				// each other. A bounded fallback here fixes both: it caps the
+				// editor preview's height and gives the flex chain something
+				// real to resolve 100% against.
 				style: {
-					minHeight: 200,
+					height: live.containerHeight > 0 ? live.containerHeight + 'px' : 400,
 					border: '1px dashed #757575',
 					borderRadius: 4,
 					marginTop: 8,

@@ -226,6 +226,16 @@ export function mountAvatarInstance(root: Root, config: KhaveeAvatarConfig): voi
   }
   if (config.containerHeight) {
     containerStyle.height = `${config.containerHeight}px`;
+  } else {
+    // .khaveeai-root (styles.css) only sets min-height:32px, never an
+    // explicit height, and the published page gives it no other height
+    // constraint either — left unset, .khaveeai-layout's height:100%
+    // (styles.css) has no real ancestor height to resolve against, which
+    // in practice made the chat panel's height not match the avatar
+    // canvas's (same root cause fixed for the editor/preview path in
+    // PreviewScene.tsx — see quick task 260709-h8x). 400px mirrors that
+    // same fallback so the editor preview and published page agree.
+    containerStyle.height = "400px";
   }
   if (config.bgTransparent) {
     containerStyle.background = "transparent";

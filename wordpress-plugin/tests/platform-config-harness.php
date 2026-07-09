@@ -488,6 +488,26 @@ run_case(
 );
 
 run_case(
+	// Regression test for the real bug: khavee-app's actual DB enum
+	// (packages/db/src/schema.ts backgroundTypeEnum) is uppercase
+	// 'COLOR'/'IMAGE' — the real /sdk/preview API response sends this
+	// casing, not the lowercase 'color'/'image' every other case here
+	// tests against. Before the strtoupper() fix, this exact input never
+	// matched either branch and silently emitted no bg_* keys at all.
+	'map_platform_fields: backgroundType=COLOR (real platform casing) maps bg_type=color + bg_color',
+	function () {
+		$result = PlatformClient::map_platform_fields(
+			array(
+				'backgroundType'  => 'COLOR',
+				'backgroundValue' => '#1e90ff',
+			)
+		);
+		return isset( $result['bg_type'] ) && 'color' === $result['bg_type']
+			&& isset( $result['bg_color'] ) && '#1e90ff' === $result['bg_color'];
+	}
+);
+
+run_case(
 	'map_platform_fields: unrecognized backgroundType (gradient) emits no bg_* keys',
 	function () {
 		$result = PlatformClient::map_platform_fields(

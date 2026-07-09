@@ -105,13 +105,21 @@ final class PlatformClient {
 			$fields['light_intensity'] = (float) $data['lightIntensity'];
 		}
 
-		$background_type  = isset( $data['backgroundType'] ) ? (string) $data['backgroundType'] : '';
+		// khavee-app's DB enum is uppercase ('COLOR'/'IMAGE' — packages/db/src/schema.ts's
+		// backgroundTypeEnum), not the lowercase 'color'/'image' this comparison
+		// used to check for — that mismatch meant this branch never matched
+		// ANY real platform response, so a platform-configured background
+		// color/image silently never overlaid the WP-local bg_type/bg_color
+		// (fell through to "leave bg_* untouched" every time). Compare
+		// case-insensitively so this doesn't re-break if either side's casing
+		// convention ever shifts again.
+		$background_type  = isset( $data['backgroundType'] ) ? strtoupper( (string) $data['backgroundType'] ) : '';
 		$background_value = isset( $data['backgroundValue'] ) ? (string) $data['backgroundValue'] : '';
 
-		if ( 'image' === $background_type ) {
+		if ( 'IMAGE' === $background_type ) {
 			$fields['bg_type']      = 'image';
 			$fields['bg_image_url'] = $background_value;
-		} elseif ( 'color' === $background_type ) {
+		} elseif ( 'COLOR' === $background_type ) {
 			$fields['bg_type']  = 'color';
 			$fields['bg_color'] = $background_value;
 		}

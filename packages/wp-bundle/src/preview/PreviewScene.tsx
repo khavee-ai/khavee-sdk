@@ -136,6 +136,17 @@ function PreviewSceneInner({
   }
   if (config.containerHeight && config.containerHeight > 0) {
     containerStyle.height = `${config.containerHeight}px`;
+  } else {
+    // Every embedder of PreviewScene (SettingsPage.php's preview mounts,
+    // editor.js's block-editor mount) already gives this component's DOM
+    // mount point an explicit height — falling back to "100%" here (rather
+    // than leaving height unset) lets that bound propagate down through
+    // .khaveeai-layout's own height:100% (styles.css). Left unset, this
+    // div's height is content-driven (auto), which is circular for a flex
+    // child asking for height:100% of it — observed in practice as Chromium
+    // clamping the whole chain to 16777216px (2^24) instead of collapsing,
+    // hiding the avatar entirely inside an effectively infinite canvas.
+    containerStyle.height = "100%";
   }
 
   // Background (Pitfall 6 — do NOT set scene.background; use CSS-on-container)

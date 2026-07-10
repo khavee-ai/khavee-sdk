@@ -6,7 +6,7 @@ import type {
   PhonemeData,
   MouthState,
 } from "@khaveeai/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useKhavee } from "../KhaveeProvider";
 import { useVRMExpressions } from "../VRMAvatar";
 
@@ -37,6 +37,22 @@ export function useRealtime() {
   );
   const [lipSyncAnalyzer, setLipSyncAnalyzer] =
     useState<RealtimeAudioAnalyzer | null>(null);
+
+  // The audio analyzer (Meyda) can call onPhonemeDetected up to ~80x/sec
+  // while the AI is speaking — far more often than the ~60fps r3f render
+  // loop. Each call used to go straight into setCurrentPhoneme/
+  // setMultipleExpressions (React state, via KhaveeProvider's context),
+  // so React re-rendered every consumer of that context (including
+  // VRMAvatar) up to 80x/sec, racing the WebGL render loop for the main
+  // thread and producing visible jitter/stutter specifically while
+  // speaking. Coalescing into one requestAnimationFrame-scheduled update
+  // caps state updates to the display's paint cadence, matching r3f's
+  // own timing instead of fighting it.
+  const pendingPhonemeRef = useRef<PhonemeData | null>(null);
+  const pendingExpressionUpdateRef = useRef<Record<string, number> | null>(
+    null
+  );
+  const lipSyncRafIdRef = useRef<number | null>(null);
 
   if (!realtimeProvider) {
     throw new Error(
@@ -137,6 +153,10 @@ export function useRealtime() {
       if (lipSyncAnalyzer) {
         lipSyncAnalyzer.stop();
       }
+      if (lipSyncRafIdRef.current !== null) {
+        cancelAnimationFrame(lipSyncRafIdRef.current);
+        lipSyncRafIdRef.current = null;
+      }
     };
   }, [realtimeProvider]); // Remove lipSyncAnalyzer from dependencies to prevent recreation
 
@@ -226,6 +246,21 @@ export function useRealtime() {
     setIsMicEnabled(false);
   }, [realtimeProvider]);
 
+  // Flushes the latest pending phoneme/expression update into React state —
+  // scheduled at most once per animation frame (see refs above) instead of
+  // once per analyzer callback.
+  const flushPendingLipSyncUpdate = useCallback(() => {
+    lipSyncRafIdRef.current = null;
+    if (pendingPhonemeRef.current) {
+      setCurrentPhoneme(pendingPhonemeRef.current);
+      pendingPhonemeRef.current = null;
+    }
+    if (pendingExpressionUpdateRef.current) {
+      setMultipleExpressions(pendingExpressionUpdateRef.current);
+      pendingExpressionUpdateRef.current = null;
+    }
+  }, [setMultipleExpressions]);
+
   // Auto lip sync functions
   const startAutoLipSync = useCallback(async () => {
     if (!realtimeProvider) return;
@@ -243,18 +278,24 @@ export function useRealtime() {
         minIntensity: 0.1,
         realtimeProvider: realtimeProvider,
         onPhonemeDetected: (phoneme: PhonemeData) => {
-          setCurrentPhoneme(phoneme);
-
           // Convert phoneme to mouth state and apply to VRM
           const newMouthState = phonemeToMouthState(phoneme, 6.0);
-          const expressionUpdate = {
+          pendingPhonemeRef.current = phoneme;
+          pendingExpressionUpdateRef.current = {
             aa: newMouthState.aa,
             ih: newMouthState.ih,
             ou: newMouthState.ou,
             ee: newMouthState.ee,
             oh: newMouthState.oh,
           };
-          setMultipleExpressions(expressionUpdate);
+          // Coalesce: only schedule a flush if one isn't already pending
+          // for this frame — later calls before the flush just overwrite
+          // the pending refs above, so only the latest value survives.
+          if (lipSyncRafIdRef.current === null) {
+            lipSyncRafIdRef.current = requestAnimationFrame(
+              flushPendingLipSyncUpdate
+            );
+          }
         },
       });
 
@@ -263,13 +304,19 @@ export function useRealtime() {
     } catch (error) {
       console.error("Auto lip sync failed:", error);
     }
-  }, [realtimeProvider, setMultipleExpressions]);
+  }, [realtimeProvider, flushPendingLipSyncUpdate]);
 
   const stopAutoLipSync = useCallback(() => {
     if (lipSyncAnalyzer) {
       lipSyncAnalyzer.stop();
       setLipSyncAnalyzer(null);
     }
+    if (lipSyncRafIdRef.current !== null) {
+      cancelAnimationFrame(lipSyncRafIdRef.current);
+      lipSyncRafIdRef.current = null;
+    }
+    pendingPhonemeRef.current = null;
+    pendingExpressionUpdateRef.current = null;
     setCurrentPhoneme(null);
     setMultipleExpressions({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
   }, [lipSyncAnalyzer, setMultipleExpressions]);

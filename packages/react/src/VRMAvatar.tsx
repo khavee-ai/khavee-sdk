@@ -436,7 +436,7 @@ export function VRMAvatar({
     // (the default currentAnimation, which never changes on its own) would
     // never get (re)applied once the mixer actually exists, leaving the
     // avatar stuck in its raw bind pose.
-  }, [currentAnimation, processedClips]);
+  }, [currentAnimation]);
 
   useEffect(() => {
     if (!currentVrm || !scene) return;

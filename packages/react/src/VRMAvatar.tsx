@@ -145,25 +145,48 @@ export interface AnimationConfig {
 
 // Internal component to load FBX and GLB animation files
 function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
-  const loadedAnimations: Record<string, { type: 'fbx' | 'glb', data: THREE.Group | GLTFResult }> = {};
+  const entries: Array<
+    [string, 'fbx' | 'glb', THREE.Group | GLTFResult]
+  > = [];
 
   if (animationUrls) {
     Object.entries(animationUrls).forEach(([name, url]) => {
       const extension = url.toLowerCase().split('.').pop();
-      
+
       if (extension === 'fbx') {
         // eslint-disable-next-line react-hooks/rules-of-hooks
         const fbxData = useFBX(url);
-        loadedAnimations[name] = { type: 'fbx', data: fbxData };
+        entries.push([name, 'fbx', fbxData]);
       } else if (extension === 'glb' || extension === 'gltf') {
         // eslint-disable-next-line react-hooks/rules-of-hooks
         const gltfData = useGLTF(url) as GLTFResult;
-        loadedAnimations[name] = { type: 'glb', data: gltfData };
+        entries.push([name, 'glb', gltfData]);
       }
     });
   }
 
-  return loadedAnimations;
+  // useFBX/useGLTF return stable references for the same URL (drei's
+  // suspense cache) — but without this memo, the returned object literal
+  // itself was rebuilt fresh on every render regardless, defeating
+  // processedClips' useMemo below (which depends on this return value) and
+  // making it recompute brand-new AnimationClip objects on every render.
+  // That in turn made the animation-crossfade effect re-fire on every
+  // render too, since it depends on processedClips: it saw a "new" clip
+  // object each time, created a fresh AnimationAction via
+  // mixer.clipAction(), and reset+restarted it from frame 0 — visibly
+  // snapping the whole-body pose back to frame 0 on every re-render.
+  // VRMAvatar re-renders frequently while the AI is speaking (expressions
+  // context updates), so this fired dozens of times a second. Keying the
+  // memo on the URL config (not the entries array, whose length/order
+  // isn't a stable dependency-array shape across renders) fixes it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => {
+    const loadedAnimations: Record<string, { type: 'fbx' | 'glb', data: THREE.Group | GLTFResult }> = {};
+    entries.forEach(([name, type, data]) => {
+      loadedAnimations[name] = { type, data };
+    });
+    return loadedAnimations;
+  }, [JSON.stringify(animationUrls)]);
 }
 
 /**

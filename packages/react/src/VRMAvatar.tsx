@@ -282,8 +282,13 @@ export function VRMAvatar({
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
 
-  // Blinking system
-  const [blinkState, setBlinkState] = useState(0);
+  // Blinking system. blinkState is a ref, not React state: it's only ever
+  // read synchronously within the same useFrame callback that writes it,
+  // never rendered in JSX — calling a state setter here would re-render
+  // this component on every single animation frame during a blink (blink
+  // lasts ~7 frames at blinkAnimationRef's 0.15/frame step), fighting the
+  // R3F render loop for the main thread and producing visible stutter.
+  const blinkState = useRef(0);
   const nextBlinkTime = useRef(Date.now() + 2000 + Math.random() * 3000);
   const isBlinking = useRef(false);
   const blinkAnimationRef = useRef(0);
@@ -436,7 +441,7 @@ export function VRMAvatar({
     // (the default currentAnimation, which never changes on its own) would
     // never get (re)applied once the mixer actually exists, leaving the
     // avatar stuck in its raw bind pose.
-  }, [currentAnimation]);
+  }, [currentAnimation, processedClips]);
 
   useEffect(() => {
     if (!currentVrm || !scene) return;
@@ -501,11 +506,10 @@ export function VRMAvatar({
         blinkAnimationRef.current += 0.15;
         if (blinkAnimationRef.current >= 1) {
           isBlinking.current = false;
-          setBlinkState(0);
+          blinkState.current = 0;
         } else {
           // Create smooth blink curve using sine
-          const blinkProgress = Math.sin(blinkAnimationRef.current * Math.PI);
-          setBlinkState(blinkProgress);
+          blinkState.current = Math.sin(blinkAnimationRef.current * Math.PI);
         }
       }
 
@@ -519,8 +523,8 @@ export function VRMAvatar({
             "blinkRight"
           )
         ) {
-          currentVrm.expressionManager.setValue("blinkLeft", blinkState);
-          currentVrm.expressionManager.setValue("blinkRight", blinkState);
+          currentVrm.expressionManager.setValue("blinkLeft", blinkState.current);
+          currentVrm.expressionManager.setValue("blinkRight", blinkState.current);
         }
       }
     }

@@ -8,23 +8,23 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 
 A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage.
 
-## Current Milestone: v2.1 Block Studio (Visual Config, Chat & Lip-Sync)
+## Current Milestone: v2.2 Natural Avatar Animation
 
-> ✅ v2.0 "WordPress Plugin (Custom Mode)" is complete (Phases 6–8). Its record lives in the "Validated" requirements below.
+> v2.1 "Block Studio" (Phase 9) is still active/in progress — its work is tracked below in "Active", not lost. This milestone starts alongside it per explicit user direction, not as a completion-first sequence.
 
-**Goal:** Turn the embedded Khavee avatar into a fully styleable, previewable Gutenberg block: a site owner sets size, background, lighting, avatar position/scale, and camera from the block inspector with a live 3D editor preview, and the block ships an integrated text ChatBox plus SDK-driven talking (lip-sync) animation — all self-hosted (Custom mode), no `khavee-app` dependency.
-
-**Target features:**
-- Tier-1 visual/layout config controls in the block inspector (per-instance, overriding admin defaults), organized into collapsible panels
-- A safe live 3D editor preview (real VRM + idle animation, config-reactive) that never touches the mic or mints OpenAI tokens
-- An integrated, configurable ChatBox (show/hide + placement), visible in the editor and functional on the published page
-- SDK-driven talking (lip-sync) animation on the published page, with a no-audio motion preview in the editor
+**Goal:** Replace `VRMAvatar`/`GLBAvatar`'s robotic chatStatus-driven animation switching with a unified, natural-feeling state architecture — shared internal module, procedural motion layer, and a zero-config public API — per the fully-resolved design spec produced by wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khavee-sdk/issues/1) (14 closed tickets, all architecture decisions locked; this milestone is implementation, not design).
 
 **Target features:**
-- `[khaveeai_avatar]` shortcode and a Gutenberg block, both sharing one JS bundle and config shape
-- Admin settings: OpenAI API key, personality/instruction textarea, voice picker, VRM/GLB avatar upload via Media Library
-- WP REST route that mints an ephemeral OpenAI Realtime token server-side per session (the OpenAI key never reaches the browser)
-- Config-source and token-provider logic structured as swappable strategies so a future platform-API-key mode can slot in without touching the JS bundle or rendering code (that mode itself is out of scope this milestone — it's blocked on a `khavee-app` backend addition)
+- Hybrid animation-state architecture (state layer + always-on procedural delta layer) implemented once as a shared internal module, consumed by both `VRMAvatar` and `GLBAvatar` via a format-adapter interface
+- Natural idle motion (breathing, weight-shift sway, VRM-only expression rest-state drift), talking variation (loop-completion-driven clip cycling, audio-reactive procedural amplitude from `useAudioLipSync`), pose-gap-adaptive crossfades (max per-bone angular distance, `easeInOutCubic`), dedicated `starting`/`stopped` moments with a minimum duration floor, camera-relative gaze/attention, and semantic gestures triggered via LLM tool-calling
+- New public API surface: `enableNaturalMotion` master flag + granular per-behavior overrides, `animations` prop moves to reserved ChatStatus-name keys (`ready`/`starting`/`listening`/`thinking`/`speaking`/`stopped`, coexisting with custom keys), SDK-bundled default clips for all 6 states so zero-config usage gets full behavior
+
+**Reference material (already written, not to be re-derived):**
+- `.planning/phases/wayfinder-map-1-animation-architecture/ASSET-RESEARCH.md` — clip sourcing/licensing research
+- `.planning/phases/wayfinder-map-1-animation-architecture/PERFORMANCE-BUDGET.md` — procedural-layer frame-time budget and composition rules
+- `.planning/phases/wayfinder-map-1-animation-architecture/VERIFICATION-CHECKLIST.md` — objective + subjective success criteria for this milestone's implementation
+- Known non-blocking follow-ups: [#11](https://github.com/khavee-ai/khavee-sdk/issues/11) (existing bundled Mixamo files may violate redistribution license) and [#17](https://github.com/khavee-ai/khavee-sdk/issues/17) (4 clips — `stopped`, `listening`×2+, `thinking`×2+, `speaking` 2nd variant — still need manual/hands-on sourcing; architecture can be built/tested against placeholder or existing clips meanwhile)
+- Standing instruction carried over from the wayfinder design session: do not reference, mine, or build on the abandoned `worktree-agent-*` branches or the `fix/emotion-analyzer-provider-agnostic` branch — this applies to implementation too, not just the design phase
 
 ## Requirements
 

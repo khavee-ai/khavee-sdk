@@ -1,130 +1,113 @@
-# Requirements: WordPress Plugin (Custom Mode) — Milestone v2.0
+# Requirements: Khavee Generic Voice Pipeline — v2.2 Natural Avatar Animation
 
-**Defined:** 2026-06-21
-**Core Value (this milestone):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
+**Defined:** 2026-07-12
+**Core Value (this milestone):** A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage. This milestone extends that value to the avatar rendering layer: natural-feeling animation with zero-config setup.
+
+Source: wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khavee-sdk/issues/1), 14 closed tickets, all decisions already locked. Requirements below restate those decisions in checkable form; each ticket's resolution comment holds full rationale.
 
 ## v1 Requirements
 
-Requirements for this milestone. Each maps to roadmap phases.
+### Architecture
 
-### Settings & Configuration
+- [ ] **ANIM-01**: The chatStatus→animation state layer and procedural delta layer are implemented once as a shared internal module (not exported from the package's public `index.ts`), consumed by both `VRMAvatar` and `GLBAvatar` via a format-adapter interface (`getMixer()`, `getBoneNode(name)`, `getExpressionManager(): ExpressionManager | null`)
+- [ ] **ANIM-02**: `VRMAvatar.tsx`'s `useEffect`+if-statement chatStatus switching and `GLBAvatar.tsx`'s `setTimeout`-driven loop-back pattern are both removed, replaced by the shared module
+- [ ] **ANIM-03**: Model loading/parsing (`useLoadVRM`, `useGLTF`) stays separate per format, untouched by this work
 
-- [ ] **SET-01**: Admin can configure an OpenAI API key via a WP Settings API page; the saved key is redisplayed masked (e.g. `sk-••••••1234`), never in full
-- [ ] **SET-02**: Admin can configure a personality/instruction system prompt via a textarea
-- [ ] **SET-03**: Admin can select a voice from OpenAI's Realtime voice list via a dropdown
-- [ ] **SET-04**: Admin can upload a VRM or GLB avatar file via the WP Media Library
-- [ ] **SET-05**: Settings page is gated to users with the `manage_options` capability, checked both at menu registration and inside the render callback
-- [ ] **SET-06**: An inline admin-only notice appears on the frontend embed when the API key is missing or invalid; regular visitors see a neutral placeholder instead of a broken widget or console error
+### Idle & Transition States
 
-### Embedding (Shortcode + Block)
+- [ ] **IDLE-01**: `ready`/`stopped` base state has randomized-range procedural breathing (chest/spine bone rotation) and weight-shift sway (hip/spine), independent cycles
+- [ ] **IDLE-02**: VRM avatars additionally get subtle, randomized expression rest-state drift (1-2 expression values); GLB avatars do not (no expression system)
+- [ ] **TRANS-01**: `starting` plays a dedicated greeting/waking clip with a ~1.0–1.5s minimum duration floor (on top of pose-gap-adaptive timing)
+- [ ] **TRANS-02**: `stopped` plays a dedicated goodbye/settling clip, distinct from `ready`'s idle base, with the same minimum duration floor
 
-- [x] **EMBED-01**: Site owner can embed the avatar via a `[khaveeai_avatar]` shortcode, usable in any editor or page builder
-- [x] **EMBED-02**: Shortcode supports per-instance attribute overrides (voice, instructions, avatar) that fall back to the global settings when omitted
-- [x] **EMBED-03**: Site owner can embed the avatar via an equivalent Gutenberg block whose inspector controls mirror the shortcode's attributes
-- [x] **EMBED-04**: Shortcode and block resolve attributes (instance override → global default → hardcoded fallback) through one shared PHP function, so the two embed methods cannot drift out of sync
-- [x] **EMBED-05**: The Gutenberg block's editor preview (`edit()`) never mounts the live SPA, opens a microphone prompt, or mints a real OpenAI token while editing — only the front-end render does
+### Talking & Crossfade
 
-### Session Backend (REST)
+- [ ] **TALK-01**: `speaking` cycles through 2+ talk-clip variants via loop-completion-driven switching (~2s minimum dwell floor) — no live-clock (`setInterval`/`setTimeout`) interrupts anywhere in this state
+- [ ] **TALK-02**: Live volume signal from `useAudioLipSync` scales procedural motion amplitude during `speaking` only — never affects clip selection or timing
+- [ ] **XFADE-01**: All state transitions use `easeInOutCubic`-eased crossfades with pose-gap-adaptive duration (0.3–0.9s), where pose-gap is measured as the **max** (not average) per-bone quaternion angular distance
 
-- [x] **REST-01**: Browser can request an ephemeral OpenAI Realtime token from a WP REST route without requiring a logged-in WP session (anonymous site visitors must be able to start a session)
-- [x] **REST-02**: The OpenAI API key is never transmitted to the browser at any point in the settings, page-render, or session flow
-- [x] **REST-03**: The token route applies per-IP rate limiting and a daily mint cap, so an anonymous endpoint cannot become an unmetered proxy against the site owner's OpenAI billing
-- [x] **REST-04**: The token route responds with `Cache-Control: no-store`, so page-caching plugins cannot serve a stale or shared token to a different visitor
+### Gaze & Gesture
 
-### Asset Handling & Performance
+- [ ] **GAZE-01**: `ready`/`listening`/`speaking` show camera-relative soft gaze (no tracked-user-position dependency); `thinking` shows brief gaze aversion; `starting`/`stopped` get no separate gaze treatment
+- [ ] **GAZE-02**: Gaze applies symmetrically to both VRM and GLB (bone-level behavior, not expression-dependent)
+- [ ] **GEST-01**: The LLM can emit a gesture hint (`nod`/`shake`/`none`) via tool-calling as part of its normal response generation (no separate classification call, no keyword/regex matching)
+- [ ] **GEST-02**: Triggered gestures are procedural bone deltas (no new animation clip), queued for the ambient talk-cycle's next natural loop boundary — never interrupt mid-clip
 
-- [ ] **ASSET-01**: VRM/GLB Media Library uploads are validated server-side beyond file extension (binary magic-byte check) before being accepted, in addition to the `upload_mimes` allowlist
-- [x] **PERF-01**: The avatar JS bundle and its dependencies are enqueued only on pages that actually contain the shortcode or block (via `has_shortcode()`/`has_block()` detection), not site-wide
+### Public API
 
-### Architecture / Extensibility
+- [ ] **API-01**: `enableNaturalMotion?: boolean` (default `true`) is a master flag; granular per-behavior override flags (`enableBreathing`, `enableWeightShift`, `enableExpressionDrift`, etc.) are available for fine control
+- [ ] **API-02**: `animations` prop supports reserved ChatStatus-name keys (`ready`, `starting`, `listening`, `thinking`, `speaking`, `stopped`) driving automatic behavior, coexisting with arbitrary custom keys still usable via manual `animate(name)`
+- [ ] **API-03**: Audio-reactive wiring (TALK-02) is fully automatic — no additional prop required
+- [ ] **API-04**: A consuming dev passing zero `animations` prop still gets full natural behavior across all 6 states (SDK-bundled defaults) — see ASSET-01 for current bundling status
 
-- [x] **ARCH-01**: Config retrieval (API key, instructions, voice, avatar URL) is implemented behind a `ConfigSourceInterface` with one concrete implementation (`WpOptionsConfigSource`) this milestone, so a future platform-driven config source can be added without changing the JS bundle or rendering code
-- [x] **ARCH-02**: Ephemeral-token minting is implemented behind a `TokenProviderInterface` with one concrete implementation (`OpenAiDirectTokenProvider`) this milestone, so a future platform-driven token provider can be added without changing the JS bundle or REST contract shape
+### Performance
+
+- [ ] **PERF-01**: Procedural systems touching the same bone (e.g. breathing + sway on spine) compose via additive delta-quaternion `multiply()`, not `.set()`/overwrite, in a fixed documented order, with combined magnitude bounded
+- [ ] **PERF-02**: Under sustained frame-budget pressure, procedural systems degrade in tiers — blink never throttles, breathing/sway throttle first, expression drift throttles most aggressively, audio-reactive amplitude stays tied to its upstream hook's cadence
+
+### Verification
+
+- [ ] **VERIFY-01**: Implementation passes the objective checklist in `.planning/phases/wayfinder-map-1-animation-architecture/VERIFICATION-CHECKLIST.md` (old patterns removed, max-not-average pose-gap, no live-clock interrupts, zero-config works, reserved keys, frame-budget sanity check)
+- [ ] **VERIFY-02**: Implementation passes the subjective per-state pass/fail review in the same checklist (one human reviewer, running build, concrete per-state prompts)
 
 ## v2 Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+Deferred — blocked on hands-on asset procurement outside this milestone's reach (tracked in [#17](https://github.com/khavee-ai/khavee-sdk/issues/17)).
 
-### Platform Mode (Fast-Follow)
+### Assets
 
-- **PLAT-01**: Platform mode — API-key-driven config pulled from the hosted `khavee-app` dashboard, swapped in via the `ConfigSourceInterface`/`TokenProviderInterface` seam built this milestone. Blocked on a new API-key-gated ephemeral-token endpoint in `khavee-app` (separate repo, separate milestone).
+- **ASSET-01**: SDK bundles a final, fully CC0/redistribution-safe clip for `stopped` (goodbye) — no candidate sourced yet
+- **ASSET-02**: SDK bundles 2+ final CC0 clips each for `listening` and `thinking` — no candidates sourced yet
+- **ASSET-03**: SDK bundles a 2nd `speaking` clip variant distinct from the existing near-miss candidate — not yet resolved
+- **ASSET-04**: SDK bundles a verified (bone-name-confirmed, not just circumstantial) default GLB avatar+rig sharing its skeleton with the bundled animation clips
 
-### Settings Enhancements
-
-- **SETV2-01**: `wp-config.php` constant override for the API key (`KHAVEEAI_OPENAI_API_KEY`), taking precedence over the DB option, for security-conscious admins
-- **SETV2-02**: "Test Connection" button on the settings page that round-trips a lightweight call to OpenAI to confirm the key works before saving
-
-### Multi-Instance & Distribution
-
-- **MULTI-01**: Multi-profile / multi-bot configuration manager (named configs beyond one global default + per-instance overrides)
-- **MULTI-02**: Native page-builder widgets (Elementor, Divi, Beaver Builder) beyond the generic shortcode/HTML widget support every builder already provides
-- **MULTI-03**: Usage/conversation analytics dashboard inside the plugin
-- **MULTI-04**: Multi-tab settings UI (revisit once field count grows, e.g. when Platform mode adds a distinct mode-selection tab)
-
-## v2.1 Requirements
-
-### Block Studio (Visual Config, Live Preview, Chat & Lip-Sync)
-
-- [ ] **STUDIO-01**: Site owner can set container width/height (+ full-width toggle), background (color or Media-Library image, with a transparent-background overlay mode), lighting intensity, avatar scale + X/Y offset, and camera preset (Front/Left Angle/Right Angle/Wide) from the block inspector — each overriding the admin default for that instance only, organized into collapsible panels
-- [ ] **STUDIO-02**: The block editor renders a live 3D VRM preview with all visual config applied, WYSIWYG-reactive as the author edits, and never requests microphone access or mints an OpenAI token while editing (a true live preview, extending Phase 8's static placeholder per EMBED-05)
-- [ ] **STUDIO-03**: A configurable ChatBox (show/hide toggle + placement relative to the avatar) is visible in the editor preview and is fully functional (transcript + text input) on the published page
-- [ ] **STUDIO-04**: The avatar exhibits SDK-driven talking (lip-sync) animation on the published page while speaking, and the motion is demonstrable in the editor preview without audio
-- [ ] **STUDIO-05**: All new visual/chat config flows through the existing `data-khaveeai-config` JSON contract via the existing global-default + per-block-override merge — no new transport and no `khavee-app` backend dependency (Custom mode only)
+Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeholder or the repo's existing (non-redistribution-safe, tracked separately in [#11](https://github.com/khavee-ai/khavee-sdk/issues/11)) clips — the architecture itself does not depend on final asset sourcing to be correct.
 
 ## Out of Scope
 
-Explicitly excluded. Documented to prevent scope creep.
-
 | Feature | Reason |
 |---------|--------|
-| Platform mode itself (not just deferred — actively blocked) | Requires a new API-key-gated ephemeral-token endpoint in `khavee-app` that doesn't exist; that's a separate repo/codebase and separate milestone |
-| Encryption-at-rest for the OpenAI API key beyond `wp_options` + capability gating | Proper encryption-at-rest requires a `wp-config.php`-level constant the admin must manually add, which contradicts "fully self-configured in WP admin" for v1; standard `wp_options` + strict capability gating + never echoing the full key is the accepted WP convention |
-| Multi-bot profile management UI | Classic WP over-configurability trap; one global default + per-instance shortcode/block override already covers "different avatar per page" |
-| Native Elementor/Divi/Beaver Builder widgets | Shortcode already works inside every page builder's generic shortcode/HTML widget; native widgets are 2-3x the surface area for marginal UX gain |
-| Client-side-configurable advanced realtime parameters (temperature, VAD thresholds, etc.) in the admin UI | Most WP admins don't know what these mean; keep hardcoded sane defaults in the JS bundle, expose only API key/instructions/voice/avatar |
-| Built-in usage/conversation analytics dashboard | Introduces data-retention/GDPR obligations orthogonal to "embed an avatar"; Custom mode has no backend to aggregate against anyway |
-| Bundling a default VRM avatar inside the plugin package | VRM/GLB files are several MB+; bloats the plugin zip and conflicts with WordPress.org size/review expectations |
-| Multi-tab settings UI | Premature structure at 4 config fields; single flat settings page is sufficient for v1 |
-| Modifying `openai-realtime`'s `OpenAIRealtimeProvider` or the existing Next.js `src/app/api/negotiate/route.ts` | Out of scope per project constraints; the WP PHP route implements the OpenAI ephemeral-token contract directly, not modeled on the demo app's SDP-relay route (confirmed mismatch during research) |
-| `khavee-app` platform changes of any kind | Separate repo/codebase; not part of khavee-sdk milestones |
+| Emotion-driven expression/detection integration | Separate SDK concern, ruled out during wayfinder design (map #1) |
+| Changes to `openai-stt-tts` / realtime provider packages | Unrelated to avatar animation, out of scope per wayfinder map #1 |
+| Inverse kinematics, physics-based secondary motion (cloth/hair), procedural locomotion | Explicit architecture non-goals, locked in wayfinder ticket #2 |
+| Semantic/keyword-triggered gestures beyond nod/shake, gaze tracked-user-position mode | Deliberately minimal scope per wayfinder tickets #12/#13 — avoid scope creep on a closing spec |
+| Mining or referencing the abandoned `worktree-agent-*` / `fix/emotion-analyzer-provider-agnostic` branches | Explicit user direction carried over from the wayfinder design session |
+| Fixing the existing bundled Mixamo files' licensing risk | Tracked separately as [#11](https://github.com/khavee-ai/khavee-sdk/issues/11) — pre-existing compliance issue, not new-feature work |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
+Empty — populated by the roadmapper during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SET-01 | Phase 7 | Pending |
-| SET-02 | Phase 7 | Pending |
-| SET-03 | Phase 7 | Pending |
-| SET-04 | Phase 7 | Pending |
-| SET-05 | Phase 7 | Pending |
-| SET-06 | Phase 7 | Pending |
-| EMBED-01 | Phase 8 | Complete |
-| EMBED-02 | Phase 8 | Complete |
-| EMBED-03 | Phase 8 | Complete |
-| EMBED-04 | Phase 8 | Complete |
-| EMBED-05 | Phase 8 | Complete |
-| REST-01 | Phase 6 | Complete |
-| REST-02 | Phase 6 | Complete |
-| REST-03 | Phase 6 | Complete |
-| REST-04 | Phase 6 | Complete |
-| ASSET-01 | Phase 7 | Pending |
-| PERF-01 | Phase 8 | Complete |
-| STUDIO-01 | Phase 9 | Pending |
-| STUDIO-02 | Phase 9 | Pending |
-| STUDIO-03 | Phase 9 | Pending |
-| STUDIO-04 | Phase 9 | Pending |
-| STUDIO-05 | Phase 9 | Pending |
-| ARCH-01 | Phase 6 | Complete |
-| ARCH-02 | Phase 6 | Complete |
+| ANIM-01 | TBD | Pending |
+| ANIM-02 | TBD | Pending |
+| ANIM-03 | TBD | Pending |
+| IDLE-01 | TBD | Pending |
+| IDLE-02 | TBD | Pending |
+| TRANS-01 | TBD | Pending |
+| TRANS-02 | TBD | Pending |
+| TALK-01 | TBD | Pending |
+| TALK-02 | TBD | Pending |
+| XFADE-01 | TBD | Pending |
+| GAZE-01 | TBD | Pending |
+| GAZE-02 | TBD | Pending |
+| GEST-01 | TBD | Pending |
+| GEST-02 | TBD | Pending |
+| API-01 | TBD | Pending |
+| API-02 | TBD | Pending |
+| API-03 | TBD | Pending |
+| API-04 | TBD | Pending |
+| PERF-01 | TBD | Pending |
+| PERF-02 | TBD | Pending |
+| VERIFY-01 | TBD | Pending |
+| VERIFY-02 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 19 total
-- Mapped to phases: 19 (Phase 6: 6, Phase 7: 7, Phase 8: 6)
-- Unmapped: 0 ✓
+- v1 requirements: 22 total
+- Mapped to phases: 0 (pending roadmap creation)
+- Unmapped: 22 ⚠️
 
 ---
-*Requirements defined: 2026-06-21*
-*Last updated: 2026-06-21 after roadmap creation (Phases 6-8 mapped)*
-</content>
+*Requirements defined: 2026-07-12*
+*Last updated: 2026-07-12 after initial definition (from wayfinder map #1)*

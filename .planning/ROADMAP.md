@@ -317,7 +317,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 10-01-PLAN.md — Crossfade engine (easeInOutCubic + max-not-average pose-gap + 0.3-0.9s adaptive duration + begin/step ramp) + AvatarFormatAdapter interface + vitest infra for packages/react (XFADE-01, ANIM-01)
+- [x] 10-01-PLAN.md — Crossfade engine (easeInOutCubic + max-not-average pose-gap + 0.3-0.9s adaptive duration + begin/step ramp) + AvatarFormatAdapter interface + vitest infra for packages/react (XFADE-01, ANIM-01)
 
 **Wave 2** *(blocked on 10-01)*
 
@@ -394,7 +394,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
-| 10. Shared Animation Architecture & Crossfade Engine | 0/TBD | Not started | - |
+| 10. Shared Animation Architecture & Crossfade Engine | 1/4 | In Progress|  |
 | 11. Idle, Transition & Talking States | 0/TBD | Not started | - |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

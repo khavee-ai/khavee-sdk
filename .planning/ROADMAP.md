@@ -321,7 +321,7 @@ Plans:
 
 **Wave 2** *(blocked on 10-01)*
 
-- [ ] 10-02-PLAN.md — Blink migration into procedural delta layer (D-01, ref-driven, adapter-gated) + AnimationStateEngine (pure resolveBaseClip state layer + useAnimationController hook, timer-free) (ANIM-01, XFADE-01)
+- [x] 10-02-PLAN.md — Blink migration into procedural delta layer (D-01, ref-driven, adapter-gated) + AnimationStateEngine (pure resolveBaseClip state layer + useAnimationController hook, timer-free) (ANIM-01, XFADE-01)
 
 **Wave 3** *(blocked on 10-01/10-02)*
 
@@ -394,7 +394,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
-| 10. Shared Animation Architecture & Crossfade Engine | 1/4 | In Progress|  |
+| 10. Shared Animation Architecture & Crossfade Engine | 2/4 | In Progress|  |
 | 11. Idle, Transition & Talking States | 0/TBD | Not started | - |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

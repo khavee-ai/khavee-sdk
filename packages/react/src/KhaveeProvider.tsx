@@ -22,6 +22,7 @@ interface KhaveeContextType {
   // Realtime provider
   realtimeProvider: RealtimeProvider | null;
   chatStatus: import('@khaveeai/core').ChatStatus;
+  currentVolume: number;
 }
 
 const KhaveeContext = createContext<KhaveeContextType | null>(null);
@@ -94,6 +95,7 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
     config?.realtime || null
   );
   const [chatStatus, setChatStatus] = useState<import('@khaveeai/core').ChatStatus>("stopped");
+  const [currentVolume, setCurrentVolume] = useState(0);
 
   // Note: Realtime provider connection is now manual - user must call connect() explicitly
 
@@ -108,6 +110,22 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
   useEffect(() => {
     if (realtimeProvider) {
       realtimeProvider.onChatStatusChange = setChatStatus;
+    }
+  }, [realtimeProvider]);
+
+  // Listen to volume changes from realtime provider (TALK-02: powers avatar
+  // audio-reactive amplitude). Clamp to [0,1] defensively — an out-of-range
+  // value from the provider must not drive extreme procedural motion
+  // downstream (matches the setExpression clamp convention below).
+  // NOTE: like onChatStatusChange above, this assignment is bare/non-chaining.
+  // If a consumer in the same tree also calls useRealtime(), that hook's own
+  // onVolumeChange assignment will overwrite this one (pre-existing behavior,
+  // RESEARCH Pitfall 5) — flagged, not fixed here; useRealtime.ts is out of
+  // scope for this plan.
+  useEffect(() => {
+    if (realtimeProvider) {
+      realtimeProvider.onVolumeChange = (volume) =>
+        setCurrentVolume(Math.max(0, Math.min(1, volume)));
     }
   }, [realtimeProvider]);
 
@@ -262,6 +280,7 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
       setAvailableAnimations,
       realtimeProvider,
       chatStatus,
+      currentVolume,
     }}>
       {children}
     </KhaveeContext.Provider>

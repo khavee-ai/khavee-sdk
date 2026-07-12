@@ -43,7 +43,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run"
   },
   "dependencies": {
     "@khaveeai/core": "^0.1.5",
@@ -56,8 +57,10 @@
   "devDependencies": {
     "@types/react": "^19",
     "@types/three": "^0.180.0",
+    "@vitest/coverage-v8": "^2.0.0",
     "react": "^19.1.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.0.0"
   },
   "peerDependencies": {
     "react": ">=18.0.0"

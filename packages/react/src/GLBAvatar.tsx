@@ -1,7 +1,7 @@
 "use client";
 import { useAnimations as useDreiAnimations, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useKhavee } from "./KhaveeProvider";
 import { useAnimationController } from "./animation/AnimationStateEngine";
@@ -150,13 +150,19 @@ export function GLBAvatar({
     getExpressionManager: () => null, // GLB has no expression/blendshape system.
   };
 
+  // Memoized so identity is stable across unrelated re-renders (defense-in-
+  // depth for TRANS-01/TALK-01 — see the matching comment in VRMAvatar.tsx).
+  // groupRef is a stable ref, so getRoot needs no deps.
+  const getAction = useCallback((name: string) => actions[name] ?? null, [actions]);
+  const getRoot = useCallback(() => groupRef.current, []);
+
   const controller = useAnimationController({
     adapter: glbAdapter,
     chatStatus,
     currentAnimation,
     availableNames: names,
-    getAction: (name) => actions[name] ?? null,
-    getRoot: () => groupRef.current,
+    getAction,
+    getRoot,
     enableBlinking: true, // harmless no-op on GLB — adapter's expression manager is always null.
     currentVolume,
   });

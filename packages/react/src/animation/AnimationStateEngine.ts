@@ -217,14 +217,43 @@ export function useAnimationController(params: {
 
   useEffect(() => {
     if (!targetName) return;
+
+    // TALK-01/TRANS-01 speaking-variant ownership guard: while `speaking`,
+    // `talkCycle` (inside `update()`, step 9) is the SOLE owner of which
+    // talk variant is showing, driven by loop-boundary + dwell detection.
+    // `resolveBaseClip` always resolves the FIRST speaking-matched clip via
+    // `.find()` (RESEARCH Pitfall 4), so if this effect re-fires mid-speech
+    // (e.g. from a `currentVolume` tick re-render) and re-asserts that first
+    // clip, it fights talkCycle's already-advanced variant and snaps back to
+    // variant 1 — the bug reported in 11-06 (TALK-01). Guard: if we're
+    // already showing a speaking-matched clip while `speaking`, this effect
+    // has nothing useful to do — return without switching. The initial
+    // idle -> speaking switch is unaffected: at that moment
+    // currentClipNameRef.current still points at the idle/base clip, not a
+    // speaking variant, so the guard passes through and the first talk clip
+    // is selected normally.
+    if (
+      chatStatus === "speaking" &&
+      currentClipNameRef.current !== null &&
+      STATUS_CLIP_PATTERNS.speaking!.test(currentClipNameRef.current)
+    ) {
+      return;
+    }
+
     switchToClip(targetName);
-    // getRoot/getAction intentionally omitted from deps beyond what's
-    // listed: they're stable per-render accessor closures, not values whose
-    // identity should retrigger a crossfade on their own. switchToClip is
-    // recreated every render (closing over the latest chatStatus/getAction/
-    // getRoot) and is called directly, not depended on.
+    // getRoot/getAction intentionally omitted from deps: they're stable
+    // per-render accessor closures (memoized via useCallback in both
+    // VRMAvatar/GLBAvatar as of Task 1's part C), not values whose identity
+    // should retrigger a crossfade on their own. Including `getAction` here
+    // previously caused this effect to re-fire on every render where its
+    // closure identity changed (frequent during speaking, since
+    // `currentVolume` updates every volume tick) even though `targetName`
+    // and `chatStatus` hadn't changed — the root cause of TALK-01/TRANS-01's
+    // double-trigger/snap-back. switchToClip is recreated every render
+    // (closing over the latest chatStatus/getAction/getRoot) and is called
+    // directly, not depended on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetName, getAction, chatStatus]);
+  }, [targetName, chatStatus]);
 
   function update(delta: number): void {
     // PERF-01 fixed, documented composition order — every system below runs

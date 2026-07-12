@@ -1,7 +1,7 @@
 import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { useFBX, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lerp } from "three/src/math/MathUtils.js";
@@ -450,16 +450,28 @@ export function VRMAvatar({
     getExpressionManager: () => currentVrm?.expressionManager ?? null,
   };
 
+  // Memoized so identity is stable across unrelated re-renders (defense-in-
+  // depth for TRANS-01/TALK-01: re-renders spike during speaking from
+  // `currentVolume` ticks, and an unstable getAction/getRoot identity was
+  // previously part of the crossfade-trigger effect's dependency array in
+  // AnimationStateEngine.ts). mixerRef is a stable ref, so getAction only
+  // needs to depend on processedClips.
+  const getAction = useCallback(
+    (name: string) => {
+      const clip = processedClips.find((c) => c?.name === name);
+      return clip && mixerRef.current ? mixerRef.current.clipAction(clip) : null;
+    },
+    [processedClips],
+  );
+  const getRoot = useCallback(() => currentVrm?.scene ?? scene ?? null, [currentVrm, scene]);
+
   const controller = useAnimationController({
     adapter: vrmAdapter,
     chatStatus,
     currentAnimation,
     availableNames: processedClips.map((c) => c.name),
-    getAction: (name) => {
-      const clip = processedClips.find((c) => c?.name === name);
-      return clip && mixerRef.current ? mixerRef.current.clipAction(clip) : null;
-    },
-    getRoot: () => currentVrm?.scene ?? scene ?? null,
+    getAction,
+    getRoot,
     enableBlinking,
     currentVolume,
   });

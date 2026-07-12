@@ -345,7 +345,7 @@ Plans:
   5. Speaking louder or more quietly visibly changes the procedural motion's amplitude in real time (via `useAudioLipSync`'s live volume signal), but never changes which talk clip is selected or when the next cycle switch happens
   6. When breathing and sway both write to the spine bone in the same frame, the combined rotation is produced by additive delta-quaternion `multiply()` in a fixed, documented order with a bounded combined magnitude — not one system's `.set()` overwriting the other's
 
-**Plans**: 6 plans
+**Plans**: 8 plans (6 + 2 gap closure)
 Plans:
 **Wave 1** *(foundation — adapter contract + volume plumbing, zero file overlap)*
 
@@ -364,6 +364,11 @@ Plans:
 **Wave 4** *(blocked on 11-05 — objective gates + blocking human-verify)*
 
 - [ ] 11-06-PLAN.md — Objective invariant gates (timer-free, additive-not-overwrite, internal-only) + per-state human verification against the wayfinder checklist (all 7 requirements)
+
+**Wave 5** *(gap closure — 11-06 human verification found IDLE-02/TRANS-01/TRANS-02/TALK-01 failing on a live build; root causes diagnosed in 11-06-SUMMARY.md)*
+
+- [ ] 11-07-PLAN.md — Fix the 3 diagnosed animation-timing bugs: drop unstable getAction from the crossfade-effect deps + memoize accessors + talkCycle-owns-speaking guard (TALK-01/TRANS-01), ease the stopped-settle scale over ~1.2s instead of an instant cut (TRANS-02), and fix expression drift to target present/visible VRoid candidates (relaxed/happy) with drift-ownership tracking instead of the self-freezing non-zero guard (IDLE-02)
+- [ ] 11-08-PLAN.md — Re-verify: objective invariant + fix-landed gates + full test suite, then blocking human re-check of the 4 previously-failing behaviors plus a re-check of IDLE-01/TALK-02/PERF-01 against the wayfinder checklist
 
 **UI hint**: yes
 

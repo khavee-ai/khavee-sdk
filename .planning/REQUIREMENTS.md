@@ -16,13 +16,13 @@ Source: wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khav
 ### Idle & Transition States
 
 - [ ] **IDLE-01**: `ready`/`stopped` base state has randomized-range procedural breathing (chest/spine bone rotation) and weight-shift sway (hip/spine), independent cycles
-- [ ] **IDLE-02**: VRM avatars additionally get subtle, randomized expression rest-state drift (1-2 expression values); GLB avatars do not (no expression system)
-- [ ] **TRANS-01**: `starting` plays a dedicated greeting/waking clip with a ~1.0–1.5s minimum duration floor (on top of pose-gap-adaptive timing)
-- [ ] **TRANS-02**: `stopped` plays a dedicated goodbye/settling clip, distinct from `ready`'s idle base, with the same minimum duration floor
+- [x] **IDLE-02**: VRM avatars additionally get subtle, randomized expression rest-state drift (1-2 expression values); GLB avatars do not (no expression system)
+- [x] **TRANS-01**: `starting` plays a dedicated greeting/waking clip with a ~1.0–1.5s minimum duration floor (on top of pose-gap-adaptive timing)
+- [x] **TRANS-02**: `stopped` plays a dedicated goodbye/settling clip, distinct from `ready`'s idle base, with the same minimum duration floor
 
 ### Talking & Crossfade
 
-- [ ] **TALK-01**: `speaking` cycles through 2+ talk-clip variants via loop-completion-driven switching (~2s minimum dwell floor) — no live-clock (`setInterval`/`setTimeout`) interrupts anywhere in this state
+- [x] **TALK-01**: `speaking` cycles through 2+ talk-clip variants via loop-completion-driven switching (~2s minimum dwell floor) — no live-clock (`setInterval`/`setTimeout`) interrupts anywhere in this state
 - [ ] **TALK-02**: Live volume signal from `useAudioLipSync` scales procedural motion amplitude during `speaking` only — never affects clip selection or timing
 - [ ] **XFADE-01**: All state transitions use `easeInOutCubic`-eased crossfades with pose-gap-adaptive duration (0.3–0.9s), where pose-gap is measured as the **max** (not average) per-bone quaternion angular distance
 
@@ -84,10 +84,10 @@ Empty — populated by the roadmapper during roadmap creation.
 | ANIM-02 | TBD | Pending |
 | ANIM-03 | TBD | Pending |
 | IDLE-01 | TBD | Pending |
-| IDLE-02 | TBD | Pending |
-| TRANS-01 | TBD | Pending |
-| TRANS-02 | TBD | Pending |
-| TALK-01 | TBD | Pending |
+| IDLE-02 | TBD | Complete |
+| TRANS-01 | TBD | Complete |
+| TRANS-02 | TBD | Complete |
+| TALK-01 | TBD | Complete |
 | TALK-02 | TBD | Pending |
 | XFADE-01 | TBD | Pending |
 | GAZE-01 | TBD | Pending |

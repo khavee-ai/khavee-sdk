@@ -349,8 +349,8 @@ Plans:
 Plans:
 **Wave 1** *(foundation — adapter contract + volume plumbing, zero file overlap)*
 
-- [ ] 11-01-PLAN.md — AvatarFormatAdapter.getHumanoidBoneNode(role) contract + VRM (humanoid-normalized) / GLB (literal) implementations, fixing the male.vrm silent-no-op bone-resolution gap (IDLE-01 foundation)
-- [ ] 11-02-PLAN.md — currentVolume plumbing: add to KhaveeContextType, subscribe realtimeProvider.onVolumeChange, clamp to [0,1] (TALK-02 plumbing)
+- [x] 11-01-PLAN.md — AvatarFormatAdapter.getHumanoidBoneNode(role) contract + VRM (humanoid-normalized) / GLB (literal) implementations, fixing the male.vrm silent-no-op bone-resolution gap (IDLE-01 foundation)
+- [x] 11-02-PLAN.md — currentVolume plumbing: add to KhaveeContextType, subscribe realtimeProvider.onVolumeChange, clamp to [0,1] (TALK-02 plumbing)
 
 **Wave 2** *(blocked on 11-01 — procedural modules, parallel, zero file overlap)*
 
@@ -415,6 +415,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 0/TBD | Not started | - |
+| 11. Idle, Transition & Talking States | 2/6 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

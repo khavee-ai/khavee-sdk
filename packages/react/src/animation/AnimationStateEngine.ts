@@ -30,12 +30,37 @@ import type { AvatarFormatAdapter } from "./types";
  * the same mechanism `speaking` already used before this table existed.
  */
 const STATUS_CLIP_PATTERNS: Partial<Record<ChatStatus, RegExp>> = {
-  speaking: /talk|gesture|speak/i,
+  // "taking" is a documented one-off accommodation for the bundled GLB
+  // placeholder clip `happy.glb`'s "State 4 Taking (loop)" (spelled "Taking",
+  // not "Talking" — RESEARCH Pitfall 2), so it resolves as the speaking base
+  // clip until a correctly-named replacement lands (D-01 placeholder asset).
+  speaking: /talk|gesture|speak|taking/i,
   listening: /listen/i,
   thinking: /think/i,
   starting: /welcome|greet|hello|intro/i,
+  // ready: lets a conventionally-named idle-loop clip (e.g. GLB's
+  // "State 1 Idle (loop)") resolve as the moving idle base, instead of a
+  // frozen "Pose", so IDLE-01's breathing/sway layer has motion to compose
+  // onto (RESEARCH Pitfall 3). Additive-only: see resolveBaseClip's
+  // regression test for why this never overrides an explicit, non-matching
+  // app-set currentAnimation.
+  ready: /idle|ready|rest/i,
   stopped: /stop|bye|goodbye|outro/i,
 };
+
+// TRANS-02 / D-01 / issue #17 (ASSET-01) — stopped-state placeholder decision:
+// no bundled clip on EITHER format (VRM or GLB) matches the `stopped` pattern
+// above, so this phase does NOT ship a dedicated goodbye clip. Instead,
+// `update(delta)` (Task 2) applies a procedural SETTLE cue — the always-on
+// idle layer (breathing + sway + expression drift) is damped toward
+// stillness for the duration of the `stopped` crossfade floor, producing a
+// "settling to rest" read that is distinct from the live breathing idle base
+// on both formats without depending on a dedicated asset. `stopped`'s entry
+// in STATUS_CLIP_PATTERNS above is left unchanged (harmless/forward-
+// compatible): if a consumer later loads a conventionally-named goodbye
+// clip, it still auto-resolves and the settle layers on top of it. This is a
+// placeholder per D-01, not a scope reduction — the real clip is tracked in
+// issue #17.
 
 /**
  * Pure function mapping the current chatStatus + manual `animate()` override
@@ -88,8 +113,19 @@ export function useAnimationController(params: {
   /** The animated-bones root passed to beginCrossfade/computePoseGapAngle (VRM: scene; GLB: groupRef.current). */
   getRoot: () => THREE.Object3D | null;
   enableBlinking: boolean;
+  /** Live TTS playback volume (0-1), from useKhavee(). Scales speaking-only procedural amplitude (TALK-02); undefined/omitted is treated as 0 (neutral). */
+  currentVolume?: number;
 }): { update: (delta: number) => void } {
-  const { adapter, chatStatus, currentAnimation, availableNames, getAction, getRoot, enableBlinking } = params;
+  const {
+    adapter,
+    chatStatus,
+    currentAnimation,
+    availableNames,
+    getAction,
+    getRoot,
+    enableBlinking,
+    currentVolume,
+  } = params;
 
   const blink = useBlink();
 
@@ -117,14 +153,21 @@ export function useAnimationController(params: {
     const root = getRoot();
     if (!root) return;
 
-    blendRef.current = beginCrossfade(currentActionRef.current, toAction, root);
+    // TRANS-01/02: starting/stopped get a ~1.2s minimum-duration floor on
+    // top of the 0.3-0.9s pose-gap-adaptive range, so the transition into/
+    // out of a session always reads as a deliberate moment rather than a
+    // snap-fast pose-gap-driven blend (1.2s sits within the locked
+    // 1.0-1.5s range).
+    const floor = chatStatus === "starting" || chatStatus === "stopped" ? 1.2 : undefined;
+
+    blendRef.current = beginCrossfade(currentActionRef.current, toAction, root, floor);
     currentActionRef.current = toAction;
     currentClipNameRef.current = targetName;
     // getRoot intentionally omitted from deps: it's a stable per-render
     // accessor closure, not a value whose identity should retrigger a
     // crossfade on its own (matches getAction's role as an accessor too).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetName, getAction]);
+  }, [targetName, getAction, chatStatus]);
 
   function update(delta: number): void {
     if (blendRef.current.active) {

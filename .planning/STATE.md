@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 Phase: 10 (shared-animation-architecture-crossfade-engine) — COMPLETE
 Plan: 4 of 4
 Status: Phase 10 complete; awaiting next phase selection
-Last activity: 2026-07-12 - Completed quick task 260712-qo9: Fix missing animations prop on openai-avatar-test (avatar was showing no animation)
+Last activity: 2026-07-12 - Completed quick task 260712-qvu: Extended resolveBaseClip with naming-convention clip patterns for listening/thinking/starting/stopped chatStatus values
 
 Progress: [░░░░░░░░░░] 0% (v2.2 milestone; v2.1 Phase 9 tracked separately at 5/6 plans complete)
 
@@ -98,6 +98,7 @@ See prior STATE.md history / `.planning/quick/` directory for the full v2.0/v2.1
 | 260712-mfz | Create a new demo page wiring OpenAIRealtimeProvider together with an avatar component so lipsync and conversation-driven animation motion can be tested end-to-end against a real OpenAI Realtime session | 2026-07-12 | 09db9f0 | [260712-mfz-create-a-new-demo-page-wiring-openaireal](./quick/260712-mfz-create-a-new-demo-page-wiring-openaireal/) |
 | 260712-pt8 | Fix src/app/api/negotiate/route.ts — it implemented a stale SDP-relay contract instead of the ephemeral-token-minting contract OpenAIRealtimeProvider.connect() expects, causing a 400 invalid_offer error | 2026-07-12 | 3939527 | [260712-pt8-fix-src-app-api-negotiate-route-ts-it-im](./quick/260712-pt8-fix-src-app-api-negotiate-route-ts-it-im/) |
 | 260712-qo9 | Fix src/app/openai-avatar-test/page.tsx — VRMAvatar was mounted without an animations prop, so resolveBaseClip always returns null and the avatar shows no animation at all | 2026-07-12 | 91f472d | [260712-qo9-fix-src-app-openai-avatar-test-page-tsx-](./quick/260712-qo9-fix-src-app-openai-avatar-test-page-tsx-/) |
+| 260712-qvu | Extend resolveBaseClip in packages/react/src/animation/AnimationStateEngine.ts to add naming-convention-based clip matching for listening, thinking, starting, and stopped chatStatus values, mirroring the existing speaking pattern | 2026-07-12 | d304eee | [260712-qvu-extend-resolvebaseclip-in-packages-react](./quick/260712-qvu-extend-resolvebaseclip-in-packages-react/) |
 
 ## Deferred Items
 

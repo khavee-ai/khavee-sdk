@@ -446,6 +446,7 @@ export function VRMAvatar({
   const vrmAdapter: AvatarFormatAdapter = {
     getMixer: () => mixerRef.current!,
     getBoneNode: (name) => scene?.getObjectByName(name) ?? null,
+    getHumanoidBoneNode: (role) => currentVrm?.humanoid?.getNormalizedBoneNode(role) ?? null,
     getExpressionManager: () => currentVrm?.expressionManager ?? null,
   };
 

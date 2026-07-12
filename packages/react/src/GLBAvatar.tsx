@@ -142,6 +142,11 @@ export function GLBAvatar({
   const glbAdapter: AvatarFormatAdapter = {
     getMixer: () => mixer,
     getBoneNode: (name) => groupRef.current?.getObjectByName(name) ?? null,
+    // happy.glb's literal node names already match VRM humanoid role strings
+    // directly (chest/spine/hips/neck/head), so a literal lookup is correct
+    // here specifically — this is a property of that bundled asset, not a
+    // general GLB guarantee.
+    getHumanoidBoneNode: (role) => groupRef.current?.getObjectByName(role) ?? null,
     getExpressionManager: () => null, // GLB has no expression/blendshape system.
   };
 

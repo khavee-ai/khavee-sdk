@@ -1,9 +1,11 @@
 "use client";
 import { useAnimations as useDreiAnimations, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useKhavee } from "./KhaveeProvider";
+import { useAnimationController } from "./animation/AnimationStateEngine";
+import type { AvatarFormatAdapter } from "./animation/types";
 
 interface GLBAvatarProps {
   src: string; // URL or path to the GLB/GLTF model
@@ -92,19 +94,13 @@ export function GLBAvatar({
   autoPlayAnimation = 0,
   ...props
 }: GLBAvatarProps) {
-  const { currentAnimation, animate: contextAnimate, chatStatus, setAvailableAnimations } = useKhavee();
+  const { currentAnimation, chatStatus, setAvailableAnimations } = useKhavee();
   const groupRef = useRef<THREE.Group>(null);
-  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
-  
-  // Talking animation system
-  const animationTimeout = useRef<NodeJS.Timeout | null>(null);
-  const availableTalkingAnimations = useRef<string[]>([]);
-  const lastTalkingAnimationIndex = useRef(0);
 
   // Load GLB model
   const gltf = useGLTF(src) as any;
-  const { actions, names } = useDreiAnimations(gltf.animations, groupRef);
+  const { mixer, actions, names } = useDreiAnimations(gltf.animations, groupRef);
 
   // Store available animations in context
   useEffect(() => {
@@ -135,93 +131,36 @@ export function GLBAvatar({
     }
   }, [actions, names, autoPlayAnimation]);
 
-  // Handle animation switching from context
-  useEffect(() => {
-    if (!actions || !currentAnimation) {
-      // Stop current animation if any
-      if (currentActionRef.current) {
-        currentActionRef.current.fadeOut(0.3);
-        currentActionRef.current = null;
-      }
-      return;
-    }
+  // Shared animation module (ANIM-01): drives chatStatus-triggered eased,
+  // pose-gap-adaptive crossfading (replacing the old fixed-duration 0.3s
+  // linear fade effect and the live-clock-driven talking-animation loop-back
+  // this component used to own) on drei's REAL mixer — NOT a second,
+  // independently-created one (RESEARCH Pitfall 2: setEffectiveWeight is a
+  // silent no-op against a mixer with no registered actions). Talk-clip
+  // cycling returns, loop-boundary-driven and timer-free, in Phase 11
+  // (TALK-01) — this phase only removes the timer.
+  const glbAdapter: AvatarFormatAdapter = {
+    getMixer: () => mixer,
+    getBoneNode: (name) => groupRef.current?.getObjectByName(name) ?? null,
+    getExpressionManager: () => null, // GLB has no expression/blendshape system.
+  };
 
-    const targetAction = actions[currentAnimation];
-
-    if (targetAction && targetAction !== currentActionRef.current) {
-      // Fade out current
-      if (currentActionRef.current) {
-        currentActionRef.current.fadeOut(0.3);
-      }
-      
-      // Fade in new
-      targetAction.reset().fadeIn(0.3).play();
-      currentActionRef.current = targetAction;
-      
-      console.log('[GLB Avatar] Switched to animation:', currentAnimation);
-    }
-  }, [currentAnimation, actions]);
-
-  // Talking animation system
-  useEffect(() => {
-    if (!names || names.length === 0) return;
-
-    // Collect talking animations
-    const talkingAnimNames = names.filter(name =>
-      name.toLowerCase().includes('talk') || 
-      name.toLowerCase().includes('gesture') || 
-      name.toLowerCase().includes('speak')
-    );
-
-    availableTalkingAnimations.current = talkingAnimNames;
-
-    if (chatStatus === 'speaking' && talkingAnimNames.length > 0) {
-      const isCurrentlyIdle = !currentAnimation || currentAnimation === names[0];
-
-      if (isCurrentlyIdle && !animationTimeout.current) {
-        const nextTalkIndex = (lastTalkingAnimationIndex.current + 1) % talkingAnimNames.length;
-        contextAnimate(talkingAnimNames[nextTalkIndex]);
-        lastTalkingAnimationIndex.current = nextTalkIndex;
-
-        // Schedule next animation
-        animationTimeout.current = setTimeout(() => {
-          animationTimeout.current = null;
-          if (chatStatus === 'speaking') {
-            contextAnimate(names[0]); // Back to first animation
-          }
-        }, 3000 + Math.random() * 2000);
-      }
-    } else if (chatStatus !== 'speaking' && animationTimeout.current) {
-      clearTimeout(animationTimeout.current);
-      animationTimeout.current = null;
-      
-      // Return to first animation
-      if (names[0]) {
-        contextAnimate(names[0]);
-      }
-    }
-  }, [chatStatus, names, currentAnimation, contextAnimate]);
-
-  // Update mixer
-  useFrame((_, delta) => {
-    if (mixerRef.current) {
-      mixerRef.current.update(delta);
-    }
+  const controller = useAnimationController({
+    adapter: glbAdapter,
+    chatStatus,
+    currentAnimation,
+    availableNames: names,
+    getAction: (name) => actions[name] ?? null,
+    getRoot: () => groupRef.current,
+    enableBlinking: true, // harmless no-op on GLB — adapter's expression manager is always null.
   });
 
-  // Initialize mixer
-  useEffect(() => {
-    if (groupRef.current && gltf.animations && gltf.animations.length > 0) {
-      mixerRef.current = new THREE.AnimationMixer(groupRef.current);
-      
-      return () => {
-        if (mixerRef.current) {
-          mixerRef.current.stopAllAction();
-          mixerRef.current = null;
-        }
-      };
-    }
-  }, [gltf]);
+  // drei's useAnimations already runs mixer.update(delta) internally via its
+  // own earlier-registered useFrame, so the controller's crossfade ramp/
+  // blink step below runs after it — no manual mixer.update(delta) here.
+  useFrame((_, delta) => {
+    controller.update(delta);
+  });
 
   return (
     <group ref={groupRef} position={position} rotation={rotation} scale={scale} {...props}>

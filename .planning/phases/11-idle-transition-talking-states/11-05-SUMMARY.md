@@ -128,3 +128,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-idle-transition-talking-states*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+All modified files verified present on disk; all four task/summary commit hashes (`4baeeb8`, `2d1fc81`, `ffc2525`, `c98f8d8`) verified present in `git log --all`.

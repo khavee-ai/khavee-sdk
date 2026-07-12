@@ -433,17 +433,19 @@ See Architecture Patterns above (Pattern 1, 2, 3) for the complete, verified pro
 
 **All other claims in this research were verified directly** — GitHub issue bodies/comments via `gh api`, prototype source via `git show` against the exact commit CONTEXT.md names, current file contents via direct `Read`, `happy.glb`'s real clip names via parsing the GLB's binary GLTF-JSON chunk, package versions via `package.json`, and the `VRMExpressionManager` type via `node_modules/@pixiv/three-vrm-core`'s `.d.ts` files. No package-legitimacy audit was needed (zero new dependencies).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Exact internal module boundaries (single file vs. multiple)**
    - What we know: Ticket #8 requires "one shared internal module," not "one shared internal file" — multiple internal files (state layer, crossfade, blink) composed together and imported by both avatar components would satisfy the requirement equally to one large file.
    - What's unclear: Whether the planner should decompose into multiple files (as recommended in Architecture Patterns) or keep everything in one file for simplicity at this phase's scope (blink is the only procedural-delta content this phase; Phase 11 will add much more).
    - Recommendation: Multiple files (state layer / crossfade / blink split) is lower-risk for Phase 11's follow-on growth, but either satisfies ANIM-01 as written. Not a blocker either way.
+   - RESOLVED: Multi-file `animation/` module chosen (types / crossfade / blink / AnimationStateEngine split), per 10-01/10-02 plans.
 
 2. **VRM crossfade duration vs. minimum-floor interaction for `starting`/`stopped` (TRANS-01/02)**
    - What we know: Ticket #6 (Phase 11 scope, TRANS-01/02) specifies a ~1.0–1.5s minimum duration floor for `starting`/`stopped` transitions specifically, layered on top of this phase's pose-gap-adaptive 0.3–0.9s range.
    - What's unclear: Whether this phase's crossfade engine API should already expose a duration-override/floor parameter (unused until Phase 11 wires it in) or whether Phase 11 should extend the function signature later.
    - Recommendation: Design `poseGapToDuration` (or its ported equivalent) to accept an optional `floorSeconds` parameter now, defaulting to unused/`undefined` this phase, so Phase 11 doesn't need to change the function's call sites — purely a forward-compatibility nicety, not required for XFADE-01/ANIM-01..03 to be satisfied this phase.
+   - RESOLVED: Optional `floorSeconds?` param added to `poseGapToDuration`/`beginCrossfade` this phase (unused until Phase 11), per 10-01 plan.
 
 ## Environment Availability
 

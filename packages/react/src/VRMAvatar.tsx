@@ -304,7 +304,7 @@ export function VRMAvatar({
   enableBlinking = true,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, animate, chatStatus } = useKhavee();
+  const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume } = useKhavee();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
@@ -461,6 +461,7 @@ export function VRMAvatar({
     },
     getRoot: () => currentVrm?.scene ?? scene ?? null,
     enableBlinking,
+    currentVolume,
   });
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {

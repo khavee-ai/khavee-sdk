@@ -94,7 +94,7 @@ export function GLBAvatar({
   autoPlayAnimation = 0,
   ...props
 }: GLBAvatarProps) {
-  const { currentAnimation, chatStatus, setAvailableAnimations } = useKhavee();
+  const { currentAnimation, chatStatus, setAvailableAnimations, currentVolume } = useKhavee();
   const groupRef = useRef<THREE.Group>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
 
@@ -158,6 +158,7 @@ export function GLBAvatar({
     getAction: (name) => actions[name] ?? null,
     getRoot: () => groupRef.current,
     enableBlinking: true, // harmless no-op on GLB — adapter's expression manager is always null.
+    currentVolume,
   });
 
   // drei's useAnimations already runs mixer.update(delta) internally via its

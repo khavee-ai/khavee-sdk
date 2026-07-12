@@ -345,7 +345,27 @@ Plans:
   5. Speaking louder or more quietly visibly changes the procedural motion's amplitude in real time (via `useAudioLipSync`'s live volume signal), but never changes which talk clip is selected or when the next cycle switch happens
   6. When breathing and sway both write to the spine bone in the same frame, the combined rotation is produced by additive delta-quaternion `multiply()` in a fixed, documented order with a bounded combined magnitude — not one system's `.set()` overwriting the other's
 
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1** *(foundation — adapter contract + volume plumbing, zero file overlap)*
+
+- [ ] 11-01-PLAN.md — AvatarFormatAdapter.getHumanoidBoneNode(role) contract + VRM (humanoid-normalized) / GLB (literal) implementations, fixing the male.vrm silent-no-op bone-resolution gap (IDLE-01 foundation)
+- [ ] 11-02-PLAN.md — currentVolume plumbing: add to KhaveeContextType, subscribe realtimeProvider.onVolumeChange, clamp to [0,1] (TALK-02 plumbing)
+
+**Wave 2** *(blocked on 11-01 — procedural modules, parallel, zero file overlap)*
+
+- [ ] 11-03-PLAN.md — breathing.ts (chest/spine) + sway.ts (hips/spine, independent period) + expressionDrift.ts (VRM-only), all additive ref-driven steppers (IDLE-01, IDLE-02, PERF-01)
+- [ ] 11-04-PLAN.md — talkCycle.ts (loop-boundary variant cycling, ~2s dwell, timer-free) + audioAmplitude.ts (speaking-only volume→amplitude scale) (TALK-01, TALK-02)
+
+**Wave 3** *(blocked on 11-01/02/03/04 — controller integration)*
+
+- [ ] 11-05-PLAN.md — AnimationStateEngine integration: fixed-order composition + bounded spine delta (PERF-01), floorSeconds for starting/stopped (TRANS-01/02), talk-cycle + audio-reactive wiring, ready/GLB-taking clip patterns, currentVolume threaded through both avatars
+
+**Wave 4** *(blocked on 11-05 — objective gates + blocking human-verify)*
+
+- [ ] 11-06-PLAN.md — Objective invariant gates (timer-free, additive-not-overwrite, internal-only) + per-state human verification against the wayfinder checklist (all 7 requirements)
+
+**UI hint**: yes
 
 ### Phase 12: Gaze & Gesture
 

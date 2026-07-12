@@ -7,6 +7,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lerp } from "three/src/math/MathUtils.js";
 import { useKhavee } from "./KhaveeProvider";
 import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
+import { useAnimationController } from "./animation/AnimationStateEngine";
+import type { AvatarFormatAdapter } from "./animation/types";
 
 // ── Per-instance VRM loading (bypasses drei's useGLTF global cache) ──
 //
@@ -201,9 +203,12 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * - Talking animations that play automatically when AI speaks
  * - Updates VRM model every frame
  *
- * **TALKING ANIMATIONS:** When the AI speaks (chatStatus === 'speaking'), the system automatically
- * randomly plays animations whose names include 'talk', 'gesture', or 'speak'. This provides
- * natural variety during conversations without complex gesture calculations.
+ * **TALKING ANIMATIONS:** When the AI speaks (chatStatus === 'speaking'), the shared
+ * animation module (`useAnimationController`) automatically selects a loaded clip whose
+ * name includes 'talk', 'gesture', or 'speak' (if one exists) and crossfades into it with
+ * an eased, pose-gap-adaptive blend. Every other chat status (and the speaking fallback
+ * when no talk clip is loaded) uses the manually-set `animate()` clip, falling back to the
+ * first loaded clip. See `packages/react/src/animation/AnimationStateEngine.ts`.
  *
  * **IMPORTANT:** Must be used inside a React Three Fiber `<Canvas>` component
  * and within a `<KhaveeProvider>`.
@@ -214,7 +219,6 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param scale - Scale [x, y, z]. Default: [1, 1, 1]
  * @param animations - Optional animation configuration using URLs to FBX files
  * @param enableBlinking - Enable natural blinking animations. Default: true
- * @param enableTalkingAnimations - Enable talking animations during AI speech. Default: true
  *
  * @example
  * // Basic usage
@@ -300,22 +304,10 @@ export function VRMAvatar({
   enableBlinking = true,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, animate } = useKhavee();
+  const { setVrm, expressions, currentAnimation, animate, chatStatus } = useKhavee();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
-
-  // Blinking system. blinkState is a ref, not React state: it's only ever
-  // read synchronously within the same useFrame callback that writes it,
-  // never rendered in JSX — calling a state setter here would re-render
-  // this component on every single animation frame during a blink (blink
-  // lasts ~7 frames at blinkAnimationRef's 0.15/frame step), fighting the
-  // R3F render loop for the main thread and producing visible stutter.
-  const blinkState = useRef(0);
-  const nextBlinkTime = useRef(Date.now() + 2000 + Math.random() * 3000);
-  const isBlinking = useRef(false);
-  const blinkAnimationRef = useRef(0);
-
 
   const parsed = useLoadVRM(src);
   const scene = parsed?.scene;
@@ -425,46 +417,10 @@ export function VRMAvatar({
     }
   }, [processedClips]);
 
-  // Handle animation switching with proper crossfading
-  useEffect(() => {
-    if (!mixerRef.current || !currentAnimation) {
-      // Stop current animation
-      if (currentActionRef.current) {
-        currentActionRef.current.fadeOut(0.3);
-        currentActionRef.current = null;
-      }
-      return;
-    }
-
-    const targetClip = processedClips.find(
-      (clip) => clip?.name === currentAnimation
-    );
-
-    if (targetClip && mixerRef.current) {
-      const newAction = mixerRef.current.clipAction(targetClip);
-
-      // Only restart if this is actually a different animation
-      if (currentActionRef.current !== newAction) {
-        // Fade out current animation if it exists
-        if (currentActionRef.current) {
-          currentActionRef.current.fadeOut(0.3);
-        }
-        // Fade in new animation
-        newAction.reset().fadeIn(0.3).play();
-        currentActionRef.current = newAction;
-      } else if (!currentActionRef.current) {
-        // Start new animation without fade (first time)
-        newAction.reset().play();
-        currentActionRef.current = newAction;
-      }
-    }
-    // processedClips is included so this retries once the mixer/clips become
-    // ready asynchronously (useLoadVRM no longer guarantees synchronous
-    // readiness the way Suspense-based useGLTF did) — without it, "idle"
-    // (the default currentAnimation, which never changes on its own) would
-    // never get (re)applied once the mixer actually exists, leaving the
-    // avatar stuck in its raw bind pose.
-  }, [currentAnimation, processedClips]);
+  // NOTE: Animation switching (target-clip resolution + crossfading) is now
+  // handled by `useAnimationController` (below), which crossfades via the
+  // shared eased, pose-gap-adaptive engine (`animation/crossfade.ts`)
+  // instead of this component's own fixed-duration fadeIn/fadeOut effect.
 
   useEffect(() => {
     if (!currentVrm || !scene) return;
@@ -482,6 +438,29 @@ export function VRMAvatar({
       obj.frustumCulled = false;
     });
   }, [scene, currentVrm, setVrm]);
+
+  // Shared animation module (ANIM-01): one adapter + controller drives all
+  // chatStatus-triggered crossfading and blink for this avatar, replacing
+  // the fixed-duration fadeIn/fadeOut effect and inline blink block removed
+  // above.
+  const vrmAdapter: AvatarFormatAdapter = {
+    getMixer: () => mixerRef.current!,
+    getBoneNode: (name) => scene?.getObjectByName(name) ?? null,
+    getExpressionManager: () => currentVrm?.expressionManager ?? null,
+  };
+
+  const controller = useAnimationController({
+    adapter: vrmAdapter,
+    chatStatus,
+    currentAnimation,
+    availableNames: processedClips.map((c) => c.name),
+    getAction: (name) => {
+      const clip = processedClips.find((c) => c?.name === name);
+      return clip && mixerRef.current ? mixerRef.current.clipAction(clip) : null;
+    },
+    getRoot: () => currentVrm?.scene ?? scene ?? null,
+    enableBlinking,
+  });
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {
     if (!currentVrm?.expressionManager) return;
@@ -513,44 +492,10 @@ export function VRMAvatar({
       }
     });
 
-    // Blinking system
-    if (enableBlinking) {
-      const time = Date.now();
-
-      // Check if it's time to blink
-      if (time > nextBlinkTime.current && !isBlinking.current) {
-        isBlinking.current = true;
-        blinkAnimationRef.current = 0;
-        nextBlinkTime.current = time + 100 + Math.random() * 4000; // Next blink in 0-4 seconds
-      }
-
-      // Handle blink animation
-      if (isBlinking.current) {
-        blinkAnimationRef.current += 0.15;
-        if (blinkAnimationRef.current >= 1) {
-          isBlinking.current = false;
-          blinkState.current = 0;
-        } else {
-          // Create smooth blink curve using sine
-          blinkState.current = Math.sin(blinkAnimationRef.current * Math.PI);
-        }
-      }
-
-      // Apply blinking to VRM expression system
-      if (currentVrm.expressionManager) {
-        if (
-          currentVrm.expressionManager.blinkExpressionNames.includes(
-            "blinkLeft"
-          ) &&
-          currentVrm.expressionManager.blinkExpressionNames.includes(
-            "blinkRight"
-          )
-        ) {
-          currentVrm.expressionManager.setValue("blinkLeft", blinkState.current);
-          currentVrm.expressionManager.setValue("blinkRight", blinkState.current);
-        }
-      }
-    }
+    // Crossfade ramp + blink step (shared animation module — see
+    // packages/react/src/animation/AnimationStateEngine.ts). Frame-ordering
+    // contract: mixer.update -> controller.update -> vrm.update.
+    controller.update(delta);
 
     // Update VRM after all changes (expressions + animations + blinking + gestures)
     currentVrm.update(delta);

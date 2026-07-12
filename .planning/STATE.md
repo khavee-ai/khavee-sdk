@@ -3,37 +3,40 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
 status: planning
-last_updated: "2026-07-11T21:20:48.651Z"
-last_activity: 2026-07-11
+stopped_at: Phase 10 context gathered
+last_updated: "2026-07-12T06:16:09.359Z"
+last_activity: "2026-07-12 — Roadmap created for v2.2: 22 v1 requirements mapped to Phases 10-13, 100% coverage validated"
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 13
+  completed_phases: 8
+  total_plans: 36
+  completed_plans: 36
+  percent: 62
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-21)
+See: .planning/PROJECT.md (updated 2026-07-11)
 
-**Core value (v2.0):** A WordPress site owner can embed a working voice-chat VRM avatar on any page, fully self-configured in WP admin — no dependency on the hosted Khavee platform.
-**Current focus:** Phase 09 — block-studio-visual-config-chat-lipsync
+**Core value (v2.2):** Replace `VRMAvatar`/`GLBAvatar`'s robotic chatStatus-driven animation switching with a unified, natural-feeling state architecture — shared internal module, procedural motion layer, and a zero-config public API.
+**Current focus:** Phase 10 — shared-animation-architecture-crossfade-engine (v2.2, ready to plan). Phase 9 — block-studio-visual-config-chat-lipsync (v2.1) remains active in parallel, per explicit user direction to start v2.2 alongside it.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-11 — Milestone v2.2 started
+Phase: 10 of 13 (Shared Animation Architecture & Crossfade Engine) — v2.2 Natural Avatar Animation
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-07-12 — Roadmap created for v2.2: 22 v1 requirements mapped to Phases 10-13, 100% coverage validated
+
+Progress: [░░░░░░░░░░] 0% (v2.2 milestone; v2.1 Phase 9 tracked separately at 5/6 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 32 (15 v1.0 milestone Phases 1-4, + 4 v2.0 Phase 6)
+- Total plans completed: 32 (15 v1.0 milestone Phases 1-4, + 4 v2.0 Phase 6, + 5 v2.0 Phase 7, + 5 v2.0 Phase 8, + 5 v2.1 Phase 9 so far)
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -46,14 +49,18 @@ Last activity: 2026-07-11 — Milestone v2.2 started
 | 3 | 2 | - | - |
 | 4 | 3 | - | - |
 | 6 | 4 | - | - |
-| 06 | 4 | - | - |
-| 07 | 5 | - | - |
-| 8 | 4 | - | - |
+| 7 | 5 | - | - |
+| 8 | 5 | - | - |
+| 9 | 5/6 | - | - |
+| 10 | 0/TBD | - | - |
+| 11 | 0/TBD | - | - |
+| 12 | 0/TBD | - | - |
+| 13 | 0/TBD | - | - |
 
 **Recent Trend:**
 
-- Last 5 plans: 06-04, 07-01, 07-02, 07-03, 07-04
-- Trend: Phase 7 (admin settings page) complete; gap-closure plan 07-04 closed a security-critical voice-allowlist bug (CR-01) and a defense-in-depth nonce gap (CR-02); a follow-up code review caught and fixed one more variant (CR-01-NEW — unvalidated existing-value fallback) in the same session before re-verification passed clean
+- Last 5 plans: 09-01, 09-02, 09-03, 09-04, 09-05
+- Trend: v2.1 Phase 9 (Block Studio) at 5/6 plans, blocked on 09-06 live UAT checkpoint. v2.2 roadmap just created — 4 phases (10-13), no plans decomposed yet.
 
 *Updated after each plan completion*
 
@@ -64,14 +71,12 @@ Last activity: 2026-07-11 — Milestone v2.2 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- v2.2: All 14 architecture decisions for natural avatar animation were resolved during wayfinder map khavee-ai/khavee-sdk#1 before this milestone started — roadmapping/implementation restates locked decisions, does not re-derive them
+- v2.2: Phase numbering continues from Phase 9 (v2.1) — this milestone starts at Phase 10, deliberately running in parallel with the still-in-progress Phase 9, not sequenced after it
+- v2.2: ASSET-01..04 (final CC0 clip/avatar sourcing) explicitly deferred to v2 / tracked in GitHub issue #17 — no phase created for them; ANIM/IDLE/TALK/TRANS work builds and tests against placeholder or existing (license-flagged, issue #11) clips meanwhile
+- v2.2: Phase 10 (shared module + crossfade) sequenced first as the foundation every other phase's procedural systems route through; Phase 13 (public API + perf tiers + verification) sequenced last since it configures/gates behavior built in Phases 10-12
 - v2.0: WordPress plugin targets `OpenAIRealtimeProvider` (full-duplex WebRTC), not `generic-stt-tts` — matches the WP embedding use case shape
 - v2.0: Custom mode only this milestone (self-configured); Platform mode is an explicit fast-follow blocked on a `khavee-app` backend addition
-- v2.0: Config-source and token-provider logic built as swappable PHP strategies (`ConfigSourceInterface`, `TokenProviderInterface`) from the start, each with exactly one concrete implementation this milestone
-- v2.0: PHP backend (Phase 6) sequenced first — proves the OpenAI ephemeral-token contract via `curl` before any JS exists, de-risking Phases 7-8
-- v2.0: Frontend bundle work folded into Phase 8 (Render Layer) rather than its own phase — no standalone requirement maps to bundle infrastructure alone; it's consumed entirely by EMBED-05/PERF-01
-- 06-04: OpenAI's `/v1/realtime/client_secrets` endpoint requires the session config nested under a top-level `session` key (not posted unwrapped) — confirmed via live curl against the real endpoint, fixed in `OpenAiDirectTokenProvider`
-- 06-04: OpenAI's realtime session schema has no top-level `voice` field — voice only exists at `session.audio.output.voice`; `SessionController::apply_trust_model()` now strips any client-sent top-level `voice` and always forces the nested path
-- 06-04: `wordpress-plugin/vendor/` is gitignored (Composer-regenerable); `composer.lock` is tracked despite zero current third-party deps, per application-package convention
 
 ### Pending Todos
 
@@ -79,38 +84,14 @@ None yet.
 
 ### Blockers/Concerns
 
-- *(none — the Settings page follow-up fix chain (260707-0u6 → 260707-oyu → 260707-wa2 → 260708-0rs → 260708-16h) is closed; all issues from the user's live re-test are now live-verified resolved, including a latent shared-VRM-scene bug in `@khaveeai/react` that the sizing fix incidentally surfaced)*
-- Single-instance regression check for the 260708-16h VRMAvatar fix (per-instance GLTFLoader.parseAsync replacing drei's useGLTF) was not live-verified against the main Next.js demo app in this session (no dev server confirmed running) — architecturally low-risk (unchanged single-parse behavior when only one instance exists) but worth a quick look next time that app is touched
+- v2.2: A stray untracked directory `.planning/phases/11-bone-masked-upper-body-animation-layering/` exists on disk (dated 2026-07-01, pre-dates this milestone's requirements) — not referenced by this roadmap and should not be treated as this milestone's real Phase 11; likely debris from an abandoned branch (see PROJECT.md's standing instruction not to mine `worktree-agent-*`/`fix/emotion-analyzer-provider-agnostic` branches). Flagged for cleanup, not blocking.
+- Phase 9 (v2.1): 09-06-PLAN.md (live UAT checkpoint) still pending — Block Studio not yet complete
 - Phase 5 (v1.0): VAD-loopback cooldown (currently a 500ms magic number tuned for OpenAI TTS) cannot be validated against JaiTTS until that service exists — must explicitly retest, not assume
-- Phase 6: The public REST token route must be genuinely anonymous (`permission_callback => '__return_true'`) — WP nonce-based auth does not protect anonymous visitors and silently breaks under page caching; rate limiting/daily cap must be designed in from the first implementation, not retrofitted
-- Phase 6: No official OpenAI documentation specifies per-IP/per-mint rate limits for the ephemeral-token endpoint — defensive rate-limiting design must be validated against actual OpenAI behavior at implementation time
-- Phase 6: `src/app/api/negotiate/route.ts` is explicitly NOT the reference pattern for this route — it implements a different SDP-relay contract; the WP route must implement the ephemeral-token-minting (`useProxy`) contract instead
-- Phase 7: VRM/GLB Media Library upload needs `upload_mimes` allow-listing AND binary magic-byte validation together — allow-list alone is a known disguised-file-upload vector
-- Phase 8: WordPress core's currently-bundled React version was not verified during research — affects the bundle-isolation-vs-externalization decision; check Gutenberg/WP core changelog before finalizing build config
-- Phase 8: Gutenberg block's `edit()` must use a separate `editorScript`/`viewScript` split — naively mounting the live SPA in the editor fires real mic prompts and OpenAI token mints on every admin keystroke
+- Phase 7/8 (v2.0): VRM/GLB Media Library upload allow-list + magic-byte validation, and the Gutenberg editor/view script split, are both live-verified and closed — no longer active concerns, retained here only if referenced by future gap-closure work
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260625-sqp | Wire up self-hosted auto-updates for wordpress-plugin via GitHub Releases (Plugin Update Checker + tag-triggered release workflow) | 2026-06-25 | d287f49 | [260625-sqp-wire-up-self-hosted-auto-updates-for-wor](./quick/260625-sqp-wire-up-self-hosted-auto-updates-for-wor/) |
-| 260703-slv | Add Khavee Platform API key integration to WordPress plugin config resolution (PlatformConfigSource decorator over WpOptionsConfigSource) | 2026-07-03 | bf16df8 | [260703-slv-add-khavee-platform-api-key-integration-](./quick/260703-slv-add-khavee-platform-api-key-integration-/) |
-| 260704-05c | Redesign admin Settings page + block sidebar UI (sectioned layout, per-field "Synced from Platform" pills + override disclosures, sidebar Global default/Custom segmented toggles) | 2026-07-04 | 37a985e | [260704-05c-redesign-the-khavee-admin-settings-page-](./quick/260704-05c-redesign-the-khavee-admin-settings-page-/) |
-| 260704-77n | Add a site-wide floating chat launcher (Settings toggle + wp_footer hook + FloatingWidget launcher/panel wrapping the existing avatar+chat pieces); live verification caught and fixed a GLB-load-failure/WebGL-context-loss regression that unmounted the whole widget (new AvatarErrorBoundary) | 2026-07-04 | 800b62d | [260704-77n-build-a-site-wide-floating-chat-launcher](./quick/260704-77n-build-a-site-wide-floating-chat-launcher/) |
-| 260705-p30 | Floating widget controls: remove unread dot, remove chat toggle, reposition mic bottom-right (floating-only, ControlBar gained showChatToggle/className props defaulting to inline-embed's current behavior), plus floating-specific bg color/transparency/avatar offset/scale settings independent of the global avatar config | 2026-07-05 | a77913b | [260705-p30-floating-widget-controls](./quick/260705-p30-floating-widget-controls/) |
-| 260706-vf4 | Live visual preview for floating widget Settings page: WP color picker + range sliders replacing blind text/number inputs, 360x520 live avatar preview reusing the existing khaveeai-preview bundle's generic DOM-observer path (zero bundle/build changes needed); live verification caught and fixed a real staleness bug in color-palette swatch clicks (Iris's irischange event fires before writing the new color into the DOM value) | 2026-07-06 | f310d5d | [260706-vf4-live-preview-floating-widget-settings](./quick/260706-vf4-live-preview-floating-widget-settings/) |
-| 260706-wop | Live camera-angle drag control for the floating widget Settings-page preview: orbit-drag in the preview writes back to a new floating-only "Floating camera angle" slider (bidirectional, via a new inverse-rotation math helper + a CustomEvent bridge since the preview mounts outside any React tree the Settings page controls), fully wired PHP layer, verified end-to-end including the actual live front-end floating widget | 2026-07-06 | 6b4f9e0 | [260706-wop-live-camera-angle-drag-preview](./quick/260706-wop-live-camera-angle-drag-preview/) |
-| 260706-x6b | Settings page visual redesign: card-based sections with branded flat-purple styling (mirrors packages/wp-bundle/styles.css's design tokens), two-column sticky-preview layout for the Floating Widget section only (fields left, live preview right, no scroll needed), responsive single-column fallback on narrow viewports; pure presentation pass, zero functional changes (all element IDs the 260706-vf4/260706-wop live-preview JS depends on verified intact) | 2026-07-06 | b60e2b4 | [260706-x6b-settings-page-redesign](./quick/260706-x6b-settings-page-redesign/) |
-| 260707-0u6 | Settings page fixes batch: floating-preview clarifying caption, removed Remove-Key checkboxes in favor of blank-and-save removal, live avatar preview in Avatar section, purple accent-color on range/checkbox inputs, static mock chat transcript in Floating Widget preview, transparent-toggle bug fix attempt #1 (Canvas `key`-prop remount). Automated checks all pass; live human verification incomplete — user's live re-test surfaced 3 outstanding problems (avatar preview layout position, mock chat not nested in chat-box wrapper, transparent-toggle bug still occurring) carried forward as a follow-up task | 2026-07-07 | 724663c (merge c3c8896) | [260707-0u6-settings-page-fixes-batch](./quick/260707-0u6-settings-page-fixes-batch/) |
-| 260707-oyu | Settings page follow-up fixes: Avatar section preview moved into a two-column layout (mirrors Floating Widget), mock chat bubbles rewired into a real chat-box wrapper (header + bounded transcript) matching ChatBox.tsx — both live-verified working. Also attempted a fix for the transparent-toggle bug (disproved the prior `key`-prop-remount hypothesis via source trace, simplified the Canvas `gl` prop) — live-verified this did NOT resolve the bug; root cause was elsewhere (see 260707-wa2) | 2026-07-07 | 3f4fa74 (merge 5467395) | [260707-oyu-settings-page-follow-up-fixes](./quick/260707-oyu-settings-page-follow-up-fixes/) |
-| 260707-wa2 | Transparent-toggle bug — genuine fix (3rd attempt). Live DOM inspection found the real root cause: `SettingsPage.php`'s belt-and-braces `input`/`change` listeners passed `rebuild` directly to `addEventListener`, so the browser invoked `rebuild(event)` — the native DOM Event leaked into `rebuild`'s `colorOverride` param, corrupting `bgColor` into a serialized Event object on every checkbox/slider interaction. Fixed by wrapping both listeners in zero-arg closures. Live-verified in wp-env: 3 rapid check/uncheck cycles reliably restore the background; slider regression check passed | 2026-07-07 | a9ea603 (merge cbe0225) | [260707-wa2-transparent-toggle-genuine-fix](./quick/260707-wa2-transparent-toggle-genuine-fix/) |
-| 260708-0rs | Preview mount container sizing fix: added missing `containerWidth`/`containerHeight` to both Settings-page preview mount configs (Avatar 280x340, Floating 360x520) — the React container div had no ancestor height to resolve percentage sizing from, so the canvas was collapsing to ~140-180px instead of filling its box. Live verification surfaced a separate latent bug (see 260708-16h) that this sizing fix exposed but did not cause; once that companion fix landed, both previews fill their boxes correctly | 2026-07-08 | 4780b42 (merge a4bb768) | [260708-0rs-preview-mount-container-sizing-fix](./quick/260708-0rs-preview-mount-container-sizing-fix/) |
-| 260708-16h | VRMAvatar shared-scene multi-instance fix (in `@khaveeai/react`, not just wp-plugin): `useGLTF`'s global-by-URL cache meant two simultaneous `<VRMAvatar src="same-url">` instances (both Settings-page previews) shared literally the same `scene`/`VRM` object — mounting it in a second Canvas reparented it away from the first, leaving one preview blank. Researched (three-vrm has no clone API; scene.clone()/SkeletonUtils.clone are insufficient since the VRM's humanoid/expressionManager/springBoneManager still reference the original bones) and fixed via a new `useLoadVRM(src)` hook that runs an independent per-instance `GLTFLoader.parseAsync()` + `VRMLoaderPlugin`, with a module-level buffer cache to avoid redundant fetches. A second regression (idle animation not autoplaying, avatar stuck in T-pose) was caught during live verification and fixed in the same task — the animation-switching effect's dependency array was missing `processedClips`, a bug only exposed once loading became async instead of Suspense-based. Live-verified: both previews render independently, orbit-dragging one doesn't affect the other, idle pose correct | 2026-07-08 | 4396b77, b90faeb, 107a562 | [260708-16h-vrmavatar-shared-scene-instance-fix](./quick/260708-16h-vrmavatar-shared-scene-instance-fix/) |
-| 260708-1ws | Floating Widget preview now structurally matches the real front-end widget: extracted `PreviewAvatarCanvas` (reusable avatar Canvas), extended `PreviewChatBox` with static example bubbles, added `PreviewFloatingWidget` mirroring `FloatingWidget.tsx`'s exact CSS classes (`.khaveeai-floating-panel/header/avatar-area/chat`) — purple header with title/subtitle/close, fixed 200px avatar area with a static non-functional "Click to talk" pill, chat filling the rest. `previewMode:'floating'` gates the new layout to only the Floating Widget mount (Avatar section + Gutenberg editor previews unaffected). Removed the now-dead PHP `render_floating_preview_mock_chat()`. STUDIO-02 safety preserved (build-time assertion passed). Live-verified: panel renders correctly, transparent-toggle fix still works, Avatar section preview unchanged | 2026-07-08 | 77ef12d, c070ac3, 4053042, 746cbd6 | [260708-1ws-floating-preview-real-widget-parity](./quick/260708-1ws-floating-preview-real-widget-parity/) |
-| 260708-nh0 | Floating widget header tweaks (both real widget and preview, edited together since 260708-1ws made them mirror each other): removed the "Usually replies instantly" subtitle entirely; reduced `.khaveeai-floating-header` padding from 16px/18px to 12px/18px for a visibly thinner bar. Rebuilt all 4 bundle artifacts. Live-verified: header shows only "AI Assistant", thinner bar, close button/title still properly aligned, no other panel changes | 2026-07-08 | 2a2e7ed, 023b2dc | [260708-nh0-thin-header-remove-subtitle](./quick/260708-nh0-thin-header-remove-subtitle/) |
-| 260709-g4v | Cross-repo bug fix: `PlatformClient::map_platform_fields()`'s synced "Instructions" field only ever reflected `voiceProfile.instructionPrompt` (a short voice-tone fragment), ignoring the `personality` object the platform API already returns. Root-caused by reading khavee-app's own `buildPersonalityInstructions()` (the platform's real composition logic) directly. Ported it into a new `build_personality_instructions()` PHP method (12 sections: Identity/Memory/Language & Voice/Thai Speech Rules (conditional)/Response Length/Personality/How to Talk/Hard Rules/If Someone Is Rude/Opening/Knowledge/Examples), verified byte-for-byte against the TS source. Updated 2 harness tests that asserted the old raw-passthrough bug, added 4 new cases. Live-verified: Settings page now shows the full composed multi-section prompt instead of the one-line fragment | 2026-07-09 | 10a8069, 305a627 | [260709-g4v-platform-instructions-full-composition-fix](./quick/260709-g4v-platform-instructions-full-composition-fix/) |
-| 260709-gyv | Removed the static, non-functional "Click to talk" pill button from the Floating Widget Settings-page preview (`PreviewFloatingWidget.tsx`), per direct user request. Real front-end widget's functional ClickToTalkOverlay untouched (preview-only change). Rebuilt bundle, live-verified button gone, rest of panel unchanged | 2026-07-09 | 79333ea (direct edit) | [260709-gyv-remove-click-to-talk-preview](./quick/260709-gyv-remove-click-to-talk-preview/) |
-| 260709-mdb | "Personality / Instructions" (Synced from Platform) preview box was plain `esc_html()`, collapsing the 260709-g4v composed multi-section instructions into one run-on paragraph. Added a scoped markdown-lite renderer (`##`/`###` headings, `- ` bullets, line breaks, each fragment still `esc_html()`-escaped) plus `max-height:280px; overflow-y:auto` so long compositions scroll. Only the instructions field uses it; voice/avatar-name preview fields unchanged. Live-verified: headers bold, line breaks preserved, box scrollable | 2026-07-09 | direct edit | [260709-mdb-instructions-markdown-scrollable](./quick/260709-mdb-instructions-markdown-scrollable/) |
+See prior STATE.md history / `.planning/quick/` directory for the full v2.0/v2.1 quick-task log (not repeated here to keep this file under the size budget).
 
 ## Deferred Items
 
@@ -118,13 +99,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Assets | ASSET-01..04 (final CC0 clips for stopped/listening/thinking, 2nd speaking variant, verified GLB rig) | Deferred to v2, tracked in GitHub issue #17 | v2.2 requirements definition (2026-07-12) |
 
 ## Session Continuity
 
-Last session: 2026-07-07T09:12:18.084Z
-Stopped at: context exhaustion at 75% (2026-07-07)
-Resume file: None
-
-Last activity: 2026-07-09 - Completed quick task 260709-mdb: Instructions preview now renders markdown-lite headers/bullets/line-breaks in a scrollable box instead of one collapsed run-on paragraph, live-verified
-</content>
+Last session: 2026-07-12T06:16:09.353Z
+Stopped at: Phase 10 context gathered
+Resume file: .planning/phases/10-shared-animation-architecture-crossfade-engine/10-CONTEXT.md

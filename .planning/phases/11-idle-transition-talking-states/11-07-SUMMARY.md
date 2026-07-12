@@ -108,3 +108,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-idle-transition-talking-states*
 *Completed: 2026-07-13*
+
+## Self-Check: PASSED
+
+All 5 created/modified source files and 2 planning artifacts confirmed present on disk; all 5 commits (d00b36d, fc05cf5, 7a783c6, 939a231, 35bad87) confirmed present in git log.

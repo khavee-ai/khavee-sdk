@@ -325,7 +325,7 @@ Plans:
 
 **Wave 3** *(blocked on 10-01/10-02)*
 
-- [ ] 10-03-PLAN.md — Wire VRMAvatar + GLBAvatar to the shared controller; remove VRM's linear crossfade + inline blink and GLB's setTimeout loop-back + dead second mixer + linear crossfade (GLB uses drei's real mixer); add glb-avatar-test verification page (ANIM-01, ANIM-02, ANIM-03, XFADE-01)
+- [x] 10-03-PLAN.md — Wire VRMAvatar + GLBAvatar to the shared controller; remove VRM's linear crossfade + inline blink and GLB's setTimeout loop-back + dead second mixer + linear crossfade (GLB uses drei's real mixer); add glb-avatar-test verification page (ANIM-01, ANIM-02, ANIM-03, XFADE-01)
 
 **Wave 4** *(blocked on 10-03 — human-verify checkpoint)*
 
@@ -394,7 +394,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
-| 10. Shared Animation Architecture & Crossfade Engine | 2/4 | In Progress|  |
+| 10. Shared Animation Architecture & Crossfade Engine | 3/4 | In Progress|  |
 | 11. Idle, Transition & Talking States | 0/TBD | Not started | - |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

@@ -354,8 +354,8 @@ Plans:
 
 **Wave 2** *(blocked on 11-01 — procedural modules, parallel, zero file overlap)*
 
-- [ ] 11-03-PLAN.md — breathing.ts (chest/spine) + sway.ts (hips/spine, independent period) + expressionDrift.ts (VRM-only), all additive ref-driven steppers (IDLE-01, IDLE-02, PERF-01)
-- [ ] 11-04-PLAN.md — talkCycle.ts (loop-boundary variant cycling, ~2s dwell, timer-free) + audioAmplitude.ts (speaking-only volume→amplitude scale) (TALK-01, TALK-02)
+- [x] 11-03-PLAN.md — breathing.ts (chest/spine) + sway.ts (hips/spine, independent period) + expressionDrift.ts (VRM-only), all additive ref-driven steppers (IDLE-01, IDLE-02, PERF-01)
+- [x] 11-04-PLAN.md — talkCycle.ts (loop-boundary variant cycling, ~2s dwell, timer-free) + audioAmplitude.ts (speaking-only volume→amplitude scale) (TALK-01, TALK-02)
 
 **Wave 3** *(blocked on 11-01/02/03/04 — controller integration)*
 
@@ -415,6 +415,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 2/6 | In Progress|  |
+| 11. Idle, Transition & Talking States | 4/6 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

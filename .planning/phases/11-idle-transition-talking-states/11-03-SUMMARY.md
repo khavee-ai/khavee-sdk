@@ -113,3 +113,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-idle-transition-talking-states*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+All created files verified present on disk; all 6 commit hashes (dc9293f, d6826bb, dccead0, 70d0438, 0a2135d, 1eea4a9) verified present in git log.

@@ -44,6 +44,35 @@ export interface AvatarFormatAdapter {
   getBoneNode(name: string): THREE.Object3D | null;
 
   /**
+   * Resolves a bone by VRM humanoid ROLE, not literal scene-graph name.
+   *
+   * Unlike `getBoneNode`, this method must NEVER fall back to a hardcoded
+   * literal-name guess — VRM literal node names are not standardized across
+   * models (verified: `male.vrm`'s chest bone is named `"J_Bip_C_Chest"`
+   * while `blacknwhitecat.vrm`'s is named `"chest"`). Resolving by role
+   * instead of name is the only way to reliably find "the chest bone" (or
+   * spine/hips/etc.) across every VRM rig.
+   *
+   * For VRM, this MUST be backed by `vrm.humanoid.getNormalizedBoneNode(role)`
+   * (the proven, standards-based VRM humanoid API — see
+   * `packages/react/src/utils/remapMixamoAnimationToVrm.ts`), never a
+   * literal-name lookup.
+   *
+   * GLB implementations may use a literal-name lookup ONLY when the format's
+   * bundled asset happens to name its nodes to match the role strings
+   * directly (e.g. `happy.glb`'s `chest`/`spine`/`hips`/`neck`/`head` nodes)
+   * — this is a property of that specific asset, not a general guarantee.
+   *
+   * @param role - One of the six VRM humanoid bone roles used by this SDK's
+   *   procedural motion layer (breathing, sway, etc.).
+   * @returns The matching `THREE.Object3D`, or `null` if the role cannot be
+   *   resolved (e.g. scene not yet loaded, or format has no mapping for it).
+   */
+  getHumanoidBoneNode(
+    role: "hips" | "spine" | "chest" | "upperChest" | "neck" | "head",
+  ): THREE.Object3D | null;
+
+  /**
    * Returns the VRM expression manager driving blendshape-based
    * expressions (blink, mouth shapes, etc.), or `null` for formats with no
    * expression system (GLB).

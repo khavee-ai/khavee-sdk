@@ -14,7 +14,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type { ChatStatus } from "@khaveeai/core";
-import { beginCrossfade, stepCrossfade, type BlendState } from "./crossfade";
+import { beginCrossfade, stepCrossfade, easeInOutCubic, type BlendState } from "./crossfade";
 import { useBlink } from "./blink";
 import { useBreathing } from "./breathing";
 import { useSway } from "./sway";
@@ -44,6 +44,16 @@ const _spineComposedScratch = new THREE.Quaternion();
 // decision block near STATUS_CLIP_PATTERNS above; issue #17 tracks the real
 // dedicated goodbye clip).
 const SETTLE_SCALE = 0.15;
+
+// TRANS-02 gap closure (11-07): the settle scale above used to be applied
+// as an instant binary cut (`chatStatus === "stopped" ? SETTLE_SCALE : 1`),
+// producing a visible snap the moment `stopped` was entered or left. This
+// ramp window eases that transition over the same ~1.2s floor already used
+// for the starting/stopped base-clip crossfade in `switchToClip` (TRANS-01/
+// 02), so the procedural-amplitude settle and the base-clip crossfade
+// resolve over the same window in BOTH directions (entering AND leaving
+// `stopped`).
+const SETTLE_RAMP_SECONDS = 1.2;
 
 // PERF-01 bounded magnitude: max combined per-frame angular delta (radians)
 // breathing+sway may jointly apply to the shared spine bone, measured
@@ -184,6 +194,12 @@ export function useAnimationController(params: {
   });
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const currentClipNameRef = useRef<string | null>(null);
+  // TRANS-02 eased settle ramp state — never useState, mutated every frame
+  // in update() step 3 (same per-frame-state convention as the refs above).
+  // `current` is the live eased value consumed as settleScale; `from`/
+  // `target` capture the ramp's endpoints; `elapsed` accumulates seconds
+  // since the ramp's current leg (toward `target`) began.
+  const settleRampRef = useRef({ current: 1, from: 1, target: 1, elapsed: 0 });
 
   const targetName = resolveBaseClip(chatStatus, currentAnimation, availableNames);
 
@@ -276,15 +292,31 @@ export function useAnimationController(params: {
 
     // 3. TALK-02: amplitudeScale scales procedural amplitude UP while
     // speaking, proportional to live TTS volume; it is exactly 1 (neutral)
-    // for every other status. TRANS-02 (D-01 placeholder): settleScale
+    // for every other status. TRANS-02 gap closure (11-07): settleScale
     // damps procedural amplitude DOWN while stopped, producing the settle
-    // cue. `speaking` and `stopped` are mutually exclusive ChatStatus
-    // values, so amplitudeScale and settleScale never both deviate from 1
-    // in the same frame — multiplying them is always equivalent to
-    // whichever one is currently active (or 1 * 1 = 1 the rest of the
-    // time).
+    // cue — but now EASES toward its target over SETTLE_RAMP_SECONDS via
+    // easeInOutCubic instead of applying an instant binary cut, in BOTH
+    // directions (entering `stopped` damps down; leaving it back into any
+    // live state ramps back up to full amplitude). This closes the
+    // reported TRANS-02 snap (entering `stopped`) and smooths the
+    // corresponding TRANS-01 amplitude jump when leaving it. `speaking` and
+    // `stopped` are mutually exclusive ChatStatus values, so amplitudeScale
+    // and settleScale never both deviate from 1 in the same frame —
+    // multiplying them is always equivalent to whichever one is currently
+    // active (or 1 * 1 = 1 the rest of the time).
+    const settleTarget = chatStatus === "stopped" ? SETTLE_SCALE : 1;
+    const ramp = settleRampRef.current;
+    if (settleTarget !== ramp.target) {
+      ramp.from = ramp.current;
+      ramp.target = settleTarget;
+      ramp.elapsed = 0;
+    }
+    ramp.elapsed += delta;
+    const rampT = Math.min(ramp.elapsed / SETTLE_RAMP_SECONDS, 1);
+    ramp.current = ramp.from + (ramp.target - ramp.from) * easeInOutCubic(rampT);
+
     const amplitudeScale = volumeToAmplitudeScale(currentVolume ?? 0, chatStatus);
-    const settleScale = chatStatus === "stopped" ? SETTLE_SCALE : 1;
+    const settleScale = ramp.current;
     const proceduralScale = amplitudeScale * settleScale;
 
     // 4. Capture the spine bone's orientation BEFORE any procedural write
@@ -330,13 +362,13 @@ export function useAnimationController(params: {
     }
 
     // 8. Expression drift (VRM-only; automatic no-op on GLB via the
-    // adapter's null expression manager). Skipped entirely while
-    // `stopped` — this is the facial half of the TRANS-02 settle cue:
-    // rest-state facial "life" pauses along with the damped body motion
-    // above, rather than being separately scaled.
-    if (chatStatus !== "stopped") {
-      expressionDrift.step(adapter, delta);
-    }
+    // adapter's null expression manager). TRANS-02 gap closure (11-07):
+    // previously hard-gated off entirely while `stopped`; now always runs,
+    // passing the same eased `settleScale` ramp the body's breathing/sway
+    // consume via `proceduralScale` (step 3 above) as its amplitudeScale.
+    // Facial drift now damps/restores with the same eased ~1.2s ramp as the
+    // body instead of hard-cutting on/off at the `stopped` boundary.
+    expressionDrift.step(adapter, delta, settleScale);
 
     // 9. Talk-cycle (TALK-01/02): the ONLY place talk variants advance,
     // driven by loop-boundary + dwell floor detection inside talkCycle.ts,

@@ -119,3 +119,7 @@ None - no external service configuration required. Both modules are pure/interna
 ---
 *Phase: 11-idle-transition-talking-states*
 *Completed: 2026-07-13*
+
+## Self-Check: PASSED
+
+All 4 created source/test files and the SUMMARY.md verified present on disk; all 5 commits (2 test, 2 feat, 1 docs) verified present in `git log`.

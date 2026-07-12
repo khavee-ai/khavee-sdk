@@ -19,27 +19,47 @@ import { useBlink } from "./blink";
 import type { AvatarFormatAdapter } from "./types";
 
 /**
+ * Per-status naming convention: when a chatStatus has an entry here and
+ * `availableNames` contains a clip matching its pattern, that clip is
+ * preferred over the manually-set `currentAnimation`. Statuses without an
+ * entry (`ready`) always fall through to `currentAnimation`/first-available.
+ *
+ * This is timer-free and clip-set-agnostic — a clip set with conventionally
+ * named files (e.g. containing "listen", "think", "welcome"/"greet",
+ * "stop"/"bye") auto-wires for that status with zero further code changes,
+ * the same mechanism `speaking` already used before this table existed.
+ */
+const STATUS_CLIP_PATTERNS: Partial<Record<ChatStatus, RegExp>> = {
+  speaking: /talk|gesture|speak/i,
+  listening: /listen/i,
+  thinking: /think/i,
+  starting: /welcome|greet|hello|intro/i,
+  stopped: /stop|bye|goodbye|outro/i,
+};
+
+/**
  * Pure function mapping the current chatStatus + manual `animate()` override
  * to a target base-clip name.
  *
- * This phase's mapping is deliberately minimal and timer-free: `speaking`
- * prefers a talk/gesture/speak-named clip when one is available in
- * `availableNames`; every other status (and the `speaking` fallback when no
- * talk clip exists) simply returns the manually-set `currentAnimation`,
- * falling back to the first available clip, then null.
+ * Looks up `chatStatus` in `STATUS_CLIP_PATTERNS`; if a pattern exists and a
+ * clip in `availableNames` matches it, that clip wins. Otherwise (no pattern
+ * for this status, or no matching clip name) falls back to the manually-set
+ * `currentAnimation`, then the first available clip, then null.
  *
- * Phase 11 (TRANS-01/02, TALK-01/02) extends this with real per-state clip
- * tables, dedicated greeting/goodbye clips, 2+ talk variants, and loop-
- * boundary-driven cycling — none of that richness is built here.
+ * Phase 11 (TRANS-01/02, TALK-01/02) still owns the richer systems this
+ * table does not attempt: loop-boundary-driven cycling, minimum-duration
+ * enforcement for starting/stopped, and multiple talk-clip variants — this
+ * is naming-convention resolution only, not those systems.
  */
 export function resolveBaseClip(
   chatStatus: ChatStatus,
   currentAnimation: string | null,
   availableNames: string[],
 ): string | null {
-  if (chatStatus === "speaking") {
-    const talkClip = availableNames.find((name) => /talk|gesture|speak/i.test(name));
-    if (talkClip) return talkClip;
+  const pattern = STATUS_CLIP_PATTERNS[chatStatus];
+  if (pattern) {
+    const match = availableNames.find((name) => pattern.test(name));
+    if (match) return match;
   }
   return currentAnimation ?? availableNames[0] ?? null;
 }

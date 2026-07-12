@@ -29,7 +29,27 @@ describe("resolveBaseClip", () => {
     expect(result).toBe("idle");
   });
 
+  it("listening: prefers a listen-named clip when one exists", () => {
+    const result = resolveBaseClip("listening", "idle", ["idle", "listen_loop"]);
+    expect(result).toBe("listen_loop");
+  });
+
+  it("listening: falls back to currentAnimation when no listen clip exists", () => {
+    const result = resolveBaseClip("listening", "idle", ["idle", "talk_01"]);
+    expect(result).toBe("idle");
+  });
+
   it("thinking: returns currentAnimation when set", () => {
+    const result = resolveBaseClip("thinking", "idle", ["idle", "talk_01"]);
+    expect(result).toBe("idle");
+  });
+
+  it("thinking: prefers a think-named clip when one exists", () => {
+    const result = resolveBaseClip("thinking", "idle", ["idle", "think_pose"]);
+    expect(result).toBe("think_pose");
+  });
+
+  it("thinking: falls back to currentAnimation when no think clip exists", () => {
     const result = resolveBaseClip("thinking", "idle", ["idle", "talk_01"]);
     expect(result).toBe("idle");
   });
@@ -39,7 +59,22 @@ describe("resolveBaseClip", () => {
     expect(result).toBe("greet");
   });
 
+  it("starting: prefers a welcome/greet-named clip when one exists", () => {
+    const result = resolveBaseClip("starting", "idle", ["idle", "welcome_wave"]);
+    expect(result).toBe("welcome_wave");
+  });
+
   it("stopped: returns currentAnimation when set", () => {
+    const result = resolveBaseClip("stopped", "idle", ["idle", "talk_01"]);
+    expect(result).toBe("idle");
+  });
+
+  it("stopped: prefers a stop/bye-named clip when one exists", () => {
+    const result = resolveBaseClip("stopped", "idle", ["idle", "goodbye_wave"]);
+    expect(result).toBe("goodbye_wave");
+  });
+
+  it("stopped: falls back to currentAnimation when no stop clip exists", () => {
     const result = resolveBaseClip("stopped", "idle", ["idle", "talk_01"]);
     expect(result).toBe("idle");
   });

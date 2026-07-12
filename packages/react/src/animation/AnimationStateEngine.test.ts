@@ -19,8 +19,12 @@ describe("resolveBaseClip", () => {
     expect(result).toBe("idle");
   });
 
-  it("ready: returns currentAnimation when set", () => {
-    const result = resolveBaseClip("ready", "wave", ["idle", "wave"]);
+  it("ready: returns currentAnimation when set and no available clip matches the ready pattern", () => {
+    // Fixture deliberately avoids "idle"/"ready"/"rest"-named clips (Task 1
+    // added a `ready` STATUS_CLIP_PATTERNS entry — see the precedence
+    // regression test below) so this exercises the fallback branch, not the
+    // pattern-match branch.
+    const result = resolveBaseClip("ready", "wave", ["custom1", "wave"]);
     expect(result).toBe("wave");
   });
 
@@ -87,5 +91,25 @@ describe("resolveBaseClip", () => {
   it("empty availableNames + null currentAnimation returns null", () => {
     const result = resolveBaseClip("ready", null, []);
     expect(result).toBeNull();
+  });
+
+  it("ready: resolves a conventionally-named idle-loop clip via the new ready pattern", () => {
+    const result = resolveBaseClip("ready", null, ["State 1 Idle (loop)", "Pose"]);
+    expect(result).toBe("State 1 Idle (loop)");
+  });
+
+  it("speaking: resolves happy.glb's 'Taking' placeholder clip via the extended speaking regex", () => {
+    const result = resolveBaseClip("speaking", null, ["State 4 Taking (loop)"]);
+    expect(result).toBe("State 4 Taking (loop)");
+  });
+
+  it("ready-pattern precedence regression: a non-matching explicit currentAnimation still wins over availableNames when no clip matches /idle|ready|rest/i", () => {
+    // "customAnim42" deliberately does NOT match /idle|ready|rest/i (unlike
+    // e.g. "customIdleName", which would wrongly pass via the pattern-match
+    // branch instead of exercising the fallback). This proves the added
+    // `ready` pattern is additive, not a silent override of an app's
+    // explicit, non-matching currentAnimation choice.
+    const result = resolveBaseClip("ready", "customAnim42", ["customAnim42", "OtherClip"]);
+    expect(result).toBe("customAnim42");
   });
 });

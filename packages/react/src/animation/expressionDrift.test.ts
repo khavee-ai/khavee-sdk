@@ -114,6 +114,7 @@ describe("stepExpressionDrift", () => {
     const stateFull = createExpressionDriftState();
     stateFull.period = 8.0;
     stateFull.phase = Math.PI / 2; // peak of the half-rectified sine
+    stateFull.phaseOffsets.relaxed = 0; // pin offset so both instances compare at the same effective phase
     stepExpressionDrift(stateFull, adapterFull, 0, 1);
     const fullWeight = emFull.getValue("relaxed");
 
@@ -122,6 +123,7 @@ describe("stepExpressionDrift", () => {
     const stateHalf = createExpressionDriftState();
     stateHalf.period = 8.0;
     stateHalf.phase = Math.PI / 2;
+    stateHalf.phaseOffsets.relaxed = 0;
     stepExpressionDrift(stateHalf, adapterHalf, 0, 0.5);
     const halfWeight = emHalf.getValue("relaxed");
 

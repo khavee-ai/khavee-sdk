@@ -363,11 +363,11 @@ Plans:
 
 **Wave 4** *(blocked on 11-05 — objective gates + blocking human-verify)*
 
-- [ ] 11-06-PLAN.md — Objective invariant gates (timer-free, additive-not-overwrite, internal-only) + per-state human verification against the wayfinder checklist (all 7 requirements)
+- [x] 11-06-PLAN.md — Objective invariant gates (timer-free, additive-not-overwrite, internal-only) + per-state human verification against the wayfinder checklist (all 7 requirements)
 
 **Wave 5** *(gap closure — 11-06 human verification found IDLE-02/TRANS-01/TRANS-02/TALK-01 failing on a live build; root causes diagnosed in 11-06-SUMMARY.md)*
 
-- [ ] 11-07-PLAN.md — Fix the 3 diagnosed animation-timing bugs: drop unstable getAction from the crossfade-effect deps + memoize accessors + talkCycle-owns-speaking guard (TALK-01/TRANS-01), ease the stopped-settle scale over ~1.2s instead of an instant cut (TRANS-02), and fix expression drift to target present/visible VRoid candidates (relaxed/happy) with drift-ownership tracking instead of the self-freezing non-zero guard (IDLE-02)
+- [x] 11-07-PLAN.md — Fix the 3 diagnosed animation-timing bugs: drop unstable getAction from the crossfade-effect deps + memoize accessors + talkCycle-owns-speaking guard (TALK-01/TRANS-01), ease the stopped-settle scale over ~1.2s instead of an instant cut (TRANS-02), and fix expression drift to target present/visible VRoid candidates (relaxed/happy) with drift-ownership tracking instead of the self-freezing non-zero guard (IDLE-02)
 - [ ] 11-08-PLAN.md — Re-verify: objective invariant + fix-landed gates + full test suite, then blocking human re-check of the 4 previously-failing behaviors plus a re-check of IDLE-01/TALK-02/PERF-01 against the wayfinder checklist
 
 **UI hint**: yes
@@ -420,6 +420,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 5/6 | In Progress|  |
+| 11. Idle, Transition & Talking States | 7/8 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

@@ -17,7 +17,7 @@ import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
-import { KhaveeProvider, VRMAvatar, useRealtime } from '@khaveeai/react';
+import { KhaveeProvider, VRMAvatar, useRealtime, type AnimationConfig } from '@khaveeai/react';
 
 const openaiProvider = new OpenAIRealtimeProvider({
   useProxy: true,
@@ -27,13 +27,23 @@ const openaiProvider = new OpenAIRealtimeProvider({
     'You are a helpful, conversational AI assistant. Keep responses natural and not too long, so lipsync and animation transitions are easy to observe.',
 });
 
+// Bundled Mixamo FBX fixtures (D-03) — without clips loaded, resolveBaseClip
+// always returns null and the avatar never crossfades (stays in bind pose).
+// "talking" matches resolveBaseClip's /talk|gesture|speak/i check, so it
+// plays automatically whenever chatStatus becomes "speaking".
+const AVATAR_ANIMATIONS: AnimationConfig = {
+  idle: '/models/animations/Idle.fbx',
+  talking: '/models/animations/talking.fbx',
+  talking1: '/models/animations/talking1.fbx',
+};
+
 function Scene() {
   return (
     <>
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1} />
       <Suspense fallback={null}>
-        <VRMAvatar src="/models/male.vrm" enableBlinking />
+        <VRMAvatar src="/models/male.vrm" animations={AVATAR_ANIMATIONS} enableBlinking />
       </Suspense>
       <OrbitControls target={[0, 1, 0]} />
     </>

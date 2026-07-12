@@ -4,7 +4,8 @@
 
 - ✅ **v1.0 Generic Voice Pipeline** - Phases 1-5 (Phase 5 in progress)
 - ✅ **v2.0 WordPress Plugin (Custom Mode)** - Phases 6-8 (complete)
-- 🚧 **v2.1 Block Studio (Visual Config, Chat & Lip-Sync)** - Phase 9 (planning)
+- 🚧 **v2.1 Block Studio (Visual Config, Chat & Lip-Sync)** - Phase 9 (in progress)
+- 🚧 **v2.2 Natural Avatar Animation** - Phases 10-13 (planning; started alongside v2.1 per explicit user direction)
 
 ## Phases
 
@@ -35,6 +36,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### v2.1 Block Studio (Visual Config, Chat & Lip-Sync)
 
 - [ ] **Phase 9: Block Studio — Visual Config, Live Preview, Chat & Lip-Sync** - Expand the Gutenberg block with Tier-1 visual/layout config knobs, a safe live 3D editor preview (no mic/token), an integrated ChatBox, and SDK-driven talking (lip-sync) animation
+
+### v2.2 Natural Avatar Animation
+
+- [ ] **Phase 10: Shared Animation Architecture & Crossfade Engine** - One shared internal state+procedural module, consumed by both `VRMAvatar` and `GLBAvatar` via a format-adapter interface, replacing the old ad-hoc switching code, with pose-gap-adaptive eased crossfades for every transition
+- [ ] **Phase 11: Idle, Transition & Talking States** - Natural breathing/sway/expression-drift idle motion, dedicated starting/stopped moments with a minimum duration floor, loop-boundary-driven talk-clip cycling, and audio-reactive procedural amplitude
+- [ ] **Phase 12: Gaze & Gesture** - Camera-relative soft gaze/attention per state and LLM tool-called nod/shake gestures queued to the next natural loop boundary
+- [ ] **Phase 13: Public API, Performance Tiers & Verification** - `enableNaturalMotion` + granular overrides, reserved-key `animations` prop, zero-config full behavior, tiered graceful degradation under frame pressure, and sign-off against the locked verification checklist
 
 ## Phase Details
 
@@ -293,12 +301,87 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 10: Shared Animation Architecture & Crossfade Engine
+
+**Goal**: `VRMAvatar` and `GLBAvatar` are both driven by one shared internal animation-state module (state layer + procedural delta layer) via a format-adapter interface, replacing today's format-specific ad-hoc switching code, with every chatStatus transition crossfading on an eased, pose-gap-adaptive timing curve
+**Depends on**: Nothing (independent of Phase 9; builds on the existing, pre-dating-both-milestones `VRMAvatar.tsx`/`GLBAvatar.tsx` code)
+**Requirements**: ANIM-01, ANIM-02, ANIM-03, XFADE-01
+**Success Criteria** (what must be TRUE):
+
+  1. `VRMAvatar` and `GLBAvatar` both drive their chatStatus-triggered animation through one shared internal module (not two separate implementations), reached via a format-adapter exposing `getMixer()`, `getBoneNode(name)`, and `getExpressionManager()`
+  2. `VRMAvatar.tsx`'s old `useEffect`+if-statement chatStatus switching and `GLBAvatar.tsx`'s old `setTimeout`-driven loop-back-to-idle pattern are both gone from the codebase
+  3. Any chatStatus transition crossfades with an `easeInOutCubic`-eased blend whose duration (0.3-0.9s) visibly scales with how much the pose differs between the outgoing and incoming animation's single most-displaced bone, not a fixed duration and not an average-displacement calculation
+  4. VRM/GLB model loading and parsing (`useLoadVRM`, `useGLTF`) behaves exactly as it does today — unaffected by the new shared module
+
+**Plans**: 4 plans
+Plans:
+**Wave 1**
+
+- [ ] 10-01-PLAN.md — Crossfade engine (easeInOutCubic + max-not-average pose-gap + 0.3-0.9s adaptive duration + begin/step ramp) + AvatarFormatAdapter interface + vitest infra for packages/react (XFADE-01, ANIM-01)
+
+**Wave 2** *(blocked on 10-01)*
+
+- [ ] 10-02-PLAN.md — Blink migration into procedural delta layer (D-01, ref-driven, adapter-gated) + AnimationStateEngine (pure resolveBaseClip state layer + useAnimationController hook, timer-free) (ANIM-01, XFADE-01)
+
+**Wave 3** *(blocked on 10-01/10-02)*
+
+- [ ] 10-03-PLAN.md — Wire VRMAvatar + GLBAvatar to the shared controller; remove VRM's linear crossfade + inline blink and GLB's setTimeout loop-back + dead second mixer + linear crossfade (GLB uses drei's real mixer); add glb-avatar-test verification page (ANIM-01, ANIM-02, ANIM-03, XFADE-01)
+
+**Wave 4** *(blocked on 10-03 — human-verify checkpoint)*
+
+- [ ] 10-04-PLAN.md — Objective gates (max-not-average test, zero-live-clock grep) + blocking human-verify of visible pose-gap-adaptive crossfade + no VRM/GLB loading regression (XFADE-01, ANIM-02, ANIM-01, ANIM-03)
+
+### Phase 11: Idle, Transition & Talking States
+
+**Goal**: The `ready`/`stopped` idle base, the `starting`/`stopped` transition moments, and the `speaking` talk cycle all read as alive and natural rather than static or robotic, with procedural systems on the same bone composing safely instead of overwriting each other
+**Depends on**: Phase 10 (shared module + crossfade engine must exist first)
+**Requirements**: IDLE-01, IDLE-02, TRANS-01, TRANS-02, TALK-01, TALK-02, PERF-01
+**Success Criteria** (what must be TRUE):
+
+  1. Left idle (`ready`/`stopped`) undisturbed for 30+ seconds, the avatar shows continuous, randomized-range procedural breathing (chest/spine) and an independent weight-shift sway (hip/spine) cycle
+  2. On a VRM avatar, idle additionally shows subtle randomized drift across 1-2 expression rest-state values; a GLB avatar in the same state shows no expression drift (it has no expression system)
+  3. Triggering a session start plays a dedicated greeting clip that lasts at least its ~1.0-1.5s minimum floor even when the pose-gap-adaptive crossfade alone would resolve faster; triggering session end plays a distinct dedicated goodbye clip (visibly different from idle) with the same minimum-duration floor
+  4. During 60+ seconds of continuous `speaking`, the talk clip cycles between 2+ variants only at natural loop-completion boundaries — never on a visible fixed interval — and no clip plays for less than its ~2s minimum dwell
+  5. Speaking louder or more quietly visibly changes the procedural motion's amplitude in real time (via `useAudioLipSync`'s live volume signal), but never changes which talk clip is selected or when the next cycle switch happens
+  6. When breathing and sway both write to the spine bone in the same frame, the combined rotation is produced by additive delta-quaternion `multiply()` in a fixed, documented order with a bounded combined magnitude — not one system's `.set()` overwriting the other's
+
+**Plans**: TBD
+
+### Phase 12: Gaze & Gesture
+
+**Goal**: The avatar visibly attends to the viewer or looks away appropriately per state, and the LLM can trigger a nod/shake gesture through its normal tool-calling response that plays without ever interrupting the ambient talk cycle
+**Depends on**: Phase 11 (procedural delta composition rule established; gestures are procedural deltas, not new clips)
+**Requirements**: GAZE-01, GAZE-02, GEST-01, GEST-02
+**Success Criteria** (what must be TRUE):
+
+  1. In `ready`, `listening`, and `speaking`, the avatar shows a soft, camera-relative gaze (no tracked-user-position dependency); in `thinking`, it shows a brief gaze aversion; `starting`/`stopped` show no separate gaze treatment
+  2. Gaze behaves identically (same bone-level mechanism) on a VRM and a GLB avatar — it is not gated behind or dependent on an expression system
+  3. The LLM emits a `nod`/`shake`/`none` gesture hint as part of its normal tool-calling response, with no separate classification call and no keyword/regex matching in the pipeline
+  4. A triggered gesture plays as a procedural bone-delta overlay (no new animation clip is loaded) and only begins at the ambient talk cycle's next natural loop boundary — it never interrupts a clip mid-play
+
+**Plans**: TBD
+
+### Phase 13: Public API, Performance Tiers & Verification
+
+**Goal**: A developer gets full natural avatar behavior with zero configuration, can selectively enable/disable/override it through a small documented flag surface, the procedural layer degrades gracefully instead of janking under sustained frame pressure, and the whole milestone is signed off against the locked verification checklist
+**Depends on**: Phase 10, Phase 11, Phase 12 (the public surface configures/gates behavior that must already exist)
+**Requirements**: API-01, API-02, API-03, API-04, PERF-02, VERIFY-01, VERIFY-02
+**Success Criteria** (what must be TRUE):
+
+  1. A developer can set `enableNaturalMotion={false}` to turn off all natural motion, leave it at its default `true` for full behavior, or flip individual flags (`enableBreathing`, `enableWeightShift`, `enableExpressionDrift`, etc.) for fine-grained control
+  2. The `animations` prop accepts the 6 reserved ChatStatus keys (`ready`, `starting`, `listening`, `thinking`, `speaking`, `stopped`) to override the default clip per state, while arbitrary custom keys continue to work unchanged for manual `animate(name)` calls
+  3. Mounting `<VRMAvatar src="..." />` or `<GLBAvatar src="..." />` with zero `animations` prop and zero natural-motion config still produces full natural behavior across all 6 states, and audio-reactive amplitude works automatically with no additional prop required
+  4. Under sustained simulated frame-budget pressure, blink never throttles, breathing/sway throttle first, expression drift throttles most aggressively, and audio-reactive amplitude stays tied to `useAudioLipSync`'s own update cadence rather than being independently throttled
+  5. A live build passes both sections of `.planning/phases/wayfinder-map-1-animation-architecture/VERIFICATION-CHECKLIST.md` — the objective code-level checklist and the subjective one-reviewer per-state pass/fail review
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
 
-(Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other. Phase 8's frontend bundle work can start once Phase 6's REST contract shape is fixed, in parallel with Phase 7, per v2.0 research.)
+(Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other. Phase 8's frontend bundle work can start once Phase 6's REST contract shape is fixed, in parallel with Phase 7, per v2.0 research. Phase 10 (v2.2) is independent of Phase 9 (v2.1) and may run concurrently with it, per explicit user direction to start v2.2 alongside the still-in-progress v2.1.)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -311,3 +394,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Admin Settings Page | 5/5 | Complete   | 2026-06-24 |
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
+| 10. Shared Animation Architecture & Crossfade Engine | 0/TBD | Not started | - |
+| 11. Idle, Transition & Talking States | 0/TBD | Not started | - |
+| 12. Gaze & Gesture | 0/TBD | Not started | - |
+| 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

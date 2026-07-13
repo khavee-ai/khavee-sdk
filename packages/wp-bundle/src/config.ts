@@ -118,6 +118,14 @@ export interface KhaveeAvatarConfig {
   model?: string;
   /** REST URL of the khaveeai/v1/session endpoint (injected by PHP). */
   restUrl?: string;
+  /** When true, register a tool letting the AI search the site's Khavee
+   *  Platform knowledge base mid-conversation. Requires a configured
+   *  Platform API key server-side — this flag alone doesn't guarantee
+   *  results, just that the tool is registered. */
+  knowledgeBaseEnabled?: boolean;
+  /** REST URL of the khaveeai/v1/knowledge-search endpoint (injected by
+   *  PHP, only when knowledgeBaseEnabled is true). */
+  knowledgeSearchUrl?: string;
   // Phase-9 visual/chat config fields (STUDIO-05 Part A):
   /** Container width in pixels. 0 = use admin default / CSS-driven. */
   containerWidth?: number;

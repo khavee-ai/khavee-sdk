@@ -216,6 +216,54 @@ function AppRoot({
   );
 }
 
+// Knowledge-base search tool: same RealtimeTool shape
+// providers-rag/createRAGTool.ts establishes, but execute() calls this
+// site's own WP REST route (holding the Platform API key server-side)
+// instead of talking to a vector store directly — the browser can never
+// hold that key. Registered on BOTH OpenAIRealtimeProvider and
+// OpenAISTTTTSProvider identically since RealtimeTool is provider-agnostic
+// (config.tools/registerFunction is the same shape on both).
+function createKnowledgeSearchTool(searchUrl: string) {
+  return {
+    name: "search_knowledge_base",
+    description:
+      "Search the site's knowledge base for relevant information to answer user questions",
+    parameters: {
+      query: {
+        type: "string" as const,
+        required: true,
+        description: "Search query to find relevant information",
+      },
+    },
+    execute: async (args: any) => {
+      try {
+        const response = await fetch(searchUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: args?.query, topK: 5 }),
+        });
+        const body = await response.json();
+        const results = body?.data?.results ?? [];
+
+        if (results.length === 0) {
+          return { success: true, message: "No relevant information found in the knowledge base." };
+        }
+
+        const formatted = results
+          .map((r: any, i: number) => `[${i + 1}] ${r.content}`)
+          .join("\n\n");
+
+        return { success: true, message: `Found ${results.length} relevant documents:\n\n${formatted}` };
+      } catch (error) {
+        return {
+          success: false,
+          message: `Error searching knowledge base: ${error instanceof Error ? error.message : "Unknown error"}`,
+        };
+      }
+    },
+  };
+}
+
 export function mountAvatarInstance(root: Root, config: KhaveeAvatarConfig): void {
   // OpenAIRealtimeProvider construction is UNCHANGED from Phase 8 —
   // same useProxy/proxyEndpoint/voice/instructions/model arguments.
@@ -225,6 +273,10 @@ export function mountAvatarInstance(root: Root, config: KhaveeAvatarConfig): voi
     voice: config.voice,
     instructions: config.instructions,
     model: config.model,
+    tools:
+      config.knowledgeBaseEnabled && config.knowledgeSearchUrl
+        ? [createKnowledgeSearchTool(config.knowledgeSearchUrl)]
+        : undefined,
   });
 
   // ── Container styles ─────────────────────────────────────────────────────────

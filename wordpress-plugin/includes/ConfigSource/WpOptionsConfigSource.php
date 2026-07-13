@@ -148,6 +148,7 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			'camera_rotation_y' => isset( $settings['camera_rotation_y'] ) ? (float) $settings['camera_rotation_y'] : self::DEFAULT_CAMERA_ROTATION_Y,
 			'chat_show'        => isset( $settings['chat_show'] )        ? (bool)   $settings['chat_show']        : false,
 			'chat_placement'   => isset( $settings['chat_placement'] )   ? (string) $settings['chat_placement']   : self::DEFAULT_CHAT_PLACEMENT,
+			'knowledge_base_enabled' => isset( $settings['knowledge_base_enabled'] ) ? (bool) $settings['knowledge_base_enabled'] : false,
 			// Floating-widget-only visual config (quick task 260705-p30) —
 			// independent of the global bg_color/bg_transparent/avatar_scale/
 			// avatar_offset_x/y keys above; the floating panel never falls

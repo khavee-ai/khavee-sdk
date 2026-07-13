@@ -14,6 +14,7 @@ use Khavee\Plugin\ConfigSource\PlatformConfigSource;
 use Khavee\Plugin\TokenProvider\OpenAiDirectTokenProvider;
 use Khavee\Plugin\RateLimit\RateLimiter;
 use Khavee\Plugin\Rest\SessionController;
+use Khavee\Plugin\Rest\KnowledgeSearchController;
 use Khavee\Plugin\Render\AvatarRenderer;
 use Khavee\Plugin\Assets\AssetManager;
 use Khavee\Plugin\Shortcode\AvatarShortcode;
@@ -95,6 +96,13 @@ final class Plugin {
 		$session_controller = new SessionController( $config_source, $token_provider, $rate_limiter );
 
 		add_action( 'rest_api_init', array( $session_controller, 'register_routes' ) );
+
+		// Knowledge-base tool-call search route (public/unauthenticated —
+		// same rationale as SessionController above: the Platform API key
+		// stays server-side, the route itself has no auth boundary).
+		$knowledge_search_controller = new KnowledgeSearchController();
+
+		add_action( 'rest_api_init', array( $knowledge_search_controller, 'register_routes' ) );
 
 		// $config_source is deliberately the SAME instance shared with
 		// SessionController above — SettingsPage only reads is_configured()/

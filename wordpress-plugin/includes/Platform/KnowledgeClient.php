@@ -176,6 +176,125 @@ final class KnowledgeClient {
 	}
 
 	/**
+	 * Insert a new document into the calling project's knowledge base.
+	 * Not cached — mutations must never be served from the search/list
+	 * caches (nor cached themselves).
+	 *
+	 * @param string $key      The raw platform API key.
+	 * @param string $content  Document content.
+	 * @param array  $metadata Optional arbitrary metadata attached to the document.
+	 * @return array{ok: bool, document: array, error: string}
+	 */
+	public static function insert( string $key, string $content, array $metadata = array() ): array {
+		try {
+			$response = wp_remote_post(
+				self::BASE_URL,
+				array(
+					'headers' => array(
+						'X-API-Key'    => $key,
+						'Content-Type' => 'application/json',
+					),
+					'body'    => wp_json_encode(
+						array(
+							'content'  => $content,
+							'metadata' => $metadata,
+						)
+					),
+					'timeout' => self::TIMEOUT,
+				)
+			);
+
+			if ( is_wp_error( $response ) ) {
+				return array(
+					'ok'       => false,
+					'document' => array(),
+					'error'    => 'network error',
+				);
+			}
+
+			$status_code = wp_remote_retrieve_response_code( $response );
+
+			if ( 200 !== $status_code && 201 !== $status_code ) {
+				return array(
+					'ok'       => false,
+					'document' => array(),
+					'error'    => 'HTTP ' . $status_code,
+				);
+			}
+
+			$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+			if ( ! is_array( $body ) || ! isset( $body['data'] ) || ! is_array( $body['data'] ) ) {
+				return array(
+					'ok'       => false,
+					'document' => array(),
+					'error'    => 'malformed response',
+				);
+			}
+
+			return array(
+				'ok'       => true,
+				'document' => $body['data'],
+				'error'    => '',
+			);
+		} catch ( \Throwable $e ) {
+			return array(
+				'ok'       => false,
+				'document' => array(),
+				'error'    => 'unexpected error',
+			);
+		}
+	}
+
+	/**
+	 * Delete a document from the calling project's knowledge base.
+	 * A successful DELETE typically returns 204 with no body, so no
+	 * `data`-shape parsing is performed here (unlike search/list/insert).
+	 *
+	 * @param string $key The raw platform API key.
+	 * @param string $id  The document's id.
+	 * @return array{ok: bool, error: string}
+	 */
+	public static function delete( string $key, string $id ): array {
+		try {
+			$response = wp_remote_request(
+				self::BASE_URL . '/' . rawurlencode( $id ),
+				array(
+					'method' => 'DELETE',
+					'headers' => array( 'X-API-Key' => $key ),
+					'timeout' => self::TIMEOUT,
+				)
+			);
+
+			if ( is_wp_error( $response ) ) {
+				return array(
+					'ok'    => false,
+					'error' => 'network error',
+				);
+			}
+
+			$status_code = wp_remote_retrieve_response_code( $response );
+
+			if ( 200 !== $status_code && 204 !== $status_code ) {
+				return array(
+					'ok'    => false,
+					'error' => 'HTTP ' . $status_code,
+				);
+			}
+
+			return array(
+				'ok'    => true,
+				'error' => '',
+			);
+		} catch ( \Throwable $e ) {
+			return array(
+				'ok'    => false,
+				'error' => 'unexpected error',
+			);
+		}
+	}
+
+	/**
 	 * Build a normalized ok=false search result struct.
 	 *
 	 * @param string $reason A short, generic, non-sensitive reason.

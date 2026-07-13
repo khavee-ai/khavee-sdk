@@ -15,6 +15,7 @@ use Khavee\Plugin\TokenProvider\OpenAiDirectTokenProvider;
 use Khavee\Plugin\RateLimit\RateLimiter;
 use Khavee\Plugin\Rest\SessionController;
 use Khavee\Plugin\Rest\KnowledgeSearchController;
+use Khavee\Plugin\Rest\KnowledgeAdminController;
 use Khavee\Plugin\Render\AvatarRenderer;
 use Khavee\Plugin\Assets\AssetManager;
 use Khavee\Plugin\Shortcode\AvatarShortcode;
@@ -103,6 +104,15 @@ final class Plugin {
 		$knowledge_search_controller = new KnowledgeSearchController();
 
 		add_action( 'rest_api_init', array( $knowledge_search_controller, 'register_routes' ) );
+
+		// Knowledge-base admin CRUD routes (list/add/delete) — UNLIKE the
+		// public search route above, this one IS capability-gated
+		// (current_user_can('manage_options')) since every route performs a
+		// privileged mutation against the platform project's knowledge base.
+		// Wired from the Settings page's document-management UI.
+		$knowledge_admin_controller = new KnowledgeAdminController();
+
+		add_action( 'rest_api_init', array( $knowledge_admin_controller, 'register_routes' ) );
 
 		// $config_source is deliberately the SAME instance shared with
 		// SessionController above — SettingsPage only reads is_configured()/

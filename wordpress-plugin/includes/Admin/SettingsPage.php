@@ -319,6 +319,20 @@ final class SettingsPage {
 		wp_enqueue_script( 'wp-color-picker' );
 		wp_enqueue_style( 'wp-color-picker' );
 
+		// Quick task 260714-3b1: knowledge-base document manager needs the
+		// REST endpoint + a fresh wp_rest nonce in the browser. Localized
+		// onto the already-enqueued 'wp-color-picker' handle — same
+		// convention the floating-preview inline JS below already uses —
+		// so no new build artifact or registered script file is needed.
+		wp_localize_script(
+			'wp-color-picker',
+			'khaveeaiKb',
+			array(
+				'root'  => esc_url_raw( rest_url( 'khaveeai/v1/knowledge-admin' ) ),
+				'nonce' => wp_create_nonce( 'wp_rest' ),
+			)
+		);
+
 		// Attached to the 'wp-color-picker' handle (not a standalone inline
 		// script) so its jQuery dependency is guaranteed already defined when
 		// this runs. Plain vanilla JS + jQuery-for-wpColorPicker only — no
@@ -480,6 +494,203 @@ jQuery( function ( $ ) {
 JS;
 
 		wp_add_inline_script( 'wp-color-picker', $js, 'after' );
+
+		// Quick task 260714-3b1: vanilla-JS knowledge-base document manager —
+		// list/add/delete against KnowledgeAdminController's nonce-authenticated
+		// REST routes. Attached to the same 'wp-color-picker' handle as the
+		// floating-preview inline JS above (no new build artifact/file), and
+		// self-guards on #khaveeai-kb-manager so it's a no-op when no
+		// platform key is configured (render_knowledge_base_field() only
+		// prints that container in that case).
+		$kb_js = <<<'JS'
+( function () {
+	function ready( fn ) {
+		if ( document.readyState !== 'loading' ) {
+			fn();
+		} else {
+			document.addEventListener( 'DOMContentLoaded', fn );
+		}
+	}
+
+	ready( function () {
+		var manager = document.getElementById( 'khaveeai-kb-manager' );
+		if ( ! manager || typeof khaveeaiKb === 'undefined' ) {
+			return;
+		}
+
+		var listEl    = document.getElementById( 'khaveeai-kb-list' );
+		var contentEl = document.getElementById( 'khaveeai-kb-content' );
+		var metaEl    = document.getElementById( 'khaveeai-kb-metadata' );
+		var addBtn    = document.getElementById( 'khaveeai-kb-add' );
+		var statusEl  = document.getElementById( 'khaveeai-kb-status' );
+
+		function setStatus( message ) {
+			if ( statusEl ) {
+				statusEl.textContent = message || '';
+			}
+		}
+
+		function renderList( docs ) {
+			if ( ! listEl ) {
+				return;
+			}
+
+			listEl.textContent = '';
+
+			if ( ! Array.isArray( docs ) || 0 === docs.length ) {
+				var empty = document.createElement( 'p' );
+				empty.className = 'description';
+				empty.textContent = 'No documents yet.';
+				listEl.appendChild( empty );
+				return;
+			}
+
+			docs.forEach( function ( doc ) {
+				var row = document.createElement( 'div' );
+				row.className = 'khaveeai-kb-row';
+				row.style.borderBottom = '1px solid #dcdcde';
+				row.style.padding = '6px 0';
+				row.style.display = 'flex';
+				row.style.justifyContent = 'space-between';
+				row.style.alignItems = 'flex-start';
+				row.style.gap = '8px';
+
+				var meta = doc && typeof doc === 'object' ? doc : {};
+				var content = typeof meta.content === 'string' ? meta.content : '';
+				var preview = content.length > 140 ? content.slice( 0, 140 ) + '…' : content;
+				var created = typeof meta.createdAt === 'string' ? meta.createdAt
+					: ( typeof meta.created_at === 'string' ? meta.created_at : '' );
+				var id = meta.id || meta._id || '';
+
+				var textWrap = document.createElement( 'div' );
+
+				var previewEl = document.createElement( 'div' );
+				previewEl.textContent = preview;
+				textWrap.appendChild( previewEl );
+
+				if ( created ) {
+					var dateEl = document.createElement( 'div' );
+					dateEl.className = 'description';
+					dateEl.textContent = created;
+					textWrap.appendChild( dateEl );
+				}
+
+				row.appendChild( textWrap );
+
+				var delBtn = document.createElement( 'button' );
+				delBtn.type = 'button';
+				delBtn.className = 'button';
+				delBtn.textContent = 'Delete';
+				delBtn.setAttribute( 'data-id', id );
+				delBtn.addEventListener( 'click', function () {
+					deleteDocument( id, row );
+				} );
+				row.appendChild( delBtn );
+
+				listEl.appendChild( row );
+			} );
+		}
+
+		function loadList() {
+			fetch( khaveeaiKb.root, {
+				method: 'GET',
+				headers: { 'X-WP-Nonce': khaveeaiKb.nonce }
+			} )
+				.then( function ( res ) {
+					if ( ! res.ok ) {
+						throw new Error( 'failed' );
+					}
+					return res.json();
+				} )
+				.then( function ( json ) {
+					renderList( json && json.data ? json.data : [] );
+				} )
+				.catch( function () {
+					setStatus( 'Could not load documents.' );
+					renderList( [] );
+				} );
+		}
+
+		function deleteDocument( id, row ) {
+			if ( ! id ) {
+				return;
+			}
+
+			fetch( khaveeaiKb.root + '/' + encodeURIComponent( id ), {
+				method: 'DELETE',
+				headers: { 'X-WP-Nonce': khaveeaiKb.nonce }
+			} )
+				.then( function ( res ) {
+					if ( ! res.ok ) {
+						throw new Error( 'failed' );
+					}
+					if ( row && row.parentNode ) {
+						row.parentNode.removeChild( row );
+					}
+					setStatus( 'Document deleted.' );
+				} )
+				.catch( function () {
+					setStatus( 'Could not delete document.' );
+				} );
+		}
+
+		function addDocument() {
+			var content = contentEl ? contentEl.value.trim() : '';
+			if ( ! content ) {
+				setStatus( 'Content is required.' );
+				return;
+			}
+
+			var rawMeta = metaEl ? metaEl.value.trim() : '';
+			var metadata = {};
+			if ( rawMeta ) {
+				try {
+					var parsed = JSON.parse( rawMeta );
+					metadata = ( parsed && typeof parsed === 'object' ) ? parsed : { note: rawMeta };
+				} catch ( e ) {
+					metadata = { note: rawMeta };
+				}
+			}
+
+			fetch( khaveeaiKb.root, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-WP-Nonce': khaveeaiKb.nonce
+				},
+				body: JSON.stringify( { content: content, metadata: metadata } )
+			} )
+				.then( function ( res ) {
+					if ( ! res.ok ) {
+						throw new Error( 'failed' );
+					}
+					return res.json();
+				} )
+				.then( function () {
+					if ( contentEl ) {
+						contentEl.value = '';
+					}
+					if ( metaEl ) {
+						metaEl.value = '';
+					}
+					setStatus( 'Document added.' );
+					loadList();
+				} )
+				.catch( function () {
+					setStatus( 'Could not add document.' );
+				} );
+		}
+
+		if ( addBtn ) {
+			addBtn.addEventListener( 'click', addDocument );
+		}
+
+		loadList();
+	} );
+} )();
+JS;
+
+		wp_add_inline_script( 'wp-color-picker', $kb_js, 'after' );
 	}
 
 	/**
@@ -1982,11 +2193,35 @@ JS;
 			echo '<p class="description">' .
 				esc_html__( 'Requires a Khavee Platform API Key (above) — the knowledge base lives on your platform project, not on this site.', 'khaveeai' ) .
 				'</p>';
-		} else {
-			echo '<p class="description">' .
-				esc_html__( 'Synced from your Khavee Platform project. Manage documents (upload, search, delete) from your platform dashboard.', 'khaveeai' ) .
-				'</p>';
+			return;
 		}
+
+		echo '<div id="khaveeai-kb-manager" style="margin-top:12px;max-width:640px;">';
+
+		echo '<div id="khaveeai-kb-list" style="margin-bottom:12px;"><p class="description">' .
+			esc_html__( 'Loading documents…', 'khaveeai' ) .
+			'</p></div>';
+
+		echo '<div class="khaveeai-kb-add" style="border-top:1px solid #dcdcde;padding-top:12px;">';
+		printf(
+			'<p><label for="khaveeai-kb-content">%s</label><br /><textarea id="khaveeai-kb-content" rows="4" style="width:100%%;max-width:480px;" placeholder="%s"></textarea></p>',
+			esc_html__( 'New document content', 'khaveeai' ),
+			esc_attr__( 'Paste or type the document content…', 'khaveeai' )
+		);
+		printf(
+			'<p><label for="khaveeai-kb-metadata">%s</label><br /><input type="text" id="khaveeai-kb-metadata" style="width:100%%;max-width:480px;" placeholder=\'%s\' /></p>',
+			esc_html__( 'Metadata (optional)', 'khaveeai' ),
+			esc_attr( 'e.g. {"source":"faq"}' )
+		);
+		printf(
+			'<p><button type="button" class="button button-primary" id="khaveeai-kb-add">%s</button></p>',
+			esc_html__( 'Add document', 'khaveeai' )
+		);
+		echo '</div>';
+
+		echo '<p id="khaveeai-kb-status" aria-live="polite" class="description"></p>';
+
+		echo '</div>';
 	}
 
 	/**

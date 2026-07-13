@@ -1515,6 +1515,20 @@ JS;
 		echo '</tbody></table>';
 		echo '</div>';
 
+		// Quick task 260714-3b1 follow-up: render_knowledge_base_field() was
+		// registered via add_settings_field() (WP Settings API metadata
+		// only — see the comment near that call) but this page never uses
+		// do_settings_sections() to auto-render sections/fields; every card
+		// is hand-assembled above via render_section_heading()/
+		// render_form_table_row(). The knowledge-base row was never added
+		// to this manual layout, so it never actually appeared on the page.
+		echo '<div class="khaveeai-settings__card">';
+		$this->render_section_heading( __( 'Knowledge Base', 'khaveeai' ), __( 'Let the AI search your project documents while talking', 'khaveeai' ) );
+		echo '<table class="form-table" role="presentation"><tbody>';
+		$this->render_form_table_row( __( 'Knowledge Base', 'khaveeai' ), array( $this, 'render_knowledge_base_field' ) );
+		echo '</tbody></table>';
+		echo '</div>';
+
 		// Quick task 260707-oyu item 1: two-column layout — fields (left) |
 		// sticky live preview (right) — mirroring the Floating Widget card's
 		// .khaveeai-settings__two-col / .khaveeai-settings__preview-col pattern

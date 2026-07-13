@@ -187,6 +187,16 @@ final class KnowledgeClient {
 	 */
 	public static function insert( string $key, string $content, array $metadata = array() ): array {
 		try {
+			// wp_json_encode() (and PHP's json_encode() generally) has no
+			// distinct "empty object" type — an empty PHP array always
+			// serializes to JSON `[]`, never `{}`. core-api validates
+			// `metadata` with class-validator's @IsObject(), which rejects
+			// arrays, so an empty array here would 400 on every insert with
+			// no metadata. Casting to stdClass forces `{}` for the empty
+			// case while non-empty associative arrays still serialize
+			// correctly as objects.
+			$metadata_payload = empty( $metadata ) ? new \stdClass() : $metadata;
+
 			$response = wp_remote_post(
 				self::BASE_URL,
 				array(
@@ -197,7 +207,7 @@ final class KnowledgeClient {
 					'body'    => wp_json_encode(
 						array(
 							'content'  => $content,
-							'metadata' => $metadata,
+							'metadata' => $metadata_payload,
 						)
 					),
 					'timeout' => self::TIMEOUT,

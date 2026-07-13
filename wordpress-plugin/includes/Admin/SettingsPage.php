@@ -798,6 +798,17 @@ JS;
 			'khaveeai_main'
 		);
 
+		// Knowledge base search: gated behind a connected Platform API key
+		// (the data lives on the platform, not in WP — see
+		// render_knowledge_base_field()'s status readout).
+		add_settings_field(
+			'knowledge_base_enabled',
+			__( 'Knowledge Base', 'khaveeai' ),
+			array( $this, 'render_knowledge_base_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
 		// FLOAT-01 (quick task 260704-77n): registered here for Settings API
 		// consistency (do_settings_sections() callers, WP-CLI introspection,
 		// etc.) even though render_page()'s manual sectioned layout below is
@@ -957,6 +968,9 @@ JS;
 		// this one IS persisted (it's a durable on/off setting, not a
 		// one-shot deletion trigger).
 		$sanitized['floating_widget_enabled'] = isset( $input['floating_widget_enabled'] ) && '1' === (string) $input['floating_widget_enabled'];
+
+		// Same strict boolean coercion as floating_widget_enabled above.
+		$sanitized['knowledge_base_enabled'] = isset( $input['knowledge_base_enabled'] ) && '1' === (string) $input['knowledge_base_enabled'];
 
 		// Quick task 260705-p30: floating-widget-only visual config —
 		// same strict boolean-coercion / isset->cast->fallback shapes used
@@ -1939,6 +1953,40 @@ JS;
 		echo '<p class="description">' .
 			esc_html__( 'Shows a fixed bottom-right launcher on every front-end page, using the global config above — independent of any block or shortcode placement.', 'khaveeai' ) .
 			'</p>';
+	}
+
+	/**
+	 * Knowledge Base field: an enable toggle plus a status readout. The
+	 * documents themselves are never managed in wp-admin — they live on
+	 * the Khavee Platform project tied to the configured Platform API Key
+	 * above (same key PlatformConfigSource already uses), so this only
+	 * links out to the platform dashboard's own upload/list/delete UI
+	 * rather than duplicating it here.
+	 *
+	 * @return void
+	 */
+	public function render_knowledge_base_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$enabled  = ! empty( $settings['knowledge_base_enabled'] );
+		$has_key  = ! empty( $settings['platform_api_key'] );
+
+		printf(
+			'<label><input type="checkbox" id="khaveeai_knowledge_base_enabled" name="%s[knowledge_base_enabled]" value="1" %s /> %s</label>',
+			esc_attr( self::OPTION_NAME ),
+			checked( $enabled, true, false ),
+			esc_html__( 'Let the AI search your knowledge base while talking', 'khaveeai' )
+		);
+
+		if ( ! $has_key ) {
+			echo '<p class="description">' .
+				esc_html__( 'Requires a Khavee Platform API Key (above) — the knowledge base lives on your platform project, not on this site.', 'khaveeai' ) .
+				'</p>';
+		} else {
+			echo '<p class="description">' .
+				esc_html__( 'Synced from your Khavee Platform project. Manage documents (upload, search, delete) from your platform dashboard.', 'khaveeai' ) .
+				'</p>';
+		}
 	}
 
 	/**

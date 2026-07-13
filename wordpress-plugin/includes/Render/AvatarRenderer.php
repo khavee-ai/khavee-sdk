@@ -182,6 +182,7 @@ final class AvatarRenderer {
 		$merged['chat_show']        = (bool) ( $merged['chat_show'] ?? false );
 		$merged['chat_placement']   = isset( $merged['chat_placement'] ) && '' !== $merged['chat_placement']
 			? (string) $merged['chat_placement'] : 'beside';
+		$merged['knowledge_base_enabled'] = (bool) ( $merged['knowledge_base_enabled'] ?? false );
 
 		// Floating-widget-only visual config (quick task 260705-p30) — same
 		// defensive re-application shape as the block above, kept independent
@@ -270,6 +271,8 @@ final class AvatarRenderer {
 			'cameraRotationY' => isset( $merged['camera_rotation_y'] ) ? (float)$merged['camera_rotation_y'] : 0.0,
 			'chatShow'        => (bool) ( $merged['chat_show'] ?? false ),
 			'chatPlacement'   => isset( $merged['chat_placement'] )   ? (string)$merged['chat_placement']   : 'beside',
+			'knowledgeBaseEnabled' => (bool) ( $merged['knowledge_base_enabled'] ?? false ),
+			'knowledgeSearchUrl'   => rest_url( 'khaveeai/v1/knowledge-search' ),
 		);
 	}
 }

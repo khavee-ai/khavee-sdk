@@ -106,9 +106,7 @@ final class KnowledgeClient {
 
 			return array(
 				'ok'      => true,
-				'results' => isset( $body['data']['results'] ) && is_array( $body['data']['results'] )
-					? $body['data']['results']
-					: array(),
+				'results' => $body['data'],
 				'error'   => '',
 			);
 		} catch ( \Throwable $e ) {
@@ -165,9 +163,7 @@ final class KnowledgeClient {
 
 			return array(
 				'ok'        => true,
-				'documents' => isset( $body['data']['documents'] ) && is_array( $body['data']['documents'] )
-					? $body['data']['documents']
-					: array(),
+				'documents' => $body['data'],
 				'error'     => '',
 			);
 		} catch ( \Throwable $e ) {

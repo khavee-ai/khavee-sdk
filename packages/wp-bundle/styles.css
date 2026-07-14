@@ -447,9 +447,13 @@
   font-family: inherit;
 }
 
+/* Height sizes to content now that chat lives in the external bottom sheet
+   (260715-2ih) rather than inside the panel: header (~52px) + fixed 200px
+   avatar area, plus a little breathing room for the centered controls that
+   overlap the bottom of the avatar area. */
 .khaveeai-floating-panel {
   width: 360px;
-  height: 520px;
+  height: 284px;
   background: #ffffff;
   border: 1px solid #dde1ea;
   border-radius: 20px;
@@ -527,31 +531,115 @@
   height: 100%;
 }
 
-/* Floating panel's mic-only ControlBar: bottom-right of the avatar area,
-   clear of the centered ClickToTalkOverlay CTA (quick task 260705-p30).
-   Scoped via descendant selector + .khaveeai-floating-controls modifier so
-   the shared base .khaveeai-controls rule (bottom-center, used by the
-   inline embed) is never modified. */
+/* Floating panel's dual-button ControlBar (mic + chat sheet toggle):
+   positioned absolutely, horizontally centered near the bottom of the
+   always-visible avatar area (260715-2ih — mirrors khavee-app's
+   PreviewControls.tsx). Scoped via descendant selector +
+   .khaveeai-floating-controls modifier so the shared base .khaveeai-controls
+   rule (bottom-center, used by the inline embed) is never modified. */
 .khaveeai-floating-avatar-area .khaveeai-controls.khaveeai-floating-controls {
-  bottom: 12px;
-  left: auto;
-  right: 12px;
-  transform: none;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
 }
 
-.khaveeai-floating-chat {
-  flex: 1;
-  min-height: 0;
+/* Large circular primary buttons — scoped to the floating controls
+   container only, so the inline embed's smaller ControlBar is unaffected. */
+.khaveeai-floating-controls .khaveeai-control-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.khaveeai-floating-controls .khaveeai-control-btn--mic {
+  background: #6929ff;
+  color: #ffffff;
+}
+
+.khaveeai-floating-controls .khaveeai-control-btn--mic:hover {
+  background: #5a16eb;
+}
+
+.khaveeai-floating-controls .khaveeai-control-btn--chat {
+  background: #1f2430;
+  color: #ffffff;
+}
+
+.khaveeai-floating-controls .khaveeai-control-btn--chat:hover {
+  background: #12151d;
+}
+
+/* ── Chat bottom sheet (260715-2ih) ──────────────────────────────────────
+   Fixed, full-width sheet that slides up from the bottom of the screen.
+   Sibling of .khaveeai-floating-panel in the DOM (not nested inside it),
+   so the panel's overflow:hidden never clips the sheet. */
+.khaveeai-floating-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 50dvh;
+  height: 50vh;
+  background: #ffffff;
+  border-radius: 24px 24px 0 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  z-index: 1000000;
+  transform: translateY(100%);
+  transition: transform 300ms ease-in-out;
 }
 
-/* ChatBox renders its own card chrome (.khaveeai-chat--below); this wrapper
-   just gives it a flexed, scroll-bounded slot inside the fixed 520px panel. */
-.khaveeai-floating-chat .khaveeai-chat--below {
+.khaveeai-floating-sheet[data-chat-open="false"] {
+  transform: translateY(100%);
+  pointer-events: none;
+}
+
+.khaveeai-floating-sheet[data-chat-open="true"] {
+  transform: translateY(0);
+}
+
+/* Hide the sheet entirely (no slide-in track showing) once the whole
+   widget itself is closed via the header/launcher, even if isChatOpen
+   was left true from a prior session. */
+.khaveeai-floating-widget[data-open="false"] .khaveeai-floating-sheet {
+  display: none;
+}
+
+.khaveeai-floating-sheet-handle {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.khaveeai-floating-sheet-grip {
+  width: 48px;
+  height: 6px;
+  border-radius: 999px;
+  background: #cdd2dc;
+}
+
+/* ChatBox renders its own card chrome (.khaveeai-chat--below); fill the
+   remaining sheet height below the drag-handle. */
+.khaveeai-floating-sheet .khaveeai-chat--below {
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: 100%;
   max-height: none;
   margin: 0;
   border-radius: 0;
@@ -606,7 +694,8 @@
 @media (prefers-reduced-motion: reduce) {
   .khaveeai-floating-panel,
   .khaveeai-floating-launcher,
-  .khaveeai-floating-launcher svg {
+  .khaveeai-floating-launcher svg,
+  .khaveeai-floating-sheet {
     transition: none !important;
   }
 }
@@ -614,11 +703,16 @@
 @media (max-width: 480px) {
   .khaveeai-floating-panel {
     width: calc(100vw - 32px);
-    height: calc(100vh - 140px);
+    height: 284px;
   }
 
   .khaveeai-floating-widget {
     right: 16px;
     bottom: 16px;
+  }
+
+  .khaveeai-floating-sheet {
+    height: 70dvh;
+    height: 70vh;
   }
 }

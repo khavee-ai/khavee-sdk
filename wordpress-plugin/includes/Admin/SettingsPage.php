@@ -538,8 +538,13 @@ JS;
 		var statusEl  = document.getElementById( 'khaveeai-kb-status' );
 
 		// Quick task 260715-1iy: client-side pagination state. loadList()
-		// fetches ALL documents (?limit=100) once; Prev/Next just re-slice
-		// and re-render allDocs — no re-fetch.
+		// fetches documents (?limit=500, matching KnowledgeAdminController::
+		// MAX_LIMIT — the platform API has no offset/cursor pagination, only
+		// a limit-capped fetch, so this is the highest count a single fetch
+		// can show) once; Prev/Next just re-slice and re-render allDocs — no
+		// re-fetch. A project with more than 500 documents will still
+		// silently truncate here; there is no true "fetch everything"
+		// today without adding real pagination to the platform API.
 		var allDocs     = [];
 		var currentPage = 0;
 		var PAGE_SIZE   = 8;
@@ -689,7 +694,7 @@ JS;
 		}
 
 		function loadList() {
-			fetch( khaveeaiKb.root + '?limit=100', {
+			fetch( khaveeaiKb.root + '?limit=500', {
 				method: 'GET',
 				headers: { 'X-WP-Nonce': khaveeaiKb.nonce }
 			} )

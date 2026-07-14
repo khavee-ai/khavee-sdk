@@ -43,9 +43,17 @@ final class KnowledgeAdminController {
 	/**
 	 * Max value accepted for the `limit` query param on the list route.
 	 *
+	 * Matches KnowledgeListQueryDto's own @Max(500) ceiling on the platform
+	 * API (apps/api/apps/core-api/src/modules/v1/project/dto/knowledge.dto.ts)
+	 * — the platform has no offset/cursor pagination at all, only a single
+	 * `limit`-capped fetch, so 500 is the highest a WP admin panel listing
+	 * "all documents" can honestly show today. Previously 100 (260715-1iy),
+	 * which silently truncated projects with more than 100 documents — the
+	 * admin JS's loadList() comment wrongly assumed 100 always meant "all".
+	 *
 	 * @var int
 	 */
-	private const MAX_LIMIT = 100;
+	private const MAX_LIMIT = 500;
 
 	/**
 	 * Register the admin knowledge-base management routes on the WP REST

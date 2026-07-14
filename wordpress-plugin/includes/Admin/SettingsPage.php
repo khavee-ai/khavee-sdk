@@ -1754,6 +1754,15 @@ JS;
 	position: sticky;
 	top: 32px;
 }
+/* The Knowledge Base right column is a document list, not a small avatar/
+ * floating-widget preview thumbnail — the shared 380px preview-col width
+ * left it cramped and visually detached from the add-form. This modifier
+ * gives the list column the majority of the row width instead, while the
+ * add-form column shrinks to its actual content width (its fields are
+ * capped at max-width:480px) so the two columns sit close together. */
+.khaveeai-settings__two-col--kb {
+	grid-template-columns: minmax(0, 420px) minmax(0, 480px);
+}
 @media (max-width: 1100px) {
 	.khaveeai-settings__two-col {
 		grid-template-columns: 1fr;
@@ -2307,7 +2316,7 @@ JS;
 		// .khaveeai-settings__preview-col classes as the Avatar/Floating
 		// Widget cards (see render_settings_page_styles()); no new layout CSS.
 		echo '<div id="khaveeai-kb-manager" style="margin-top:12px;">';
-		echo '<div class="khaveeai-settings__two-col">';
+		echo '<div class="khaveeai-settings__two-col khaveeai-settings__two-col--kb">';
 
 		echo '<div class="khaveeai-kb-add">';
 		printf(

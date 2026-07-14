@@ -98,7 +98,28 @@ final class KnowledgeSearchController {
 			return $this->respond( array( 'data' => array( 'results' => array() ) ), 200 );
 		}
 
-		return $this->respond( array( 'data' => array( 'results' => $result['results'] ) ), 200 );
+		return $this->respond( array( 'data' => array( 'results' => self::strip_internal_metadata( $result['results'] ) ) ), 200 );
+	}
+
+	/**
+	 * Strips platform-internal fields (userId, projectId — the calling
+	 * account's and project's own database ids) out of each document
+	 * before it crosses this route's boundary. This route is PUBLIC and
+	 * unauthenticated (permission_callback => __return_true) — any
+	 * anonymous site visitor's browser can read this response directly, so
+	 * nothing platform-internal may ever appear in it, only what the model
+	 * actually needs (id, content, createdAt, similarity).
+	 *
+	 * @param array $documents
+	 * @return array
+	 */
+	private static function strip_internal_metadata( array $documents ): array {
+		foreach ( $documents as &$doc ) {
+			if ( is_array( $doc ) && isset( $doc['metadata'] ) && is_array( $doc['metadata'] ) ) {
+				unset( $doc['metadata']['userId'], $doc['metadata']['projectId'] );
+			}
+		}
+		return $documents;
 	}
 
 	/**

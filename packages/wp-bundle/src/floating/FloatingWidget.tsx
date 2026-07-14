@@ -1,7 +1,8 @@
 /**
  * packages/wp-bundle/src/floating/FloatingWidget.tsx
  *
- * Site-wide floating chat launcher (FLOAT-01, quick task 260704-77n). A new
+ * Site-wide floating chat launcher (FLOAT-01, quick task 260704-77n;
+ * redesigned as a mobile bottom-sheet in quick task 260715-2ih). A new
  * LAYOUT/CONTAINER around the already-working avatar+chat pieces — NOT a
  * rebuild of the avatar/chat/voice pipeline. AppRoot (../mount.tsx) renders
  * this component in place of the inline embed layout when config.floating
@@ -10,8 +11,19 @@
  * ErrorOverlay/ControlBar all reach useRealtime()/useKhavee() normally.
  *
  * isOpen is local, ephemeral UI state (collapsed launcher vs. expanded
- * panel) — it does NOT gate the realtime connection or the chat transcript;
- * those are owned entirely by the existing pieces this component wraps.
+ * panel) — it governs the visibility of the ENTIRE widget (header + avatar
+ * area + chat sheet), same as before. It does NOT gate the realtime
+ * connection or the chat transcript; those are owned entirely by the
+ * existing pieces this component wraps.
+ *
+ * isChatOpen is a second, independent piece of local UI state (260715-2ih):
+ * once the widget itself is open, the avatar area (with its centered
+ * mic + chat ControlBar) is ALWAYS visible — there is no longer a nested
+ * "reveal the avatar" step. The chatbox is closed by default and slides up
+ * as a bottom sheet from the bottom of the screen when the chat-toggle
+ * button is tapped; it does not hide or collapse the avatar area. This
+ * mirrors khavee-app's PreviewControls.tsx mobile bottom-sheet chat model
+ * (reference only — behavior translated, not copied).
  *
  * Design spec (mockup, verbatim colors/dimensions): solid #6929ff, #dde1ea
  * border, 20px panel radius, 220ms cubic-bezier(0.2,0.8,0.2,1) transform
@@ -26,7 +38,7 @@
  * though only the avatar itself is broken. See AvatarErrorBoundary.tsx for
  * the full root-cause writeup.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AvatarScene } from "../mount";
 import { ChatBox } from "../ui/ChatBox";
 import { ClickToTalkOverlay } from "../ui/ClickToTalkOverlay";
@@ -37,6 +49,32 @@ import type { KhaveeAvatarConfig } from "../config";
 
 export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Bottom-sheet chat visibility (260715-2ih): closed by default, pure UI
+  // state — NOT wired to the realtime connection or transcript.
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  // Swipe-down-to-close bookkeeping for the bottom sheet.
+  const touchStartY = useRef<number>(0);
+  const sheetRef = useRef<HTMLDivElement>(null);
+
+  function handleSheetTouchStart(e: React.TouchEvent<HTMLDivElement>) {
+    touchStartY.current = e.touches[0].clientY;
+  }
+
+  function handleSheetTouchEnd(e: React.TouchEvent<HTMLDivElement>) {
+    const deltaY = touchStartY.current - e.changedTouches[0].clientY;
+    if (deltaY >= -50) return; // not a downward swipe past the threshold
+
+    // Only close on a downward swipe if the transcript is scrolled to the
+    // top (or has no transcript yet — empty/disconnected states) so the
+    // gesture doesn't fight the transcript's own internal scrolling.
+    const transcript = sheetRef.current?.querySelector(
+      ".khaveeai-chat__transcript",
+    );
+    const atTop = !transcript || transcript.scrollTop === 0;
+    if (atTop) {
+      setIsChatOpen(false);
+    }
+  }
 
   // Derived scene config for the floating avatar area ONLY: maps the
   // floating*-prefixed fields onto the keys AvatarScene actually reads
@@ -100,25 +138,39 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
           ) : null}
           <ClickToTalkOverlay />
           <ErrorOverlay />
-          {/* Mic mute/unmute only (no chat toggle) — anchored bottom-right of
-              this avatar area, clear of the centered ClickToTalkOverlay CTA.
-              No-op chat toggle since the panel's own launcher/close already
-              governs visibility. */}
+          {/* Mic mute/unmute + chat sheet toggle — centered near the bottom
+              of the always-visible avatar area, clear of the centered
+              ClickToTalkOverlay CTA. onToggleChat now drives the bottom
+              sheet below, not the whole-widget open/close. */}
           <ControlBar
             chatEnabled
-            isChatOpen
-            onToggleChat={() => {
-              /* no-op: panel open/close is governed by the launcher/close button */
-            }}
-            showChatToggle={false}
+            isChatOpen={isChatOpen}
+            onToggleChat={() => setIsChatOpen((v) => !v)}
             className="khaveeai-floating-controls"
           />
         </div>
+      </div>
 
-        {/* ── Chat ──────────────────────────────────────────────────────── */}
-        <div className="khaveeai-floating-chat">
-          <ChatBox placement="below" />
+      {/* ── Chat bottom sheet ─────────────────────────────────────────────
+          Sibling of khaveeai-floating-panel (not nested inside it) so the
+          panel's overflow:hidden never clips the sheet. Closed by default;
+          slides up from the bottom on isChatOpen. */}
+      <div
+        ref={sheetRef}
+        className="khaveeai-floating-sheet"
+        data-chat-open={isChatOpen ? "true" : "false"}
+        onTouchStart={handleSheetTouchStart}
+        onTouchEnd={handleSheetTouchEnd}
+      >
+        <div
+          className="khaveeai-floating-sheet-handle"
+          onClick={() => setIsChatOpen(false)}
+          role="button"
+          aria-label="Close chat"
+        >
+          <span className="khaveeai-floating-sheet-grip" />
         </div>
+        <ChatBox placement="below" />
       </div>
 
       <button

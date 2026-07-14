@@ -182,6 +182,16 @@ export interface KhaveeAvatarConfig {
    * preset's own angle, positive = orbit right. Independent of the
    * inline-embed's cameraRotationY. */
   floatingCameraRotationY?: number;
+  // Floating-widget page-placement config (quick task 260715-75r): which
+  // corner of the viewport the widget anchors to and a pixel Y-nudge, so a
+  // site owner whose page already has another floating widget (Intercom,
+  // Crisp, Drift, etc.) in the same corner can move Khavee's widget clear
+  // of it instead of the two overlapping.
+  /** Page corner the floating widget anchors to. Default "bottom-right". */
+  floatingPosition?: "bottom-right" | "bottom-left";
+  /** Extra pixels to lift the widget up off the page's bottom edge, on top
+   * of the base 24px inset. Default 0. */
+  floatingOffsetY?: number;
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────

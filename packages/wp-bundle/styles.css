@@ -437,8 +437,13 @@
 
 .khaveeai-floating-widget {
   --khaveeai-floating-width: 400px;
+  /* Page-placement (260715-75r): --khaveeai-floating-offset-y is set
+     inline by FloatingWidget.tsx only when floatingOffsetY is non-zero;
+     the calc() below is a no-op (bottom: calc(24px + 0px)) otherwise, so
+     the default inset is unchanged for every existing embed. */
+  --khaveeai-floating-offset-y: 0px;
   position: fixed;
-  bottom: 24px;
+  bottom: calc(24px + var(--khaveeai-floating-offset-y));
   right: 24px;
   z-index: 999999;
   display: flex;
@@ -446,6 +451,23 @@
   align-items: flex-end;
   gap: 16px;
   font-family: inherit;
+}
+
+/* Default anchor is bottom-right (rule above); this is the only other
+   supported corner (260715-75r) — flips the fixed-position edge and the
+   panel/launcher's own internal alignment (they're right-aligned by
+   default via align-items: flex-end) so both stack from the left edge
+   instead. transform-origin on the panel is flipped too (its open/close
+   scale animation should originate from the corner it's anchored to, not
+   always bottom-right). */
+.khaveeai-floating-widget[data-position="bottom-left"] {
+  right: auto;
+  left: 24px;
+  align-items: flex-start;
+}
+
+.khaveeai-floating-widget[data-position="bottom-left"] .khaveeai-floating-panel {
+  transform-origin: bottom left;
 }
 
 /* Sizes to content (header + fixed-height avatar area) now that chat lives
@@ -720,7 +742,17 @@
 @media (max-width: 480px) {
   .khaveeai-floating-widget {
     --khaveeai-floating-width: calc(100vw - 32px);
+    bottom: calc(16px + var(--khaveeai-floating-offset-y));
+  }
+
+  /* Mirrors the base bottom-right rule's tighter mobile inset (16px vs
+     24px) — only sets the side matching the current data-position, same
+     shape as the desktop-width rules above. */
+  .khaveeai-floating-widget:not([data-position="bottom-left"]) {
     right: 16px;
-    bottom: 16px;
+  }
+
+  .khaveeai-floating-widget[data-position="bottom-left"] {
+    left: 16px;
   }
 }

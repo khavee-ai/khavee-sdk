@@ -38,7 +38,7 @@
  * though only the avatar itself is broken. See AvatarErrorBoundary.tsx for
  * the full root-cause writeup.
  */
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { AvatarScene } from "../mount";
 import { ChatBox } from "../ui/ChatBox";
 import { ClickToTalkOverlay } from "../ui/ClickToTalkOverlay";
@@ -90,10 +90,29 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
     cameraRotationY: config.floatingCameraRotationY ?? 0.0,
   };
 
+  // Page-placement (260715-75r): which corner to anchor to (styles.css'
+  // default rule is bottom-right; [data-position="bottom-left"] flips the
+  // side) and a pixel Y-nudge on top of the base inset, so a site owner
+  // whose page already has another floating widget in the same corner
+  // (Intercom/Crisp/Drift, etc.) can lift Khavee's clear of it. Passed as a
+  // CSS custom property rather than a hardcoded inline `bottom` style so
+  // styles.css' existing `bottom: 24px` / `right: 24px` rules stay the
+  // single source of the base inset — this only adds to it.
+  const floatingPosition = config.floatingPosition ?? "bottom-right";
+  const floatingOffsetY = config.floatingOffsetY ?? 0;
+
   return (
     <div
       className="khaveeai-floating-widget"
       data-open={isOpen ? "true" : "false"}
+      data-position={floatingPosition}
+      style={
+        floatingOffsetY
+          ? ({
+              "--khaveeai-floating-offset-y": `${floatingOffsetY}px`,
+            } as CSSProperties)
+          : undefined
+      }
     >
       <div className="khaveeai-floating-panel">
         {/* ── Header ────────────────────────────────────────────────────── */}

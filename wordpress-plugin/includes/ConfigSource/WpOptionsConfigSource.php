@@ -105,6 +105,13 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 	private const DEFAULT_CAMERA_ROTATION_Y = 0.0;
 
 	/**
+	 * Default page corner the floating widget anchors to.
+	 *
+	 * @var string
+	 */
+	private const DEFAULT_FLOATING_POSITION = 'bottom-right';
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function get_runtime_config(): array {
@@ -159,6 +166,13 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			'floating_avatar_offset_y' => isset( $settings['floating_avatar_offset_y'] ) ? (float)  $settings['floating_avatar_offset_y'] : 0.0,
 			'floating_avatar_scale'    => isset( $settings['floating_avatar_scale'] )    ? (float)  $settings['floating_avatar_scale']    : 1.0,
 			'floating_camera_rotation_y' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : self::DEFAULT_CAMERA_ROTATION_Y,
+			// Floating-widget page-placement config (quick task 260715-75r) —
+			// which corner the widget anchors to and a pixel Y-nudge, so site
+			// owners whose page already has another floating widget
+			// (Intercom/Crisp/Drift, etc.) in the same corner can move
+			// Khavee's out of the way instead of the two overlapping.
+			'floating_position' => isset( $settings['floating_position'] ) ? (string) $settings['floating_position'] : self::DEFAULT_FLOATING_POSITION,
+			'floating_offset_y' => isset( $settings['floating_offset_y'] ) ? (int)    $settings['floating_offset_y'] : 0,
 		];
 	}
 

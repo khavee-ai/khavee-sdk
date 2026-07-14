@@ -470,6 +470,18 @@ jQuery( function ( $ ) {
 		el.addEventListener( 'change', function () { rebuild(); } );
 	} );
 
+	// Quick task 260715-75r: floating_offset_y's own live readout, kept
+	// separate from the ids.forEach block above and NOT wired into
+	// rebuild() — it's page-placement CSS, not part of the avatar-scene
+	// preview config rebuild() sends into the WebGL mount.
+	var offsetYPxEl  = document.getElementById( 'khaveeai_floating_offset_y' );
+	var offsetYPxOut = document.getElementById( 'khaveeai_floating_offset_y_out' );
+	if ( offsetYPxEl && offsetYPxOut ) {
+		offsetYPxEl.addEventListener( 'input', function () {
+			offsetYPxOut.textContent = offsetYPxEl.value + 'px';
+		} );
+	}
+
 	// Quick task 260706-wop: closes the drag-orbit loop. The khaveeai-preview
 	// bundle's mountPreview.tsx dispatches this CustomEvent on the mount div
 	// once per drag/zoom release on the preview's OrbitControls (PreviewScene.tsx
@@ -1171,6 +1183,26 @@ JS;
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		// Quick task 260715-75r: floating-widget page-placement config —
+		// which corner it anchors to and a pixel Y-nudge, so a site owner
+		// whose page already has another floating widget in the same corner
+		// (Intercom/Crisp/Drift, etc.) can move Khavee's out of the way.
+		add_settings_field(
+			'floating_position',
+			__( 'Floating widget position', 'khaveeai' ),
+			array( $this, 'render_floating_position_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_offset_y',
+			__( 'Floating widget vertical offset', 'khaveeai' ),
+			array( $this, 'render_floating_offset_y_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -1282,6 +1314,21 @@ JS;
 		$sanitized['floating_avatar_offset_y'] = isset( $input['floating_avatar_offset_y'] ) ? (float) $input['floating_avatar_offset_y'] : 0.0;
 		$sanitized['floating_avatar_scale']    = isset( $input['floating_avatar_scale'] ) ? (float) $input['floating_avatar_scale'] : 1.0;
 		$sanitized['floating_camera_rotation_y'] = isset( $input['floating_camera_rotation_y'] ) ? (float) $input['floating_camera_rotation_y'] : 0.0;
+
+		// Quick task 260715-75r: floating-widget page-placement config.
+		// Position is a closed whitelist (not sanitize_text_field free-form) —
+		// styles.css only defines CSS for these two exact values, and the
+		// frontend widget has no fallback rendering for anything else.
+		$floating_position = isset( $input['floating_position'] ) ? (string) $input['floating_position'] : 'bottom-right';
+		$sanitized['floating_position'] = in_array( $floating_position, array( 'bottom-right', 'bottom-left' ), true )
+			? $floating_position
+			: 'bottom-right';
+		// Clamped to a sane range — this only ever nudges the widget up off
+		// the page's bottom edge to clear another widget's footprint, not
+		// reposition it arbitrarily.
+		$sanitized['floating_offset_y'] = isset( $input['floating_offset_y'] )
+			? max( 0, min( 400, (int) $input['floating_offset_y'] ) )
+			: 0;
 
 		return $sanitized;
 	}
@@ -1668,6 +1715,14 @@ JS;
 		// Quick task 260706-wop: floating-only camera angle, also drivable by
 		// dragging/orbiting the live preview below (bidirectional).
 		$this->render_form_table_row( __( 'Floating camera angle', 'khaveeai' ), array( $this, 'render_floating_camera_rotation_y_field' ) );
+		// Quick task 260715-75r: page-placement config — which corner the
+		// widget anchors to plus a pixel Y-nudge, so a site owner whose page
+		// already has another floating widget in the same corner can move
+		// Khavee's out of the way. Not wired into the avatar-scene live
+		// preview below (it affects fixed-position CSS on the real page, not
+		// the avatar/camera/background the preview mount renders).
+		$this->render_form_table_row( __( 'Floating widget position', 'khaveeai' ), array( $this, 'render_floating_position_field' ) );
+		$this->render_form_table_row( __( 'Floating widget vertical offset', 'khaveeai' ), array( $this, 'render_floating_offset_y_field' ) );
 		echo '</tbody></table>';
 
 		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
@@ -2507,6 +2562,67 @@ JS;
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Camera angle in degrees for the floating widget only. Dragging/orbiting the live preview below also updates this.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's page-corner <select> (quick task
+	 * 260715-75r) — lets a site owner move Khavee's widget off the default
+	 * bottom-right corner when another floating widget (Intercom, Crisp,
+	 * Drift, etc.) already occupies it. A closed 2-option whitelist, not a
+	 * free-form position picker — styles.css only has CSS for these two
+	 * values (.khaveeai-floating-widget defaults to bottom-right;
+	 * [data-position="bottom-left"] is the only other variant).
+	 *
+	 * @return void
+	 */
+	public function render_floating_position_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_position'] ) ? (string) $settings['floating_position'] : 'bottom-right';
+
+		printf( '<select id="khaveeai_floating_position" name="%s[floating_position]">', esc_attr( self::OPTION_NAME ) );
+		$options = array(
+			'bottom-right' => __( 'Bottom right (default)', 'khaveeai' ),
+			'bottom-left'  => __( 'Bottom left', 'khaveeai' ),
+		);
+		foreach ( $options as $value => $label ) {
+			printf(
+				'<option value="%s"%s>%s</option>',
+				esc_attr( $value ),
+				selected( $value, $current, false ),
+				esc_html( $label )
+			);
+		}
+		echo '</select>';
+		echo '<p class="description">' .
+			esc_html__( 'Which page corner the floating widget anchors to. Change this if another chat widget on your site already occupies the bottom-right corner.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's vertical page-offset field (quick task
+	 * 260715-75r) — a pixel nudge applied on top of the chosen corner's
+	 * base 24px inset, so the widget can be lifted clear of another
+	 * widget's own footprint (many third-party launchers are themselves
+	 * ~56-80px tall) instead of the two stacking directly on top of each
+	 * other.
+	 *
+	 * @return void
+	 */
+	public function render_floating_offset_y_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_offset_y'] ) ? (int) $settings['floating_offset_y'] : 0;
+
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="4" id="khaveeai_floating_offset_y" name="%s[floating_offset_y]" value="%s" /><output id="khaveeai_floating_offset_y_out" for="khaveeai_floating_offset_y">%spx</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Extra distance (in pixels) to lift the widget up off the page edge, e.g. to clear another floating widget beneath it. 0 = default 24px inset.', 'khaveeai' ) .
 			'</p>';
 	}
 

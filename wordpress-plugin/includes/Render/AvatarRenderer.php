@@ -122,6 +122,14 @@ final class AvatarRenderer {
 		$config['floatingAvatarScale']    = (float) $merged['floating_avatar_scale'];
 		$config['floatingCameraRotationY'] = (float) $merged['floating_camera_rotation_y'];
 
+		// Floating-widget page-placement config (quick task 260715-75r) —
+		// which corner the widget anchors to (default bottom-right) plus a
+		// pixel Y-nudge, so a site owner whose page already has another
+		// floating widget in the same corner can move Khavee's out of the
+		// way instead of the two stacking on top of each other.
+		$config['floatingPosition'] = (string) $merged['floating_position'];
+		$config['floatingOffsetY']  = (int) $merged['floating_offset_y'];
+
 		return sprintf(
 			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
 			esc_attr( wp_json_encode( $config ) )
@@ -196,6 +204,9 @@ final class AvatarRenderer {
 		// as the global avatar_scale field above.
 		$merged['floating_avatar_scale'] = ( $merged['floating_avatar_scale'] ?? 0 ) > 0 ? (float) $merged['floating_avatar_scale'] : 1.0;
 		$merged['floating_camera_rotation_y'] = isset( $merged['floating_camera_rotation_y'] ) ? (float) $merged['floating_camera_rotation_y'] : 0.0;
+		$merged['floating_position'] = isset( $merged['floating_position'] ) && '' !== $merged['floating_position']
+			? (string) $merged['floating_position'] : 'bottom-right';
+		$merged['floating_offset_y'] = isset( $merged['floating_offset_y'] ) ? (int) $merged['floating_offset_y'] : 0;
 
 		return $merged;
 	}

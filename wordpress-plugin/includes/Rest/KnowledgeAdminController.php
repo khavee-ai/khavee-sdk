@@ -119,7 +119,7 @@ final class KnowledgeAdminController {
 			return $this->respond( array( 'error' => 'request_failed' ), 502 );
 		}
 
-		return $this->respond( array( 'data' => $result['documents'] ), 200 );
+		return $this->respond( array( 'data' => self::strip_internal_metadata( $result['documents'] ) ), 200 );
 	}
 
 	/**
@@ -160,7 +160,12 @@ final class KnowledgeAdminController {
 			return $this->respond( array( 'error' => 'request_failed' ), 502 );
 		}
 
-		return $this->respond( array( 'data' => $result['document'] ), 201 );
+		$document = $result['document'];
+		if ( is_array( $document ) && isset( $document['metadata'] ) && is_array( $document['metadata'] ) ) {
+			unset( $document['metadata']['userId'], $document['metadata']['projectId'] );
+		}
+
+		return $this->respond( array( 'data' => $document ), 201 );
 	}
 
 	/**
@@ -202,6 +207,27 @@ final class KnowledgeAdminController {
 		$settings = is_array( $settings ) ? $settings : array();
 
 		return isset( $settings['platform_api_key'] ) ? (string) $settings['platform_api_key'] : '';
+	}
+
+	/**
+	 * Strips platform-internal fields (userId, projectId — the calling
+	 * account's and project's own database ids) out of each document
+	 * before it crosses this route's boundary. Defense in depth: this
+	 * route IS manage_options-gated (unlike KnowledgeSearchController's
+	 * public route), but the wp-admin UI never needs these ids either —
+	 * matches KnowledgeSearchController::strip_internal_metadata()'s
+	 * rationale exactly.
+	 *
+	 * @param array $documents
+	 * @return array
+	 */
+	private static function strip_internal_metadata( array $documents ): array {
+		foreach ( $documents as &$doc ) {
+			if ( is_array( $doc ) && isset( $doc['metadata'] ) && is_array( $doc['metadata'] ) ) {
+				unset( $doc['metadata']['userId'], $doc['metadata']['projectId'] );
+			}
+		}
+		return $documents;
 	}
 
 	/**

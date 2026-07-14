@@ -436,6 +436,7 @@
  * ──────────────────────────────────────────────────────────────────────────── */
 
 .khaveeai-floating-widget {
+  --khaveeai-floating-width: 400px;
   position: fixed;
   bottom: 24px;
   right: 24px;
@@ -447,13 +448,11 @@
   font-family: inherit;
 }
 
-/* Height sizes to content now that chat lives in the external bottom sheet
-   (260715-2ih) rather than inside the panel: header (~52px) + fixed 200px
-   avatar area, plus a little breathing room for the centered controls that
-   overlap the bottom of the avatar area. */
+/* Sizes to content (header + fixed-height avatar area) now that chat lives
+   in the sheet below rather than inside the panel — no explicit height, or
+   a stray gap opens up below the avatar with nothing filling it. */
 .khaveeai-floating-panel {
-  width: 360px;
-  height: 284px;
+  width: var(--khaveeai-floating-width);
   background: #ffffff;
   border: 1px solid #dde1ea;
   border-radius: 20px;
@@ -519,7 +518,7 @@
    overlay it, mirroring the inline-embed .khaveeai-root pattern). */
 .khaveeai-floating-avatar-area {
   flex-shrink: 0;
-  height: 200px;
+  height: 420px;
   background: #6929ff;
   position: relative;
   overflow: hidden;
@@ -547,11 +546,14 @@
   gap: 16px;
 }
 
-/* Large circular primary buttons — scoped to the floating controls
-   container only, so the inline embed's smaller ControlBar is unaffected. */
+/* Circular primary buttons — scoped to the floating controls container
+   only, so the inline embed's smaller ControlBar is unaffected. Sized down
+   from an initial 72px (260715-follow-up) — that size was ported directly
+   from khavee-app's full-page PreviewControls.tsx, which is far too large
+   for a compact embedded widget panel. */
 .khaveeai-floating-controls .khaveeai-control-btn {
-  width: 72px;
-  height: 72px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: none;
   display: inline-flex;
@@ -580,24 +582,39 @@
   background: #12151d;
 }
 
-/* ── Chat bottom sheet (260715-2ih) ──────────────────────────────────────
-   Fixed, full-width sheet that slides up from the bottom of the screen.
-   Sibling of .khaveeai-floating-panel in the DOM (not nested inside it),
-   so the panel's overflow:hidden never clips the sheet. */
+/* Fade the ControlBar out (not display:none — keeps mic state readable/
+   togglable via keyboard, and avoids layout shift) while the sheet is
+   open, so it stops sitting above the sheet's input row (see
+   FloatingWidget.tsx for why: base .khaveeai-controls z-index:30 > sheet's
+   z-index:5). */
+.khaveeai-floating-controls--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+/* ── Chat sheet (260715-2ih; re-overlaid 260715-follow-up-2) ─────────────
+   Nested INSIDE .khaveeai-floating-avatar-area (see FloatingWidget.tsx),
+   which is `position:relative` — this sheet is `position:absolute` against
+   THAT box, not the whole widget. Sized to cover roughly the bottom 60% of
+   the (now-taller, 420px) avatar area, so the top ~40% (avatar's face/
+   upper body) stays visible above the sheet while it's open, instead of
+   fully hiding the avatar (the previous in-flow "stack below the panel"
+   approach) or spilling past the panel/covering the launcher (the very
+   first fixed/viewport-wide overlay approach). */
 .khaveeai-floating-sheet {
-  position: fixed;
+  position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  width: 100%;
-  height: 50dvh;
-  height: 50vh;
+  height: 250px;
+  max-height: 60%;
   background: #ffffff;
-  border-radius: 24px 24px 0 0;
+  border-radius: 20px 20px 0 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  z-index: 1000000;
+  z-index: 5;
   transform: translateY(100%);
   transition: transform 300ms ease-in-out;
 }
@@ -701,18 +718,9 @@
 }
 
 @media (max-width: 480px) {
-  .khaveeai-floating-panel {
-    width: calc(100vw - 32px);
-    height: 284px;
-  }
-
   .khaveeai-floating-widget {
+    --khaveeai-floating-width: calc(100vw - 32px);
     right: 16px;
     bottom: 16px;
-  }
-
-  .khaveeai-floating-sheet {
-    height: 70dvh;
-    height: 70vh;
   }
 }

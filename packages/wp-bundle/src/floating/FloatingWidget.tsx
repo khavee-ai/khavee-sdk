@@ -141,36 +141,46 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
           {/* Mic mute/unmute + chat sheet toggle — centered near the bottom
               of the always-visible avatar area, clear of the centered
               ClickToTalkOverlay CTA. onToggleChat now drives the bottom
-              sheet below, not the whole-widget open/close. */}
+              sheet below, not the whole-widget open/close.
+              Base .khaveeai-controls has z-index:30 (so it sits above the
+              inline embed's canvas), which put it ABOVE the sheet
+              (z-index:5) too — found live-testing 260715: buttons floated
+              on top of the sheet's message input, blocking it. Faded out
+              (not unmounted, so ControlBar's mic/connection state survives)
+              via the --hidden modifier below whenever the sheet is open. */}
           <ControlBar
             chatEnabled
             isChatOpen={isChatOpen}
             onToggleChat={() => setIsChatOpen((v) => !v)}
-            className="khaveeai-floating-controls"
+            className={`khaveeai-floating-controls${isChatOpen ? " khaveeai-floating-controls--hidden" : ""}`}
           />
-        </div>
-      </div>
 
-      {/* ── Chat bottom sheet ─────────────────────────────────────────────
-          Sibling of khaveeai-floating-panel (not nested inside it) so the
-          panel's overflow:hidden never clips the sheet. Closed by default;
-          slides up from the bottom on isChatOpen. */}
-      <div
-        ref={sheetRef}
-        className="khaveeai-floating-sheet"
-        data-chat-open={isChatOpen ? "true" : "false"}
-        onTouchStart={handleSheetTouchStart}
-        onTouchEnd={handleSheetTouchEnd}
-      >
-        <div
-          className="khaveeai-floating-sheet-handle"
-          onClick={() => setIsChatOpen(false)}
-          role="button"
-          aria-label="Close chat"
-        >
-          <span className="khaveeai-floating-sheet-grip" />
+          {/* ── Chat sheet ────────────────────────────────────────────────
+              Nested INSIDE the avatar area (not a sibling of the panel) so
+              it can overlay the bottom portion of the avatar without
+              spilling past the panel's own edges or covering the launcher
+              button below. Sized to cover roughly the bottom 60% of the
+              avatar area, leaving the top ~40% (the avatar's face/upper
+              body) visible while open. Closed by default; slides up on
+              isChatOpen. */}
+          <div
+            ref={sheetRef}
+            className="khaveeai-floating-sheet"
+            data-chat-open={isChatOpen ? "true" : "false"}
+            onTouchStart={handleSheetTouchStart}
+            onTouchEnd={handleSheetTouchEnd}
+          >
+            <div
+              className="khaveeai-floating-sheet-handle"
+              onClick={() => setIsChatOpen(false)}
+              role="button"
+              aria-label="Close chat"
+            >
+              <span className="khaveeai-floating-sheet-grip" />
+            </div>
+            <ChatBox placement="below" />
+          </div>
         </div>
-        <ChatBox placement="below" />
       </div>
 
       <button

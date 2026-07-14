@@ -519,10 +519,18 @@ JS;
 		}
 
 		var listEl    = document.getElementById( 'khaveeai-kb-list' );
+		var footerEl  = document.getElementById( 'khaveeai-kb-footer' );
 		var contentEl = document.getElementById( 'khaveeai-kb-content' );
 		var metaEl    = document.getElementById( 'khaveeai-kb-metadata' );
 		var addBtn    = document.getElementById( 'khaveeai-kb-add' );
 		var statusEl  = document.getElementById( 'khaveeai-kb-status' );
+
+		// Quick task 260715-1iy: client-side pagination state. loadList()
+		// fetches ALL documents (?limit=100) once; Prev/Next just re-slice
+		// and re-render allDocs — no re-fetch.
+		var allDocs     = [];
+		var currentPage = 0;
+		var PAGE_SIZE   = 8;
 
 		function setStatus( message ) {
 			if ( statusEl ) {
@@ -530,22 +538,96 @@ JS;
 			}
 		}
 
+		function renderFooter() {
+			if ( ! footerEl ) {
+				return;
+			}
+			footerEl.textContent = '';
+			var count = allDocs.length;
+			var countEl = document.createElement( 'p' );
+			countEl.textContent = count + ' document' + ( 1 === count ? '' : 's' );
+			footerEl.appendChild( countEl );
+		}
+
+		function renderPager() {
+			if ( ! listEl || allDocs.length <= PAGE_SIZE ) {
+				return;
+			}
+
+			var totalPages = Math.ceil( allDocs.length / PAGE_SIZE );
+
+			var pager = document.createElement( 'div' );
+			pager.className = 'khaveeai-kb-pager';
+			pager.style.display = 'flex';
+			pager.style.alignItems = 'center';
+			pager.style.justifyContent = 'space-between';
+			pager.style.gap = '8px';
+			pager.style.marginTop = '8px';
+
+			var prevBtn = document.createElement( 'button' );
+			prevBtn.type = 'button';
+			prevBtn.className = 'button';
+			prevBtn.textContent = 'Prev';
+			prevBtn.disabled = 0 === currentPage;
+			prevBtn.addEventListener( 'click', function () {
+				if ( currentPage > 0 ) {
+					currentPage -= 1;
+					renderList( allDocs );
+				}
+			} );
+
+			var label = document.createElement( 'span' );
+			label.className = 'description';
+			label.textContent = 'Page ' + ( currentPage + 1 ) + ' of ' + totalPages;
+
+			var nextBtn = document.createElement( 'button' );
+			nextBtn.type = 'button';
+			nextBtn.className = 'button';
+			nextBtn.textContent = 'Next';
+			nextBtn.disabled = currentPage >= totalPages - 1;
+			nextBtn.addEventListener( 'click', function () {
+				if ( currentPage < totalPages - 1 ) {
+					currentPage += 1;
+					renderList( allDocs );
+				}
+			} );
+
+			pager.appendChild( prevBtn );
+			pager.appendChild( label );
+			pager.appendChild( nextBtn );
+
+			listEl.appendChild( pager );
+		}
+
 		function renderList( docs ) {
 			if ( ! listEl ) {
 				return;
 			}
 
+			allDocs = Array.isArray( docs ) ? docs : [];
+
+			var totalPages = Math.max( 1, Math.ceil( allDocs.length / PAGE_SIZE ) );
+			if ( currentPage >= totalPages ) {
+				currentPage = totalPages - 1;
+			}
+			if ( currentPage < 0 ) {
+				currentPage = 0;
+			}
+
 			listEl.textContent = '';
 
-			if ( ! Array.isArray( docs ) || 0 === docs.length ) {
+			if ( 0 === allDocs.length ) {
 				var empty = document.createElement( 'p' );
 				empty.className = 'description';
 				empty.textContent = 'No documents yet.';
 				listEl.appendChild( empty );
+				renderFooter();
 				return;
 			}
 
-			docs.forEach( function ( doc ) {
+			var pageDocs = allDocs.slice( currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE );
+
+			pageDocs.forEach( function ( doc ) {
 				var row = document.createElement( 'div' );
 				row.className = 'khaveeai-kb-row';
 				row.style.borderBottom = '1px solid #dcdcde';
@@ -583,16 +665,19 @@ JS;
 				delBtn.textContent = 'Delete';
 				delBtn.setAttribute( 'data-id', id );
 				delBtn.addEventListener( 'click', function () {
-					deleteDocument( id, row );
+					deleteDocument( id );
 				} );
 				row.appendChild( delBtn );
 
 				listEl.appendChild( row );
 			} );
+
+			renderPager();
+			renderFooter();
 		}
 
 		function loadList() {
-			fetch( khaveeaiKb.root, {
+			fetch( khaveeaiKb.root + '?limit=100', {
 				method: 'GET',
 				headers: { 'X-WP-Nonce': khaveeaiKb.nonce }
 			} )
@@ -611,7 +696,7 @@ JS;
 				} );
 		}
 
-		function deleteDocument( id, row ) {
+		function deleteDocument( id ) {
 			if ( ! id ) {
 				return;
 			}
@@ -624,9 +709,14 @@ JS;
 					if ( ! res.ok ) {
 						throw new Error( 'failed' );
 					}
-					if ( row && row.parentNode ) {
-						row.parentNode.removeChild( row );
-					}
+					// Quick task 260715-1iy: remove from allDocs and re-render
+					// (rather than only detaching the row) so the pager/footer
+					// counts stay correct and the current page stays valid.
+					allDocs = allDocs.filter( function ( doc ) {
+						var docId = doc && ( doc.id || doc._id ) || '';
+						return docId !== id;
+					} );
+					renderList( allDocs );
 					setStatus( 'Document deleted.' );
 				} )
 				.catch( function () {
@@ -1522,11 +1612,13 @@ JS;
 		// is hand-assembled above via render_section_heading()/
 		// render_form_table_row(). The knowledge-base row was never added
 		// to this manual layout, so it never actually appeared on the page.
+		// Quick task 260715-1iy: the Knowledge Base card now owns its own
+		// two-column layout (add-form left, document list right — see
+		// render_knowledge_base_field()) so it visually matches the
+		// Avatar/Floating Widget cards below instead of a plain form-table row.
 		echo '<div class="khaveeai-settings__card">';
 		$this->render_section_heading( __( 'Knowledge Base', 'khaveeai' ), __( 'Let the AI search your project documents while talking', 'khaveeai' ) );
-		echo '<table class="form-table" role="presentation"><tbody>';
-		$this->render_form_table_row( __( 'Knowledge Base', 'khaveeai' ), array( $this, 'render_knowledge_base_field' ) );
-		echo '</tbody></table>';
+		$this->render_knowledge_base_field();
 		echo '</div>';
 
 		// Quick task 260707-oyu item 1: two-column layout — fields (left) |
@@ -2210,13 +2302,14 @@ JS;
 			return;
 		}
 
-		echo '<div id="khaveeai-kb-manager" style="margin-top:12px;max-width:640px;">';
+		// Quick task 260715-1iy: two-column layout — add-form (left) | document
+		// list (right) — reusing the SAME .khaveeai-settings__two-col /
+		// .khaveeai-settings__preview-col classes as the Avatar/Floating
+		// Widget cards (see render_settings_page_styles()); no new layout CSS.
+		echo '<div id="khaveeai-kb-manager" style="margin-top:12px;">';
+		echo '<div class="khaveeai-settings__two-col">';
 
-		echo '<div id="khaveeai-kb-list" style="margin-bottom:12px;"><p class="description">' .
-			esc_html__( 'Loading documents…', 'khaveeai' ) .
-			'</p></div>';
-
-		echo '<div class="khaveeai-kb-add" style="border-top:1px solid #dcdcde;padding-top:12px;">';
+		echo '<div class="khaveeai-kb-add">';
 		printf(
 			'<p><label for="khaveeai-kb-content">%s</label><br /><textarea id="khaveeai-kb-content" rows="4" style="width:100%%;max-width:480px;" placeholder="%s"></textarea></p>',
 			esc_html__( 'New document content', 'khaveeai' ),
@@ -2231,11 +2324,18 @@ JS;
 			'<p><button type="button" class="button button-primary" id="khaveeai-kb-add">%s</button></p>',
 			esc_html__( 'Add document', 'khaveeai' )
 		);
-		echo '</div>';
-
 		echo '<p id="khaveeai-kb-status" aria-live="polite" class="description"></p>';
+		echo '</div>'; // .khaveeai-kb-add
 
-		echo '</div>';
+		echo '<div class="khaveeai-settings__preview-col">';
+		echo '<div id="khaveeai-kb-list" style="margin-bottom:12px;"><p class="description">' .
+			esc_html__( 'Loading documents…', 'khaveeai' ) .
+			'</p></div>';
+		echo '<div id="khaveeai-kb-footer" class="description"></div>';
+		echo '</div>'; // .khaveeai-settings__preview-col
+
+		echo '</div>'; // .khaveeai-settings__two-col
+		echo '</div>'; // #khaveeai-kb-manager
 	}
 
 	/**

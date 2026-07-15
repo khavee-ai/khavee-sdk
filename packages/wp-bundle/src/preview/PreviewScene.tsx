@@ -88,6 +88,15 @@ export interface PreviewAvatarConfig extends KhaveeAvatarConfig {
    * (KhaveeAvatarConfig).
    */
   previewMode?: "floating";
+  /**
+   * Generic (not floating*-prefixed) mirror of floatingPrimaryColor
+   * (260716-primary-color) — read by PreviewFloatingWidget only, same
+   * generic-key convention as bgColor/bgTransparent above (see that
+   * comment on PreviewFloatingWidget.tsx's avatar-area style for why:
+   * render_floating_preview_mount() and rebuild() emit the generic key,
+   * not the floating*-prefixed one the real front-end config uses).
+   */
+  primaryColor?: string;
 }
 
 // ── PreviewSceneInner ─────────────────────────────────────────────────────────

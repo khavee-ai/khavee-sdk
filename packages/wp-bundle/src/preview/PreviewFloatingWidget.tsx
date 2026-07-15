@@ -29,6 +29,7 @@
  * (X) button is rendered for visual fidelity only (no onClick) since there
  * is no collapsed state to return to in this preview context.
  */
+import type { CSSProperties as PreviewStyle } from "react";
 import { PreviewAvatarCanvas } from "./PreviewAvatarCanvas";
 import { PreviewChatBox, type PreviewExampleMessage } from "./PreviewChatBox";
 import type { PreviewAvatarConfig } from "./PreviewScene";
@@ -51,7 +52,14 @@ export function PreviewFloatingWidget({
   onCameraAngleChange?: (deg: number) => void;
 }) {
   return (
-    <div className="khaveeai-floating-panel">
+    <div
+      className="khaveeai-floating-panel"
+      style={
+        config.primaryColor
+          ? ({ "--khaveeai-primary": config.primaryColor } as PreviewStyle)
+          : undefined
+      }
+    >
       {/* ── Header ────────────────────────────────────────────────────── */}
       <div className="khaveeai-floating-header">
         <div className="khaveeai-floating-header-title">AI Assistant</div>
@@ -88,9 +96,12 @@ export function PreviewFloatingWidget({
       <div
         className="khaveeai-floating-avatar-area"
         style={{
+          // `||`, not `??`: rebuild()'s cfg.bgColor is always a string
+          // ('#6929ff' fallback baked in there too, but kept here for
+          // parity with the real front-end's same-shaped fallback chain).
           background: config.bgTransparent
             ? "transparent"
-            : config.bgColor ?? "#6929ff",
+            : config.bgColor || config.primaryColor || "#6929ff",
         }}
       >
         <PreviewAvatarCanvas config={config} onCameraAngleChange={onCameraAngleChange} />

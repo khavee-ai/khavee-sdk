@@ -116,6 +116,8 @@ final class AvatarRenderer {
 		// AFTER public_safe(), same as the `floating` key above, so these
 		// never leak into render()'s inline-embed public_safe() output.
 		$config['floatingBgColor']        = (string) $merged['floating_bg_color'];
+		// 260716-primary-color: widget-wide brand/accent color.
+		$config['floatingPrimaryColor']   = (string) $merged['floating_primary_color'];
 		$config['floatingBgTransparent']  = (bool) $merged['floating_bg_transparent'];
 		$config['floatingAvatarOffsetX']  = (float) $merged['floating_avatar_offset_x'];
 		$config['floatingAvatarOffsetY']  = (float) $merged['floating_avatar_offset_y'];
@@ -197,6 +199,7 @@ final class AvatarRenderer {
 		// of the global bg_color/bg_transparent/avatar_scale/avatar_offset_x/y
 		// keys so the floating panel and inline embed never share state.
 		$merged['floating_bg_color']       = isset( $merged['floating_bg_color'] ) ? (string) $merged['floating_bg_color'] : '';
+		$merged['floating_primary_color']  = isset( $merged['floating_primary_color'] ) ? (string) $merged['floating_primary_color'] : '';
 		$merged['floating_bg_transparent'] = (bool) ( $merged['floating_bg_transparent'] ?? false );
 		$merged['floating_avatar_offset_x'] = isset( $merged['floating_avatar_offset_x'] ) ? (float) $merged['floating_avatar_offset_x'] : 0.0;
 		$merged['floating_avatar_offset_y'] = isset( $merged['floating_avatar_offset_y'] ) ? (float) $merged['floating_avatar_offset_y'] : 0.0;

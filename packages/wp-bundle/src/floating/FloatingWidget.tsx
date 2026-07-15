@@ -25,9 +25,12 @@
  * mirrors khavee-app's PreviewControls.tsx mobile bottom-sheet chat model
  * (reference only — behavior translated, not copied).
  *
- * Design spec (mockup, verbatim colors/dimensions): solid #6929ff, #dde1ea
- * border, 20px panel radius, 220ms cubic-bezier(0.2,0.8,0.2,1) transform
- * transition — NO box-shadow, NO gradient anywhere (see styles.css).
+ * Design spec (mockup, verbatim dimensions): #dde1ea border, 20px panel
+ * radius, 220ms cubic-bezier(0.2,0.8,0.2,1) transform transition — NO
+ * box-shadow, NO gradient anywhere (see styles.css). Accent color was
+ * originally a hardcoded solid #6929ff purple; made themeable per-site via
+ * floatingPrimaryColor (260716-primary-color) — defaults to the same
+ * #6929ff if unset, so this is a no-op for every existing embed.
  *
  * Bugfix (found live against wp-env, 2026-07-04): AvatarScene is wrapped in
  * AvatarErrorBoundary (../ui/AvatarErrorBoundary) because @react-three/fiber's
@@ -101,18 +104,31 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   const floatingPosition = config.floatingPosition ?? "bottom-right";
   const floatingOffsetY = config.floatingOffsetY ?? 0;
 
+  // Brand/accent color (260716-primary-color): overrides --khaveeai-primary
+  // (declared with the historical #6929ff purple as its default on
+  // .khaveeai-root in styles.css) on this widget's own root, which cascades
+  // into every var(--khaveeai-primary) reference nested inside — the
+  // header/launcher/mic-button AND the shared ChatBox bubbles/send-button
+  // styles the bottom sheet reuses — without touching the inline embed's
+  // rendering (it never sets this override, so it keeps the default).
+  const floatingPrimaryColor = config.floatingPrimaryColor;
+
+  const widgetStyle: CSSProperties = {};
+  if (floatingOffsetY) {
+    (widgetStyle as Record<string, string>)["--khaveeai-floating-offset-y"] =
+      `${floatingOffsetY}px`;
+  }
+  if (floatingPrimaryColor) {
+    (widgetStyle as Record<string, string>)["--khaveeai-primary"] =
+      floatingPrimaryColor;
+  }
+
   return (
     <div
       className="khaveeai-floating-widget"
       data-open={isOpen ? "true" : "false"}
       data-position={floatingPosition}
-      style={
-        floatingOffsetY
-          ? ({
-              "--khaveeai-floating-offset-y": `${floatingOffsetY}px`,
-            } as CSSProperties)
-          : undefined
-      }
+      style={Object.keys(widgetStyle).length ? widgetStyle : undefined}
     >
       <div className="khaveeai-floating-panel">
         {/* ── Header ────────────────────────────────────────────────────── */}
@@ -145,9 +161,19 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
         <div
           className="khaveeai-floating-avatar-area"
           style={{
+            // floatingBgColor stays independently settable (a site may want
+            // the avatar canvas a different shade than its buttons/header),
+            // but when it's unset the avatar area now follows
+            // floatingPrimaryColor too, not a hardcoded purple — setting
+            // just a primary color re-themes the whole widget consistently.
+            // `||`, not `??`: AvatarRenderer.php always emits floatingBgColor
+            // as a string, '' when unset (never undefined/null) — nullish
+            // coalescing would never fall through to floatingPrimaryColor
+            // (this exact PHP-empty-string-vs-JS-nullish gotcha is already
+            // documented in PreviewScene.tsx's chatPlacement fallback).
             background: config.floatingBgTransparent
               ? "transparent"
-              : config.floatingBgColor ?? "#6929ff",
+              : config.floatingBgColor || floatingPrimaryColor || "#6929ff",
           }}
         >
           {config.avatarUrl ? (
@@ -197,7 +223,10 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
             >
               <span className="khaveeai-floating-sheet-grip" />
             </div>
-            <ChatBox placement="below" />
+            <ChatBox
+              placement="below"
+              onClose={() => setIsChatOpen(false)}
+            />
           </div>
         </div>
       </div>

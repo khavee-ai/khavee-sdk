@@ -9,6 +9,16 @@
  */
 
 .khaveeai-root {
+  /* Single source of truth for every accent color below (CTA button, mic
+     button, chat bubbles, send button, and — in the floating widget only,
+     via an inline override on .khaveeai-floating-widget — the header/
+     launcher too). Declared once here with the historical purple as
+     default so every var(--khaveeai-primary) reference below can omit its
+     own fallback; overriding this ONE property re-themes the whole
+     widget. Hover/tint shades are derived from it via color-mix() rather
+     than hardcoded as separate hex values, so they never drift out of
+     sync with whatever color is set here (260716-primary-color). */
+  --khaveeai-primary: #6929ff;
   position: relative;
   min-height: 32px;
   width: 100%;
@@ -49,13 +59,13 @@
   padding: 10px 24px;
   border: none;
   border-radius: 999px;
-  background: #6929ff;
+  background: var(--khaveeai-primary);
   color: #ffffff;
   cursor: pointer;
 }
 
 .khaveeai-cta-button:hover:not(:disabled) {
-  background: #5a16eb;
+  background: color-mix(in srgb, var(--khaveeai-primary) 85%, black);
 }
 
 .khaveeai-cta-button:disabled {
@@ -64,7 +74,7 @@
 }
 
 .khaveeai-cta-button--retry {
-  background: #6929ff;
+  background: var(--khaveeai-primary);
   margin-left: 8px;
 }
 
@@ -103,12 +113,12 @@
    icon swaps (Mic/MicOff) — matching khavee-app's PreviewControls.tsx, which
    does not recolor the button on mute. */
 .khaveeai-control-btn--mic {
-  background: #ede9fe;
-  color: #6929ff;
+  background: color-mix(in srgb, var(--khaveeai-primary) 8%, white);
+  color: var(--khaveeai-primary);
 }
 
 .khaveeai-control-btn--mic:hover {
-  background: #ddd6fe;
+  background: color-mix(in srgb, var(--khaveeai-primary) 16%, white);
 }
 
 .khaveeai-control-btn--chat {
@@ -121,7 +131,7 @@
 }
 
 .khaveeai-control-btn:focus-visible {
-  outline: 2px solid #6929ff;
+  outline: 2px solid var(--khaveeai-primary);
   outline-offset: 2px;
 }
 
@@ -211,6 +221,39 @@
   line-height: 1.2;
   color: #000000;
   text-align: left;
+  /* display/align/justify are no-ops for the inline embed (its ChatBox
+     never passes onClose, so there's only ever the single text child
+     above) — only takes effect once a .khaveeai-chat__close button is
+     also present (260716-close-button), pushing it to the row's end. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Small close (X) button, floating-sheet ChatBox only (onClose prop —
+   see ChatBox.tsx). Styled for the header's light/white background,
+   unlike .khaveeai-floating-close (white icon on translucent white,
+   meant for the purple/primary-colored outer panel header) — a neutral
+   gray icon with a subtle hover tint instead. */
+.khaveeai-chat__close {
+  flex-shrink: 0;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.khaveeai-chat__close:hover {
+  background: #f3f4f6;
+  color: #1f2430;
 }
 
 /* ── Transcript (scrollable bubble list) ─────────────────────────────────── */
@@ -244,7 +287,7 @@
 /* User: right-aligned, solid purple, tail bottom-right (6px corner) */
 .khaveeai-chat__bubble--user {
   align-self: flex-end;
-  background: #6929ff;
+  background: var(--khaveeai-primary);
   color: #ffffff;
   border-radius: 24px 24px 6px 24px;
 }
@@ -252,8 +295,8 @@
 /* Assistant: left-aligned, tinted lavender, tail bottom-left (6px corner) */
 .khaveeai-chat__bubble--assistant {
   align-self: flex-start;
-  background: #f3f2ff;
-  color: #6929ff;
+  background: color-mix(in srgb, var(--khaveeai-primary) 4%, white);
+  color: var(--khaveeai-primary);
   border-radius: 24px 24px 24px 6px;
 }
 
@@ -276,14 +319,14 @@
   height: 44px;
   margin: 0 24px 20px;
   padding: 4px 4px 4px 16px;
-  border: 2px solid #d7d2ff;
+  border: 2px solid color-mix(in srgb, var(--khaveeai-primary) 16%, white);
   border-radius: 14px;
   background: #ffffff;
   box-sizing: border-box;
 }
 
 .khaveeai-chat__input-row:focus-within {
-  border-color: #6929ff;
+  border-color: var(--khaveeai-primary);
 }
 
 /* ── Textarea ────────────────────────────────────────────────────────────────── */
@@ -313,7 +356,7 @@
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  background: #6929ff;
+  background: var(--khaveeai-primary);
   color: #ffffff;
   border: none;
   border-radius: 12px;
@@ -325,7 +368,7 @@
 }
 
 .khaveeai-chat__send:hover {
-  background: #5a16eb;
+  background: color-mix(in srgb, var(--khaveeai-primary) 85%, black);
 }
 
 .khaveeai-chat__send:disabled {
@@ -334,7 +377,7 @@
 }
 
 .khaveeai-chat__send:focus-visible {
-  outline: 2px solid #6929ff;
+  outline: 2px solid var(--khaveeai-primary);
   outline-offset: 2px;
 }
 
@@ -429,9 +472,11 @@
  * Floating widget (FLOAT-01, quick task 260704-77n)
  * Site-wide fixed bottom-right launcher/panel — ported verbatim from the
  * approved mockup (colors/dimensions/transitions), selectors renamed to the
- * khaveeai-floating- prefix. Solid #6929ff purple, #dde1ea border, 20px
- * panel radius — a plain flat fill throughout, no drop effects or
- * multi-stop fills anywhere in this section.
+ * khaveeai-floating- prefix. #dde1ea border, 20px panel radius — a plain
+ * flat fill throughout, no drop effects or multi-stop fills anywhere in
+ * this section. Accent color is var(--khaveeai-primary) (default #6929ff
+ * purple, declared on .khaveeai-root) — themeable per-site via
+ * floatingPrimaryColor (260716-primary-color), see FloatingWidget.tsx.
  * Does NOT touch any existing .khaveeai-* inline-embed class above.
  * ──────────────────────────────────────────────────────────────────────────── */
 
@@ -504,7 +549,7 @@
 .khaveeai-floating-header {
   flex-shrink: 0;
   padding: 12px 18px;
-  background: #6929ff;
+  background: var(--khaveeai-primary);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -587,12 +632,12 @@
 }
 
 .khaveeai-floating-controls .khaveeai-control-btn--mic {
-  background: #6929ff;
+  background: var(--khaveeai-primary);
   color: #ffffff;
 }
 
 .khaveeai-floating-controls .khaveeai-control-btn--mic:hover {
-  background: #5a16eb;
+  background: color-mix(in srgb, var(--khaveeai-primary) 85%, black);
 }
 
 .khaveeai-floating-controls .khaveeai-control-btn--chat {
@@ -689,7 +734,7 @@
   height: 60px;
   border-radius: 50%;
   border: none;
-  background: #6929ff;
+  background: var(--khaveeai-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -703,11 +748,11 @@
 
 .khaveeai-floating-launcher:hover {
   transform: translateY(-2px);
-  background: #5a16eb;
+  background: color-mix(in srgb, var(--khaveeai-primary) 85%, black);
 }
 
 .khaveeai-floating-launcher:focus-visible {
-  outline: 2px solid #5a16eb;
+  outline: 2px solid color-mix(in srgb, var(--khaveeai-primary) 85%, black);
   outline-offset: 3px;
 }
 

@@ -18,7 +18,21 @@
 import { useState, useEffect, useRef } from "react";
 import { useRealtime } from "@khaveeai/react";
 
-export function ChatBox({ placement }: { placement: "beside" | "below" }) {
+export function ChatBox({
+  placement,
+  onClose,
+}: {
+  placement: "beside" | "below";
+  /**
+   * Optional small close (X) button rendered in the header, next to "AI
+   * Assistant" (260716-close-button). Undefined by default — the inline
+   * embed (mount.tsx) never passes this, so its header is unchanged; only
+   * FloatingWidget.tsx's bottom-sheet usage passes one, as an additional,
+   * more discoverable close affordance alongside the sheet's existing
+   * drag-handle-tap-to-close.
+   */
+  onClose?: () => void;
+}) {
   const { conversation, sendMessage, chatStatus, isConnected } = useRealtime();
   const [input, setInput] = useState("");
   // scrollRef: the scrollable transcript container; scrolls to its last bubble on update.
@@ -62,7 +76,29 @@ export function ChatBox({ placement }: { placement: "beside" | "below" }) {
     >
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       {/* "AI Assistant" — verbatim UI-SPEC copywriting; white-label WP embed uses no brand name */}
-      <div className="khaveeai-chat__header">AI Assistant</div>
+      <div className="khaveeai-chat__header">
+        <span>AI Assistant</span>
+        {onClose ? (
+          <button
+            type="button"
+            className="khaveeai-chat__close"
+            aria-label="Close chat"
+            onClick={onClose}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden="true"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
 
       {/* ── Body: three mutually exclusive states ────────────────────────── */}
 

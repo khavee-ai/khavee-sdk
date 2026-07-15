@@ -192,6 +192,16 @@ export interface KhaveeAvatarConfig {
   /** Extra pixels to lift the widget up off the page's bottom edge, on top
    * of the base 24px inset. Default 0. */
   floatingOffsetY?: number;
+  /**
+   * Brand/accent color for the floating widget (260716-primary-color) —
+   * overrides the --khaveeai-primary CSS custom property (default #6929ff
+   * purple) that drives the header, launcher, mic button, chat bubbles,
+   * and send button. When unset, floatingBgColor's own fallback (the
+   * avatar-area background only) also follows this before finally
+   * defaulting to #6929ff, so setting just this one field re-themes the
+   * whole widget. Any valid CSS color string (hex, rgb(), named color).
+   */
+  floatingPrimaryColor?: string;
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────

@@ -361,26 +361,46 @@ jQuery( function ( $ ) {
 		initialAvatarUrl = '';
 	}
 
-	// colorOverride lets the irischange handler below pass the color Iris
-	// just computed (event.ui.color) directly, bypassing colorEl.value —
-	// confirmed live that a palette-swatch click fires `irischange` BEFORE
-	// Iris writes the new color into the input's DOM value (el.value inside
-	// the handler still holds the PREVIOUS click's color, one step behind),
-	// while event.ui.color already carries the correct, current color at
-	// fire time. Reading colorEl.value here would silently rebuild the
-	// preview one click stale on every palette-swatch interaction.
-	function rebuild( colorOverride ) {
-		var colorEl       = document.getElementById( 'khaveeai_floating_bg_color' );
-		var transparentEl = document.getElementById( 'khaveeai_floating_bg_transparent' );
-		var offsetXEl     = document.getElementById( 'khaveeai_floating_avatar_offset_x' );
-		var offsetYEl     = document.getElementById( 'khaveeai_floating_avatar_offset_y' );
-		var scaleEl       = document.getElementById( 'khaveeai_floating_avatar_scale' );
-		var rotEl         = document.getElementById( 'khaveeai_floating_camera_rotation_y' );
+	// colorOverrideId/colorOverrideValue let the irischange handler below
+	// pass the color Iris just computed (event.ui.color) directly,
+	// bypassing that field's own .value — confirmed live that a
+	// palette-swatch click fires `irischange` BEFORE Iris writes the new
+	// color into the input's DOM value (el.value inside the handler still
+	// holds the PREVIOUS click's color, one step behind), while
+	// event.ui.color already carries the correct, current color at fire
+	// time. Reading .value here would silently rebuild the preview one
+	// click stale on every palette-swatch interaction.
+	//
+	// 260716-primary-color: there are now TWO `.khaveeai-color-field`
+	// inputs (bg color + accent color) sharing the same wpColorPicker/
+	// irischange handlers below — colorOverrideId says WHICH field the
+	// override applies to, so editing one picker can no longer bleed into
+	// the other's value the way a single unconditional override would.
+	function rebuild( colorOverrideId, colorOverrideValue ) {
+		var colorEl        = document.getElementById( 'khaveeai_floating_bg_color' );
+		var primaryColorEl = document.getElementById( 'khaveeai_floating_primary_color' );
+		var transparentEl  = document.getElementById( 'khaveeai_floating_bg_transparent' );
+		var offsetXEl      = document.getElementById( 'khaveeai_floating_avatar_offset_x' );
+		var offsetYEl      = document.getElementById( 'khaveeai_floating_avatar_offset_y' );
+		var scaleEl        = document.getElementById( 'khaveeai_floating_avatar_scale' );
+		var rotEl          = document.getElementById( 'khaveeai_floating_camera_rotation_y' );
+
+		var bgColorValue = ( colorOverrideId === 'khaveeai_floating_bg_color' && colorOverrideValue )
+			? colorOverrideValue
+			: ( colorEl ? colorEl.value : '' );
+		var primaryColorValue = ( colorOverrideId === 'khaveeai_floating_primary_color' && colorOverrideValue )
+			? colorOverrideValue
+			: ( primaryColorEl ? primaryColorEl.value : '' );
 
 		var cfg = {
 			avatarUrl: initialAvatarUrl,
 			bgType: 'color',
-			bgColor: colorOverride || ( colorEl ? colorEl.value : '#6929ff' ),
+			bgColor: bgColorValue || '#6929ff',
+			// Blank stays unset (not '') so PreviewFloatingWidget's own
+			// bgColor ?? primaryColor ?? '#6929ff' fallback chain applies,
+			// same as the real front-end's config — matches how an unset
+			// KhaveeAvatarConfig.floatingPrimaryColor behaves.
+			primaryColor: primaryColorValue || undefined,
 			bgTransparent: transparentEl ? transparentEl.checked : false,
 			avatarScale: scaleEl ? parseFloat( scaleEl.value ) : 1.0,
 			avatarOffsetX: offsetXEl ? parseFloat( offsetXEl.value ) : 0.0,
@@ -416,15 +436,17 @@ jQuery( function ( $ ) {
 
 	// wpColorPicker's `change`/`clear` options both receive (event, ui) as
 	// arguments — ui.color is present for `change`, absent for `clear` (the
-	// field is blanked instead). Wrap rebuild() rather than pass it directly
-	// so its optional colorOverride param never receives the raw jQuery
-	// event object as a false-truthy value.
+	// field is blanked instead). `this` inside both is the bound <input>
+	// element itself (wp-color-picker.js's documented pattern) — used as
+	// colorOverrideId so, now that there are two `.khaveeai-color-field`
+	// inputs (260716-primary-color), an edit on one never overwrites the
+	// other's value in rebuild()'s cfg.
 	$( '.khaveeai-color-field' ).wpColorPicker( {
 		change: function ( event, ui ) {
-			rebuild( ui && ui.color ? ui.color.toString() : null );
+			rebuild( this.id, ui && ui.color ? ui.color.toString() : null );
 		},
 		clear: function () {
-			rebuild();
+			rebuild( this.id, null );
 		}
 	} );
 
@@ -443,14 +465,15 @@ jQuery( function ( $ ) {
 	// input's DOM value (colorEl.value inside rebuild() would read the
 	// PREVIOUS click's color, one step behind, without this override).
 	$( '.khaveeai-color-field' ).on( 'irischange', function ( event, ui ) {
-		rebuild( ui && ui.color ? ui.color.toString() : null );
+		rebuild( this.id, ui && ui.color ? ui.color.toString() : null );
 	} );
 
-	// Belt-and-braces: plain input/change listeners on all five fields so
+	// Belt-and-braces: plain input/change listeners on all six fields so
 	// every keystroke / slider drag / checkbox toggle calls rebuild(), even
 	// if wpColorPicker's own callback ever misses an edit path.
 	var ids = [
 		'khaveeai_floating_bg_color',
+		'khaveeai_floating_primary_color',
 		'khaveeai_floating_bg_transparent',
 		'khaveeai_floating_avatar_offset_x',
 		'khaveeai_floating_avatar_offset_y',
@@ -463,9 +486,11 @@ jQuery( function ( $ ) {
 			return;
 		}
 		// Quick task 260707-wa2: passing `rebuild` directly as the listener
-		// leaks the native DOM Event into rebuild()'s `colorOverride` param
+		// leaks the native DOM Event into rebuild()'s colorOverrideId param
 		// (the browser invokes it as rebuild(event)); wrap in a zero-arg
-		// closure so colorOverride is always undefined here.
+		// closure so both override params are always undefined here — a
+		// plain keystroke/slider edit re-reads every field fresh from the
+		// DOM anyway, no override needed.
 		el.addEventListener( 'input', function () { rebuild(); } );
 		el.addEventListener( 'change', function () { rebuild(); } );
 	} );
@@ -1149,6 +1174,15 @@ JS;
 			'khaveeai_main'
 		);
 
+		// 260716-primary-color: widget-wide brand/accent color.
+		add_settings_field(
+			'floating_primary_color',
+			__( 'Floating widget accent color', 'khaveeai' ),
+			array( $this, 'render_floating_primary_color_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
 		add_settings_field(
 			'floating_bg_transparent',
 			__( 'Transparent floating background', 'khaveeai' ),
@@ -1314,6 +1348,11 @@ JS;
 		// same strict boolean-coercion / isset->cast->fallback shapes used
 		// throughout this method.
 		$sanitized['floating_bg_color']        = isset( $input['floating_bg_color'] ) ? sanitize_text_field( (string) $input['floating_bg_color'] ) : '';
+		// 260716-primary-color: same sanitize shape as floating_bg_color —
+		// a free-form CSS color string, not validated as a strict hex (the
+		// wpColorPicker widget only ever writes hex, but a manually-edited
+		// value could be any valid CSS color function too).
+		$sanitized['floating_primary_color']   = isset( $input['floating_primary_color'] ) ? sanitize_text_field( (string) $input['floating_primary_color'] ) : '';
 		$sanitized['floating_bg_transparent']  = isset( $input['floating_bg_transparent'] ) && '1' === (string) $input['floating_bg_transparent'];
 		$sanitized['floating_avatar_offset_x'] = isset( $input['floating_avatar_offset_x'] ) ? (float) $input['floating_avatar_offset_x'] : 0.0;
 		$sanitized['floating_avatar_offset_y'] = isset( $input['floating_avatar_offset_y'] ) ? (float) $input['floating_avatar_offset_y'] : 0.0;
@@ -1612,9 +1651,12 @@ JS;
 		//   - #khaveeai-floating-preview (mount div; also carries
 		//     data-khaveeai-preview-config and dispatches the
 		//     "khaveeai-preview-camera-angle" CustomEvent)
-		//   - .khaveeai-color-field (class on #khaveeai_floating_bg_color — the
-		//     wpColorPicker() target)
-		//   - #khaveeai_floating_bg_color, #khaveeai_floating_bg_transparent,
+		//   - .khaveeai-color-field (class on #khaveeai_floating_bg_color AND
+		//     #khaveeai_floating_primary_color — the wpColorPicker() target;
+		//     both share this class, distinguished at runtime via `this.id`
+		//     in the change/clear/irischange handlers, see rebuild())
+		//   - #khaveeai_floating_bg_color, #khaveeai_floating_primary_color,
+		//     #khaveeai_floating_bg_transparent,
 		//     #khaveeai_floating_avatar_offset_x (+ _out),
 		//     #khaveeai_floating_avatar_offset_y (+ _out),
 		//     #khaveeai_floating_avatar_scale (+ _out),
@@ -1713,6 +1755,7 @@ JS;
 		// Quick task 260705-p30: floating-widget-only visual config, independent
 		// of the global avatar/background settings above.
 		$this->render_form_table_row( __( 'Floating background color', 'khaveeai' ), array( $this, 'render_floating_bg_color_field' ) );
+		$this->render_form_table_row( __( 'Floating widget accent color', 'khaveeai' ), array( $this, 'render_floating_primary_color_field' ) );
 		$this->render_form_table_row( __( 'Transparent floating background', 'khaveeai' ), array( $this, 'render_floating_bg_transparent_field' ) );
 		$this->render_form_table_row( __( 'Floating avatar offset X', 'khaveeai' ), array( $this, 'render_floating_avatar_offset_x_field' ) );
 		$this->render_form_table_row( __( 'Floating avatar offset Y', 'khaveeai' ), array( $this, 'render_floating_avatar_offset_y_field' ) );
@@ -2435,6 +2478,31 @@ JS;
 	}
 
 	/**
+	 * Render the floating widget's brand/accent color field
+	 * (260716-primary-color) — drives the header, launcher, mic button,
+	 * chat bubbles, and send button (everything var(--khaveeai-primary)
+	 * touches in styles.css), unlike render_floating_bg_color_field()
+	 * above which only recolors the avatar-area background. Same
+	 * wpColorPicker-enhanced text-input pattern.
+	 *
+	 * @return void
+	 */
+	public function render_floating_primary_color_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_primary_color'] ) ? (string) $settings['floating_primary_color'] : '';
+
+		printf(
+			'<input type="text" id="khaveeai_floating_primary_color" name="%s[floating_primary_color]" value="%s" class="regular-text khaveeai-color-field" placeholder="#6929ff" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Brand/accent color for the whole floating widget (header, launcher, buttons, chat bubbles) — change this if the default purple clashes with your site. Leave blank for the default purple.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
 	 * Render the floating panel's transparent-background checkbox (quick
 	 * task 260705-p30) — mirrors render_floating_widget_field()'s checkbox
 	 * pattern exactly.
@@ -2723,9 +2791,16 @@ JS;
 		$runtime_config = $this->config_source->get_runtime_config();
 		$avatar_url     = isset( $runtime_config['avatar_url'] ) ? (string) $runtime_config['avatar_url'] : '';
 
-		$bg_color = ( isset( $settings['floating_bg_color'] ) && '' !== (string) $settings['floating_bg_color'] )
+		// 260716-primary-color: PHP-side mirror of PreviewFloatingWidget's own
+		// bgColor || primaryColor || '#6929ff' fallback chain — this static
+		// initial render happens before any JS rebuild() call, so it must
+		// resolve the same three-tier precedence itself, not just default
+		// straight to '#6929ff' whenever floating_bg_color is unset (which
+		// would silently ignore a configured accent color on first paint).
+		$primary_color = isset( $settings['floating_primary_color'] ) ? (string) $settings['floating_primary_color'] : '';
+		$bg_color      = ( isset( $settings['floating_bg_color'] ) && '' !== (string) $settings['floating_bg_color'] )
 			? (string) $settings['floating_bg_color']
-			: '#6929ff';
+			: ( '' !== $primary_color ? $primary_color : '#6929ff' );
 
 		$avatar_scale = ( isset( $settings['floating_avatar_scale'] ) && (float) $settings['floating_avatar_scale'] > 0 )
 			? (float) $settings['floating_avatar_scale']
@@ -2735,6 +2810,7 @@ JS;
 			'avatarUrl'     => $avatar_url,
 			'bgType'        => 'color',
 			'bgColor'       => $bg_color,
+			'primaryColor'  => $primary_color,
 			'bgTransparent' => ! empty( $settings['floating_bg_transparent'] ),
 			'avatarScale'   => $avatar_scale,
 			'avatarOffsetX' => isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0,

@@ -161,6 +161,8 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			// avatar_offset_x/y keys above; the floating panel never falls
 			// back to those, only to these floating_*-prefixed defaults.
 			'floating_bg_color'        => isset( $settings['floating_bg_color'] )        ? (string) $settings['floating_bg_color']        : '',
+			// 260716-primary-color: widget-wide brand/accent color.
+			'floating_primary_color'   => isset( $settings['floating_primary_color'] )   ? (string) $settings['floating_primary_color']   : '',
 			'floating_bg_transparent'  => isset( $settings['floating_bg_transparent'] )  ? (bool)   $settings['floating_bg_transparent']  : false,
 			'floating_avatar_offset_x' => isset( $settings['floating_avatar_offset_x'] ) ? (float)  $settings['floating_avatar_offset_x'] : 0.0,
 			'floating_avatar_offset_y' => isset( $settings['floating_avatar_offset_y'] ) ? (float)  $settings['floating_avatar_offset_y'] : 0.0,

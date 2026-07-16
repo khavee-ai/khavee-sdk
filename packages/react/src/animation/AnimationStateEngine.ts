@@ -9,6 +9,40 @@
  * (ANIM-01), replacing the two components' previously-separate, live-clock-
  * driven implementations (see `GLBAvatar.tsx`'s old talking-animation
  * loop-back timer, removed in 10-03).
+ *
+ * 11-09 gap closure (first-load "spins weird" bug, untracked / not one of
+ * Phase 11's 7 requirements): root-caused as first-mount procedural-write
+ * accumulation on un-driven bones. Mechanism, confirmed by reading
+ * `crossfade.ts`'s `beginCrossfade`/`stepCrossfade`: on the very first
+ * `switchToClip` call, `beginCrossfade(null, toAction, root, floor)` starts
+ * `toAction`'s effective weight at 0 and ramps it to 1 over the pose-gap-
+ * adaptive/TRANS-01 floor duration (0.3-1.2s) via `stepCrossfade`. While
+ * that weight is near 0, THREE's `AnimationMixer` barely (or does not)
+ * drive the chest/spine/hips bones this frame — so `breathing.step`/
+ * `sway.step`'s additive `bone.quaternion.multiply(delta)` writes (steps 5-
+ * 6 below) do not compose onto a freshly mixer-driven pose each frame the
+ * way they do in steady state (where the base action's effective weight is
+ * ~1 and the mixer fully re-writes the bone every frame, discarding the
+ * previous frame's procedural delta before this frame's runs). Instead,
+ * each frame's delta compounds onto the PREVIOUS frame's already-drifted
+ * quaternion. Because breathing (X-axis) and sway (Z-axis) rotate around
+ * different axes, their interleaved multiplications do not cancel over a
+ * cycle the way either alone would (non-commuting rotation composition) —
+ * this net drift is exactly the reported "spins weird" symptom, which then
+ * "settles" once the crossfade weight reaches ~1 and the mixer starts
+ * fully overwriting the bone every frame again.
+ *
+ * Fix: `shouldRunProceduralBoneWrites` below gates the spine-base-capture/
+ * breathing/sway/spine-clamp block (`update()` steps 4-7) on the current
+ * base action existing AND having ramped past a small effective-weight
+ * threshold, so those steps are skipped for the handful of near-zero-
+ * weight frames at the very start of the very first crossfade (and any
+ * later crossfade from a null base, though in practice `currentActionRef`
+ * is never reset to null after the first switch). Blink (step 2) and
+ * expression drift (step 8) are NOT gated — they write manager scalars,
+ * not accumulating bone quaternions, so they are not part of this bug
+ * class and gating them would just delay otherwise-harmless facial
+ * behavior for no reason.
  */
 
 import { useEffect, useRef } from "react";
@@ -65,6 +99,34 @@ const SETTLE_RAMP_SECONDS = 1.2;
 // volumeToAmplitudeScale's gain) combined motion from ever visibly
 // over-bending the spine in one frame.
 const MAX_COMBINED_SPINE_DELTA_RAD = 0.12;
+
+// 11-09 gap closure (first-load spin fix): minimum THREE.AnimationAction
+// effective weight required before the additive procedural bone-write
+// block (breathing/sway/spine clamp) is allowed to run. `easeInOutCubic`
+// reaches this weight quickly (t ≈ 0.23 of the crossfade's duration) —
+// enough to skip the worst near-zero-weight compounding window at the very
+// start of the very first crossfade, without meaningfully delaying idle
+// motion once the base action is actually posing the skeleton.
+const MIN_BASE_ACTION_WEIGHT = 0.05;
+
+/**
+ * Pure gate for the 11-09 first-load-spin fix: true only when `action` is
+ * non-null AND its current effective weight has ramped past
+ * `MIN_BASE_ACTION_WEIGHT`. Exported (unlike most of this module's
+ * internals) so it is unit-testable against a stub/real
+ * `THREE.AnimationAction` without rendering a React component or scene —
+ * see `AnimationStateEngine.test.ts`.
+ *
+ * `null` covers the pre-first-switchToClip window (no crossfade has ever
+ * started); the weight check covers the early-ramp window of an in-
+ * progress crossfade FROM null (the true first-mount case, since
+ * `currentActionRef` is set synchronously inside `switchToClip` before the
+ * weight has actually ramped).
+ */
+export function shouldRunProceduralBoneWrites(action: THREE.AnimationAction | null): boolean {
+  if (!action) return false;
+  return action.getEffectiveWeight() >= MIN_BASE_ACTION_WEIGHT;
+}
 
 /**
  * Per-status naming convention: when a chatStatus has an entry here and
@@ -278,7 +340,10 @@ export function useAnimationController(params: {
     //   -> 4. capture spine base -> 5. breathing -> 6. sway -> 7. spine
     //   clamp -> 8. expression drift -> 9. talk-cycle.
     // Any future addition to this stack should extend this list, not
-    // reorder it silently.
+    // reorder it silently. 11-09: steps 4-7 additionally only run when
+    // shouldRunProceduralBoneWrites(currentActionRef.current) is true (see
+    // the file-header 11-09 diagnosis block) — the ORDER is unchanged, only
+    // whether that sub-block executes this frame.
 
     // 1. Advance the in-progress base-clip crossfade, if any (existing).
     if (blendRef.current.active) {
@@ -319,45 +384,58 @@ export function useAnimationController(params: {
     const settleScale = ramp.current;
     const proceduralScale = amplitudeScale * settleScale;
 
-    // 4. Capture the spine bone's orientation BEFORE any procedural write
-    // this frame (i.e. after the mixer/crossfade/blink steps above have
-    // already run, but before breathing/sway touch it) — this is the base
-    // the PERF-01 clamp measures the COMBINED breathing+sway delta against.
-    const spine = adapter.getHumanoidBoneNode("spine");
-    if (spine) {
-      _spineBaseScratch.copy(spine.quaternion);
-    }
+    // 4-7. 11-09 gap closure (first-load spin fix): the spine-base-capture/
+    // breathing/sway/spine-clamp block below is gated on
+    // shouldRunProceduralBoneWrites(currentActionRef.current) — skipped
+    // while no base action exists yet, or while the just-started first
+    // crossfade's effective weight is still near 0 (see the file-header
+    // 11-09 diagnosis block for the full compounding mechanism this
+    // prevents). Blink (step 2, above) and expression drift (step 8,
+    // below) are NOT gated — they are manager-scalar writes, not
+    // accumulating bone quaternions, so they are unaffected by this bug
+    // class.
+    if (shouldRunProceduralBoneWrites(currentActionRef.current)) {
+      // 4. Capture the spine bone's orientation BEFORE any procedural write
+      // this frame (i.e. after the mixer/crossfade/blink steps above have
+      // already run, but before breathing/sway touch it) — this is the base
+      // the PERF-01 clamp measures the COMBINED breathing+sway delta
+      // against.
+      const spine = adapter.getHumanoidBoneNode("spine");
+      if (spine) {
+        _spineBaseScratch.copy(spine.quaternion);
+      }
 
-    // 5. Breathing writes its additive delta to chest+spine first...
-    breathing.step(adapter, delta, proceduralScale);
-    // 6. ...then sway composes on top via its own multiply() (never
-    // .set()), so sway's delta layers onto breathing's already-written
-    // spine orientation rather than the reverse. This is an arbitrary but
-    // fixed order (PERF-01 requires *a* documented order, not a specific
-    // one) — breathing before sway matches this module's own read order in
-    // the interface comment block and keeps chest-first, hips-second
-    // grouped with their driving systems.
-    sway.step(adapter, delta, proceduralScale);
+      // 5. Breathing writes its additive delta to chest+spine first...
+      breathing.step(adapter, delta, proceduralScale);
+      // 6. ...then sway composes on top via its own multiply() (never
+      // .set()), so sway's delta layers onto breathing's already-written
+      // spine orientation rather than the reverse. This is an arbitrary but
+      // fixed order (PERF-01 requires *a* documented order, not a specific
+      // one) — breathing before sway matches this module's own read order in
+      // the interface comment block and keeps chest-first, hips-second
+      // grouped with their driving systems.
+      sway.step(adapter, delta, proceduralScale);
 
-    // 7. PERF-01 bounded magnitude: clamp the COMBINED breathing+sway delta
-    // on the shared spine bone, measured post-composition (not per-system)
-    // since it's the one bone both systems write additively to. Clamping
-    // post-composition (rather than pre-scaling each system individually)
-    // is what actually bounds the worst case — an amplitude-scaled
-    // breathing peak and an amplitude-scaled sway peak landing in the same
-    // frame's phase.
-    if (spine) {
-      _spineComposedScratch.copy(spine.quaternion);
-      const combinedAngle = _spineBaseScratch.angleTo(_spineComposedScratch);
-      if (combinedAngle > MAX_COMBINED_SPINE_DELTA_RAD) {
-        const t = MAX_COMBINED_SPINE_DELTA_RAD / combinedAngle;
-        // Slerp FROM the captured pre-procedural base TOWARD the composed
-        // (breathing+sway) result, capping the net delta at the bound.
-        // Writes through two independent scratches (never
-        // slerpQuaternions(base, spine.quaternion, t) directly on the live
-        // bone) — see the scratch-declaration comment above for why that
-        // form would self-corrupt.
-        spine.quaternion.copy(_spineBaseScratch).slerp(_spineComposedScratch, t);
+      // 7. PERF-01 bounded magnitude: clamp the COMBINED breathing+sway
+      // delta on the shared spine bone, measured post-composition (not
+      // per-system) since it's the one bone both systems write additively
+      // to. Clamping post-composition (rather than pre-scaling each system
+      // individually) is what actually bounds the worst case — an
+      // amplitude-scaled breathing peak and an amplitude-scaled sway peak
+      // landing in the same frame's phase.
+      if (spine) {
+        _spineComposedScratch.copy(spine.quaternion);
+        const combinedAngle = _spineBaseScratch.angleTo(_spineComposedScratch);
+        if (combinedAngle > MAX_COMBINED_SPINE_DELTA_RAD) {
+          const t = MAX_COMBINED_SPINE_DELTA_RAD / combinedAngle;
+          // Slerp FROM the captured pre-procedural base TOWARD the composed
+          // (breathing+sway) result, capping the net delta at the bound.
+          // Writes through two independent scratches (never
+          // slerpQuaternions(base, spine.quaternion, t) directly on the
+          // live bone) — see the scratch-declaration comment above for why
+          // that form would self-corrupt.
+          spine.quaternion.copy(_spineBaseScratch).slerp(_spineComposedScratch, t);
+        }
       }
     }
 

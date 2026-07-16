@@ -6,7 +6,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolveBaseClip } from "./AnimationStateEngine";
+import * as THREE from "three";
+import { resolveBaseClip, shouldRunProceduralBoneWrites } from "./AnimationStateEngine";
+import { createBreathingState, stepBreathing } from "./breathing";
+import { createSwayState, stepSway } from "./sway";
+import type { AvatarFormatAdapter } from "./types";
 
 describe("resolveBaseClip", () => {
   it("speaking: prefers a talk/gesture/speak-named clip when one exists", () => {
@@ -111,5 +115,82 @@ describe("resolveBaseClip", () => {
     // explicit, non-matching currentAnimation choice.
     const result = resolveBaseClip("ready", "customAnim42", ["customAnim42", "OtherClip"]);
     expect(result).toBe("customAnim42");
+  });
+});
+
+describe("shouldRunProceduralBoneWrites (11-09 first-load spin fix)", () => {
+  it("returns false when action is null (no base action has switched in yet)", () => {
+    expect(shouldRunProceduralBoneWrites(null)).toBe(false);
+  });
+
+  it("returns false when action's effective weight is below the near-zero threshold (early crossfade ramp)", () => {
+    const action = { getEffectiveWeight: () => 0.01 } as unknown as THREE.AnimationAction;
+    expect(shouldRunProceduralBoneWrites(action)).toBe(false);
+  });
+
+  it("returns true once action's effective weight has ramped past the threshold", () => {
+    const action = { getEffectiveWeight: () => 0.5 } as unknown as THREE.AnimationAction;
+    expect(shouldRunProceduralBoneWrites(action)).toBe(true);
+  });
+
+  it("returns true at full weight (steady-state idle)", () => {
+    const action = { getEffectiveWeight: () => 1 } as unknown as THREE.AnimationAction;
+    expect(shouldRunProceduralBoneWrites(action)).toBe(true);
+  });
+});
+
+describe("first-mount procedural-write accumulation repro (11-09)", () => {
+  it("without a per-frame base-pose reset, breathing+sway deltas compound to a larger net spine rotation than when the base resets the bone every frame", () => {
+    // This reproduces the mechanism the file-header 11-09 diagnosis block
+    // describes: in steady state, the mixer (effective weight ~1) fully
+    // re-writes the spine bone every frame BEFORE breathing/sway run,
+    // discarding the previous frame's procedural delta -- so each frame's
+    // combined breathing+sway delta is bounded and never compounds. During
+    // the first-mount near-zero-weight window, that reset does not happen,
+    // so successive frames' non-commuting (different-axis) rotations
+    // accumulate instead of oscillating around a resting pose.
+    const identity = new THREE.Quaternion();
+
+    function runFrames(resetSpineEachFrame: boolean): number {
+      const spine = new THREE.Object3D();
+      const chest = new THREE.Object3D();
+      const hips = new THREE.Object3D();
+      const adapter: AvatarFormatAdapter = {
+        getMixer: () => {
+          throw new Error("not used in this test");
+        },
+        getBoneNode: () => null,
+        getHumanoidBoneNode: (role) => {
+          if (role === "spine") return spine;
+          if (role === "chest") return chest;
+          if (role === "hips") return hips;
+          return null;
+        },
+        getExpressionManager: () => null,
+      };
+
+      const breathingState = createBreathingState();
+      breathingState.period = 5.0;
+      const swayState = createSwayState();
+      swayState.period = 8.0;
+      const delta = 1 / 30;
+
+      for (let i = 0; i < 60; i++) {
+        if (resetSpineEachFrame) {
+          // Simulates the mixer fully re-driving the bone this frame
+          // (effective weight ~1 steady state) before breathing/sway run.
+          spine.quaternion.identity();
+        }
+        stepBreathing(breathingState, adapter, delta);
+        stepSway(swayState, adapter, delta);
+      }
+
+      return spine.quaternion.angleTo(identity);
+    }
+
+    const withoutReset = runFrames(false);
+    const withReset = runFrames(true);
+
+    expect(withoutReset).toBeGreaterThan(withReset);
   });
 });

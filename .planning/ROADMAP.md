@@ -345,7 +345,7 @@ Plans:
   5. Speaking louder or more quietly visibly changes the procedural motion's amplitude in real time (via `useAudioLipSync`'s live volume signal), but never changes which talk clip is selected or when the next cycle switch happens
   6. When breathing and sway both write to the spine bone in the same frame, the combined rotation is produced by additive delta-quaternion `multiply()` in a fixed, documented order with a bounded combined magnitude — not one system's `.set()` overwriting the other's
 
-**Plans**: 10 plans (6 + 4 gap closure)
+**Plans**: 14 plans (6 + 8 gap closure)
 Plans:
 **Wave 1** *(foundation — adapter contract + volume plumbing, zero file overlap)*
 
@@ -382,8 +382,8 @@ Plans:
 
 **Wave 8** *(gap closure — 11-12 human re-check: G1 (T-pose) still fails pre-connect, new Y-axis-drop-on-connect regression, minor TALK-01 jiggle observed, 6 requirements unconfirmed)*
 
-- [ ] 11-13-PLAN.md — Not yet planned. Root-cause and fix: (a) G1's pre-connect T-pose (11-11's `resetToRestPoseIfNotDriven` fix apparently only covers a post-connect/crossfade-adjacent case, not the actual pre-connect resting state — needs runtime diagnosis of whether `update(delta)` even runs before the first Connect/switchToClip), (b) the NEW Y-axis-drop-on-connect regression, and (c) the minor TALK-01 clip-cycle jiggle
-- [ ] 11-14-PLAN.md — Not yet planned. Re-verify: fix-landed gates + full test suite, then a blocking human re-check of G1/Y-drop/jiggle plus a full regression pass across all 7 original requirements (this will be the 4th verification checkpoint for this phase — keep it as broad as 11-12's)
+- [ ] 11-13-PLAN.md — Diagnose-then-fix (headless production-path replay, extending 11-11's harness): G1 pre-connect T-pose (crossfade-trigger effect never re-fires when clips load post-mount → base clip never drives pre-connect; why 11-11's fix was insufficient), G3 Y-drop-on-connect, G4 talk-cycle jiggle (11-11's reset-to-rest firing during variant-switch crossfade windows) — with explicit regression checks that neither the 11-09 spin nor the 11-11 G2 snap is reintroduced
+- [ ] 11-14-PLAN.md — Re-verify: 5 invariant + 5 fix-landed gates + full react test suite, then a blocking DECISIVE human re-check of G1/G3/G4 + a G2 re-confirm + a full regression spot-check of all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — the 4th verification checkpoint for this phase
 
 **UI hint**: yes
 

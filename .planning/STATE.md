@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
 status: executing
-stopped_at: Phase 11 gap closure round 3 needed — 11-10 checkpoint found 2 NEW regressions (T-pose on load, idle→talking snap) introduced by 11-09's fixes
-last_updated: "2026-07-16T15:58:00.000Z"
-last_activity: 2026-07-16 -- Phase 11 plans 11-09/11-10 executed (--gaps-only): 11-09 fixed IDLE-02 (raised DEFAULT_AMPLITUDE 0.12->0.35) and the first-load spin bug (shouldRunProceduralBoneWrites gate); 11-10 human re-verification confirmed IDLE-02 and TALK-02 now pass, but found 2 new regressions from 11-09's changes
+stopped_at: Phase 11 gap closure round 4 needed — 11-12 checkpoint found G1 (T-pose) still failing pre-connect, plus a new Y-axis-drop-on-connect regression and a minor TALK-01 jiggle
+last_updated: "2026-07-17T01:52:00.000Z"
+last_activity: 2026-07-17 -- Phase 11 plans 11-11/11-12 executed (--gaps-only): 11-11 diagnosed the real G1/G2 root cause (shouldRunProceduralBoneWrites re-closing on every switchToClip, not just first mount) and fixed with a per-frame rest-pose reset (80/80 tests); 11-12 human re-verification confirmed G2 fixed, but G1 still fails pre-connect and surfaced 2 new findings (Y-axis drop on connect, minor TALK-01 jiggle)
 progress:
   total_phases: 13
   completed_phases: 9
-  total_plans: 50
-  completed_plans: 50
+  total_plans: 52
+  completed_plans: 52
   percent: 69
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 11 (idle-transition-talking-states) — GAP CLOSURE IN PROGRESS (round 3 needed)
-Plan: 10 of 12 (11-01..11-10 have SUMMARY.md; 11-11/11-12 not yet planned; phase requirements not fully satisfied)
-Status: 11-09 (fix) and 11-10 (re-verification) both executed. 11-10 result: IDLE-02 and TALK-02 now CONFIRMED PASSING (drift visible in ready state; loud/quiet amplitude tracking works). But 11-09's fixes introduced 2 NEW regressions: (G1) avatar stuck in T-pose on first load instead of playing/holding idle (likely `shouldRunProceduralBoneWrites` blocking the base action/mixer output, not just procedural writes), and (G2) idle→talking transition now snaps instead of crossfading smoothly (same suspected root area). Neither is root-caused yet.
-Last activity: 2026-07-16 -- Phase 11 gap-closure wave (11-09, 11-10) executed via /gsd-execute-phase 11 --gaps-only
+Phase: 11 (idle-transition-talking-states) — GAP CLOSURE IN PROGRESS (round 4 needed)
+Plan: 12 of 14 (11-01..11-12 have SUMMARY.md; 11-13/11-14 not yet planned; phase requirements not fully satisfied)
+Status: 11-11 (fix) and 11-12 (re-verification) both executed. 11-11 found the REAL root cause via headless runtime evidence: `shouldRunProceduralBoneWrites` re-closed on EVERY `switchToClip` call, not just first mount — fixed with a per-frame rest-pose reset instead of a blocking gate (80/80 tests). 11-12 result: G2 (idle→talking snap) CONFIRMED FIXED. But G1 (T-pose on load) STILL FAILS — persists pre-connect, only resolves after pressing Connect, meaning 11-11's fix covered a post-connect case but not the actual pre-connect resting state. Two new findings also surfaced: (G3) avatar visibly drops on the Y axis when Connect is first pressed, (G4) minor jiggle during TALK-01's talk-clip cycling. None of G1/G3/G4 are root-caused yet. The other 6 original requirements were not explicitly re-confirmed this round.
+Last activity: 2026-07-17 -- Phase 11 gap-closure wave (11-11, 11-12) executed via /gsd-execute-phase 11 --gaps-only
 
-Next: plan a third gap-closure pass (11-11/11-12) to root-cause and fix G1 (T-pose stuck on load) and G2 (idle→talking snap) — e.g. `/gsd-plan-phase 11 --gaps`. Phase 11 cannot be marked complete until these are resolved and a full regression pass confirms no further breakage.
+Next: plan a fourth gap-closure pass (11-13/11-14) to root-cause and fix G1 (pre-connect T-pose — likely `update(delta)` never running before the first Connect/switchToClip), G3 (Y-drop-on-connect), and G4 (TALK-01 jiggle), then a full regression re-check — e.g. `/gsd-plan-phase 11 --gaps`. Phase 11 cannot be marked complete until these are resolved.
 
 Progress: [████████░░] 75% (v2.2 milestone; v2.1 Phase 9 tracked separately at 5/6 plans complete)
 
@@ -86,7 +86,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- v2.2: Phase 11 not fully closed after gap-closure wave (11-09/11-10, 2026-07-16): IDLE-02 and TALK-02 are now CONFIRMED PASSING. But 11-09's fixes (raised expression-drift amplitude + first-mount procedural-write gate) introduced 2 NEW regressions: (G1) avatar stuck in T-pose on first load, (G2) idle→talking transition now snaps instead of crossfading. Both suspected traceable to `shouldRunProceduralBoneWrites` in `AnimationStateEngine.ts` and/or its interaction with the crossfade-trigger effect — neither root-caused yet. Needs a third gap-closure plan (11-11/11-12) before Phase 11 can be marked complete.
+- v2.2: Phase 11 not fully closed after gap-closure wave (11-11/11-12, 2026-07-17): 11-11 correctly root-caused the ACTUAL G1/G2 mechanism via headless runtime evidence (the 11-09 gate re-closed on every `switchToClip`, not just first mount) and fixed it with a per-frame rest-pose reset. G2 is now confirmed fixed. But G1 (T-pose on load) STILL FAILS — persists pre-connect, only resolves after pressing Connect, meaning the fix covers a post-connect case, not the true pre-connect resting state. Two new findings: (G3) avatar drops on the Y axis when Connect is pressed, (G4) minor jiggle during TALK-01 clip cycling. None root-caused yet. Needs a fourth gap-closure plan (11-13/11-14) before Phase 11 can be marked complete.
 - v2.2: A stray untracked directory `.planning/phases/11-bone-masked-upper-body-animation-layering/` exists on disk (dated 2026-07-01, pre-dates this milestone's requirements) — not referenced by this roadmap and should not be treated as this milestone's real Phase 11; likely debris from an abandoned branch (see PROJECT.md's standing instruction not to mine `worktree-agent-*`/`fix/emotion-analyzer-provider-agnostic` branches). Flagged for cleanup, not blocking.
 - Phase 9 (v2.1): 09-06-PLAN.md (live UAT checkpoint) still pending — Block Studio not yet complete
 - Phase 5 (v1.0): VAD-loopback cooldown (currently a 500ms magic number tuned for OpenAI TTS) cannot be validated against JaiTTS until that service exists — must explicitly retest, not assume
@@ -113,6 +113,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-16T15:58:00.000Z
-Stopped at: Phase 11 gap closure round 2 (11-09/11-10 executed; IDLE-02/TALK-02 now pass; 2 new regressions found — needs round 3)
-Resume file: .planning/phases/11-idle-transition-talking-states/11-10-SUMMARY.md
+Last session: 2026-07-17T01:52:00.000Z
+Stopped at: Phase 11 gap closure round 3 (11-11/11-12 executed; G2 fixed; G1 still fails pre-connect; G3/G4 new findings — needs round 4)
+Resume file: .planning/phases/11-idle-transition-talking-states/11-12-SUMMARY.md

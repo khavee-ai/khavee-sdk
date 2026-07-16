@@ -378,7 +378,12 @@ Plans:
 **Wave 7** *(gap closure — 11-10 human re-check: IDLE-02/TALK-02 now confirmed, but two NEW regressions surfaced from 11-09's fix: T-pose stuck on load, and idle→talking transition now snaps)*
 
 - [x] 11-11-PLAN.md — Diagnose-then-fix G1 (T-pose stuck on load) and G2 (idle→talking snap), both regressions from 11-09's `shouldRunProceduralBoneWrites` gate. Task 1: root-cause BOTH with recorded runtime evidence (headless frame-stepping against real male.vrm + Idle/talking clips — does the base action's weight ramp / does the base clip drive the bones; measured idle→talk crossfade duration) + off-by-default in-render instrumentation, determining whether G1/G2 share a cause. Task 2: apply the targeted fix that restores live idle motion + smooth crossfade WITHOUT reintroducing the 11-09 spin (bounded-accumulation regression test), keeping IDLE-02/TALK-02/PERF-01 intact
-- [ ] 11-12-PLAN.md — Re-verify: invariant + fix-landed gates (11-11 fix present, 11-09 spin NOT reintroduced, IDLE-02/PERF-01/timer-free intact) + full react test suite, then a blocking DECISIVE human re-check of G1 (live idle on load, no T-pose, no spin) and G2 (smooth idle→talk crossfade) PLUS a full regression spot-check of all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — mandatory since regressions have now been introduced twice
+- [x] 11-12-PLAN.md — Re-verify: invariant + fix-landed gates (11-11 fix present, 11-09 spin NOT reintroduced, IDLE-02/PERF-01/timer-free intact) + full react test suite, then a blocking DECISIVE human re-check of G1 (live idle on load, no T-pose, no spin) and G2 (smooth idle→talk crossfade) PLUS a full regression spot-check of all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — result: NOT approved. G1 still fails (T-pose persists pre-connect; 11-11's fix only covered a post-connect case) plus a NEW regression (avatar drops on Y-axis when connecting). G2 approved. New minor finding: small jiggle during TALK-01 clip cycling. The other 6 requirements were not explicitly re-confirmed this round. Further gap-closure needed.
+
+**Wave 8** *(gap closure — 11-12 human re-check: G1 (T-pose) still fails pre-connect, new Y-axis-drop-on-connect regression, minor TALK-01 jiggle observed, 6 requirements unconfirmed)*
+
+- [ ] 11-13-PLAN.md — Not yet planned. Root-cause and fix: (a) G1's pre-connect T-pose (11-11's `resetToRestPoseIfNotDriven` fix apparently only covers a post-connect/crossfade-adjacent case, not the actual pre-connect resting state — needs runtime diagnosis of whether `update(delta)` even runs before the first Connect/switchToClip), (b) the NEW Y-axis-drop-on-connect regression, and (c) the minor TALK-01 clip-cycle jiggle
+- [ ] 11-14-PLAN.md — Not yet planned. Re-verify: fix-landed gates + full test suite, then a blocking human re-check of G1/Y-drop/jiggle plus a full regression pass across all 7 original requirements (this will be the 4th verification checkpoint for this phase — keep it as broad as 11-12's)
 
 **UI hint**: yes
 
@@ -430,6 +435,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 11/12 | In Progress|  |
+| 11. Idle, Transition & Talking States | 12/14 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

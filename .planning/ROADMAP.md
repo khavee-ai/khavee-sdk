@@ -345,7 +345,7 @@ Plans:
   5. Speaking louder or more quietly visibly changes the procedural motion's amplitude in real time (via `useAudioLipSync`'s live volume signal), but never changes which talk clip is selected or when the next cycle switch happens
   6. When breathing and sway both write to the spine bone in the same frame, the combined rotation is produced by additive delta-quaternion `multiply()` in a fixed, documented order with a bounded combined magnitude — not one system's `.set()` overwriting the other's
 
-**Plans**: 8 plans (6 + 2 gap closure)
+**Plans**: 10 plans (6 + 4 gap closure)
 Plans:
 **Wave 1** *(foundation — adapter contract + volume plumbing, zero file overlap)*
 
@@ -369,6 +369,11 @@ Plans:
 
 - [x] 11-07-PLAN.md — Fix the 3 diagnosed animation-timing bugs: drop unstable getAction from the crossfade-effect deps + memoize accessors + talkCycle-owns-speaking guard (TALK-01/TRANS-01), ease the stopped-settle scale over ~1.2s instead of an instant cut (TRANS-02), and fix expression drift to target present/visible VRoid candidates (relaxed/happy) with drift-ownership tracking instead of the self-freezing non-zero guard (IDLE-02)
 - [x] 11-08-PLAN.md — Re-verify: objective invariant + fix-landed gates + full test suite, then blocking human re-check of the 4 previously-failing behaviors plus a re-check of IDLE-01/TALK-02/PERF-01 against the wayfinder checklist — result: 5/7 pass (IDLE-01, TRANS-01, TRANS-02, TALK-01, PERF-01 confirmed); IDLE-02 still fails (no visible expression drift) and TALK-02 unconfirmed ("maybe pass"); further gap-closure needed
+
+**Wave 6** *(gap closure — 11-08 human re-check: IDLE-02 still fails, TALK-02 unconfirmed, plus a new untracked first-load spin bug)*
+
+- [ ] 11-09-PLAN.md — Diagnose-then-fix the two open code items: runtime-diagnose why VRM expression drift is still invisible (leading cause: 0.12 amplitude damped to ~0.018 by the stopped-settle ramp, and the test page idles in `stopped` pre-connect) and raise DEFAULT_AMPLITUDE to a perceptible value while keeping 11-07's candidate/ownership fixes and the TRANS-02 settle damping (IDLE-02); root-cause the first-load 'spins weird' motion (first-mount additive breathing/sway deltas compounding on un-driven bones) and guard the procedural bone writes or triage it as a follow-up
+- [ ] 11-10-PLAN.md — Re-verify: fix-landed gates + full test suite, then a DECISIVE blocking human re-check — IDLE-02 judged in the connected `ready` state (not the pre-connect `stopped` state that damps drift), TALK-02 via an explicit loud/quiet side-by-side amplitude contrast, first-load spin gone, and no regression in the 5 already-passing requirements (IDLE-01, TRANS-01, TRANS-02, TALK-01, PERF-01)
 
 **UI hint**: yes
 

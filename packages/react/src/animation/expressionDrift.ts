@@ -60,6 +60,73 @@
  * Note: expression values are additive-by-convention via `setValue` on
  * manager-owned scalars — this is NOT a bone-quaternion writer, so PERF-01's
  * `multiply()`-not-`.set()` composition rule does not apply here.
+ *
+ * 11-09 gap closure (IDLE-02 STILL invisible after 11-07's candidate/
+ * ownership fix): a fresh runtime diagnosis was run against three
+ * hypotheses, NOT a repeat of the 11-07 investigation above:
+ *
+ *   H1 (present names) — CONFIRMED NOT the dominant cause. A throwaway
+ *   headless script (`GLTFLoader.parse()` + `@pixiv/three-vrm`'s
+ *   `VRMCoreLoaderPlugin`, run against the actual bundled
+ *   `public/models/male.vrm` and a second bundled VRoid model —
+ *   `public/models/female/blue-female.vrm` referenced by the plan does not
+ *   exist in this worktree, a substitution documented in the 11-09 SUMMARY)
+ *   confirmed BOTH loaded VRMs expose `relaxed` and `happy` as real,
+ *   present expression names (`browInnerUp` is absent on both, as 11-07
+ *   already found). 11-07's candidate choice was correct; this is not the
+ *   remaining bug.
+ *
+ *   H3 (downstream overwrite) — CONFIRMED NOT the cause. `VRMAvatar.tsx`'s
+ *   `lerpExpression` loop only iterates the app-driven `expressions` map
+ *   (empty by default), runs BEFORE `controller.update(delta)` (which
+ *   contains this module's `step`), and `VRMExpressionManager.update()`
+ *   (called via `currentVrm.update(delta)`, which runs AFTER
+ *   `controller.update`) reads each expression's already-set `.weight` and
+ *   applies a blink/lookAt/mouth EXCLUSIVITY MULTIPLIER — it does not
+ *   reset or overwrite the weight field itself. `relaxed`/`happy` are not
+ *   in any of those three exclusive-name lists, so their multiplier is
+ *   always 1 and drift's write reaches the model unmodified.
+ *
+ *   H2 (amplitude / settle-scale damping) — CONFIRMED the dominant cause.
+ *   `AnimationStateEngine.ts`'s `SETTLE_SCALE = 0.15` damps ALL procedural
+ *   amplitude (including this module's `amplitudeScale` parameter) while
+ *   `chatStatus === "stopped"`. The `openai-avatar-test` demo page (the
+ *   page used for the 11-08 human re-verification) mounts with the SDK's
+ *   default `chatStatus`, which is `"stopped"` until the human clicks
+ *   Connect — so the human was observing `DEFAULT_AMPLITUDE (0.12) *
+ *   SETTLE_SCALE (0.15) = 0.018` peak weight, an objectively imperceptible
+ *   facial change. Even the FULL `ready`-state peak (the old 0.12) is
+ *   plausibly too subtle a rest-face weight to read as "expression
+ *   changing" rather than "wrinkle equal to normal small facial noise."
+ *
+ * Fix: `DEFAULT_AMPLITUDE` raised from 0.12 to 0.35 — chosen from the
+ * documented ~0.25-0.45 perceptible-relaxed/happy-on-VRoid-rigs band
+ * (Claude's Discretion per CONTEXT.md), landing on a value that reads as a
+ * clearly visible, still-subtle mild rest smile rather than a jarring full
+ * emotion pop. This does NOT touch: the `lastWritten` ownership guard, the
+ * present-name `getExpression(name) !== null` check, `MAX_ACTIVE_
+ * CANDIDATES`, `phaseOffsets`, or `DRIFT_CANDIDATES` order — all four
+ * remain exactly as 11-07 left them. The TRANS-02 stopped-settle damping
+ * (`SETTLE_SCALE` in `AnimationStateEngine.ts`) is intentionally NOT
+ * removed: `stopped`'s peak is now `0.35 * 0.15 ≈ 0.0525` — still visibly
+ * damped relative to `ready`'s `0.35`, preserving the settle-to-rest cue,
+ * but built on a base amplitude high enough that even the damped state
+ * reads as "gently returning to rest," not "off."
+ *
+ * `PERCEPTIBLE_MIN_WEIGHT` documents the floor of visibility this fix
+ * targets (asserted in `expressionDrift.test.ts`'s ready-state peak test):
+ * any candidate weight below this is treated as "not reliably visible on a
+ * VRoid rig's relaxed/happy blendshape," independent of the exact
+ * `DEFAULT_AMPLITUDE` value chosen above.
+ *
+ * Dev-only diagnostic: `DRIFT_DEBUG` (module-scoped, hardcoded `false`,
+ * never wired to a build flag or exported) gates a one-time-per-instance
+ * `console.debug` logging the present expression names, the
+ * `DRIFT_CANDIDATES` subset actually present, and the computed peak
+ * weight/amplitudeScale — so a human re-verifying IDLE-02 live can cross-
+ * check the same H1/H2 data this diagnosis used, directly in devtools.
+ * Left off by default; not a production logging path (see the Logging
+ * conventions in CLAUDE.md — this is an internal, non-exported module).
  */
 
 import { useRef } from "react";
@@ -100,12 +167,32 @@ const PERIOD_MAX = 12.0;
 // negative (VRMExpressionManager weights are 0..1 scalars). Exported for
 // test assertions (expressionDrift.test.ts) and consumers wanting the raw
 // ceiling value.
-export const DEFAULT_AMPLITUDE = 0.12;
+//
+// 11-09 gap closure (IDLE-02 H2 fix): raised from 0.12 to 0.35 — the old
+// value, combined with AnimationStateEngine's stopped-state SETTLE_SCALE
+// (0.15), produced an objectively imperceptible 0.018 peak weight on the
+// demo page's default pre-connect `stopped` chatStatus, and even the full
+// 0.12 ready-state peak was plausibly too subtle to read as visible
+// expression change. See the file-header 11-09 diagnosis block above.
+export const DEFAULT_AMPLITUDE = 0.35;
+
+// Documented floor of visibility this fix targets: any drifted candidate
+// weight below this is not reliably perceptible as "expression changing"
+// on a VRoid rig's relaxed/happy blendshape. Asserted directly in
+// expressionDrift.test.ts's ready-state peak test (11-09 Task 1, Test A).
+export const PERCEPTIBLE_MIN_WEIGHT = 0.15;
 
 // Threshold below which a manager value is treated as "not app-owned" /
 // "matches drift's own last write" — guards against float-equality noise
 // from repeated sine/setValue round-trips.
 const EPSILON = 1e-4;
+
+// 11-09 gap closure dev-only diagnostic: hardcoded off, never wired to a
+// build flag. Flip to true locally (never commit as true) to log, once per
+// drift instance, the present expression names / DRIFT_CANDIDATES subset /
+// computed peak weight so a human re-verifying IDLE-02 live can cross-check
+// the same H1/H2 data this diagnosis used, directly in devtools.
+const DRIFT_DEBUG = false;
 
 /** Mutable phase/period/ownership state for one expression-drift instance. */
 export interface ExpressionDriftState {
@@ -127,6 +214,13 @@ export interface ExpressionDriftState {
    * rising and falling in perfect unison.
    */
   phaseOffsets: Record<string, number>;
+  /**
+   * 11-09 dev-diagnostic bookkeeping: set true after the DRIFT_DEBUG
+   * one-time log has fired for this instance, so the log runs exactly once
+   * per drift instance rather than every frame. No effect when DRIFT_DEBUG
+   * is false (the default).
+   */
+  debugLogged?: boolean;
 }
 
 /**
@@ -178,6 +272,23 @@ export function stepExpressionDrift(
 ): void {
   const em = adapter.getExpressionManager();
   if (!em) return; // GLB (and any format with no expression system): automatic no-op.
+
+  // 11-09 dev-only diagnostic (off by default — see DRIFT_DEBUG above):
+  // logs once per instance so a human re-verifying IDLE-02 live can
+  // cross-check the same present-name/amplitude data this gap-closure
+  // pass's diagnosis used, directly in devtools.
+  if (DRIFT_DEBUG && !state.debugLogged) {
+    const presentNames = em.expressions.map((e) => e.expressionName);
+    const presentCandidates = DRIFT_CANDIDATES.filter((name) => em.getExpression(name) !== null);
+    // eslint-disable-next-line no-console
+    console.debug("[expressionDrift] diagnostic", {
+      presentExpressionNames: presentNames,
+      presentDriftCandidates: presentCandidates,
+      peakWeight: DEFAULT_AMPLITUDE * amplitudeScale,
+      amplitudeScale,
+    });
+    state.debugLogged = true;
+  }
 
   state.phase += (delta / state.period) * Math.PI * 2;
 

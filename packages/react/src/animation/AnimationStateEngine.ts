@@ -326,6 +326,42 @@ export function shouldRunProceduralBoneWrites(action: THREE.AnimationAction | nu
   return action.getEffectiveWeight() >= MIN_BASE_ACTION_WEIGHT;
 }
 
+/**
+ * 11-13 gap-closure fix (G4 talk-cycle jiggle — see the file-header 11-13
+ * diagnosis block). Extends `shouldRunProceduralBoneWrites` with a second
+ * condition: a real, non-null `blendFromAction` (the OUTGOING action in an
+ * active crossfade) also counts as "driving," even while the incoming
+ * action's own weight hasn't ramped yet.
+ *
+ * This distinguishes the TWO situations `shouldRunProceduralBoneWrites`
+ * alone conflates:
+ *   - "no action has ever driven the skeleton" (the true first-mount case —
+ *     `blendFromAction` is always null here, since the very first
+ *     `beginCrossfade` call is always `beginCrossfade(null, toAction, ...)`)
+ *     — this case still needs `resetToRestPoseIfNotDriven`'s anchor reset,
+ *     exactly as 11-11 fixed it.
+ *   - "mid-crossfade between two REAL actions" (every subsequent switch,
+ *     where `blendFromAction` is the previously-driving action) — here the
+ *     mixer's own two-action blend already produces a continuous,
+ *     non-frozen pose every frame (THREE's `AnimationMixer` fully
+ *     re-computes bound properties from the CURRENT active-action weights
+ *     each frame, discarding whatever the previous frame's procedural
+ *     write left behind — the same "fresh base every frame" property
+ *     steady state already relies on, see the 11-09 diagnosis block above).
+ *     Resetting to a STALE fixed anchor here instead snaps the torso away
+ *     from that live blend — the measured ~0.079rad G4 jiggle.
+ *
+ * Exported and pure so it is unit-testable with stub `THREE.AnimationAction`
+ * objects, mirroring `shouldRunProceduralBoneWrites`'s own testability — see
+ * `AnimationStateEngine.test.ts`.
+ */
+export function isBaseActionMeaningfullyDriving(
+  currentAction: THREE.AnimationAction | null,
+  blendFromAction: THREE.AnimationAction | null,
+): boolean {
+  return shouldRunProceduralBoneWrites(currentAction) || blendFromAction !== null;
+}
+
 /** A captured spine/chest/hips rest-pose anchor — see `resetToRestPoseIfNotDriven`. */
 export interface RestPoseAnchor {
   spine: THREE.Quaternion;
@@ -446,6 +482,54 @@ export function resolveBaseClip(
 }
 
 /**
+ * 11-13 gap-closure fix (G1 pre-connect T-pose / G3 Y-drop-on-connect — see
+ * the file-header 11-13 diagnosis block). Pure decision: should
+ * `switchToClip(targetName)` (re-)run right now? Centralizes the FULL
+ * "should switchToClip run" decision — including the TALK-01/TRANS-01
+ * speaking-variant ownership guard — so the crossfade-trigger `useEffect`
+ * AND `update()`'s per-frame retry (added below to close G1) call the
+ * EXACT SAME logic. This is deliberately not duplicated inline in two
+ * places: a hand-rolled test-only replay of "what the effect does" could
+ * silently diverge from what the real hook does — which is exactly how a
+ * wrong G1 fix could pass its own test while the live app stayed broken
+ * (the failure mode 11-12's human re-check exposed for 11-11's fix, and
+ * 11-10's before it). Exported and pure so it is unit-testable without
+ * rendering a React component or scene — see `AnimationStateEngine.test.ts`.
+ *
+ * Returns `false` when: `targetName` is null; `targetName` already matches
+ * `currentClipName` (already showing this clip — nothing to do);
+ * `canResolveAction` or `canResolveRoot` is false (clips/root not yet
+ * resolvable — the exact case that silently stalled G1 before this fix,
+ * since neither `targetName` nor `chatStatus` change once they DO become
+ * resolvable, so a plain `useEffect` alone never gets a chance to re-fire);
+ * or the speaking-variant ownership guard applies (while `speaking`,
+ * `talkCycle` inside `update()` is the SOLE owner of which talk variant is
+ * showing — re-asserting `resolveBaseClip`'s always-first-matched speaking
+ * clip here would fight an already-advanced variant, the bug reported in
+ * 11-06/TALK-01).
+ */
+export function shouldTriggerClipSwitch(params: {
+  targetName: string | null;
+  chatStatus: ChatStatus;
+  currentClipName: string | null;
+  canResolveAction: boolean;
+  canResolveRoot: boolean;
+}): boolean {
+  const { targetName, chatStatus, currentClipName, canResolveAction, canResolveRoot } = params;
+  if (!targetName) return false;
+  if (targetName === currentClipName) return false;
+  if (!canResolveAction || !canResolveRoot) return false;
+  if (
+    chatStatus === "speaking" &&
+    currentClipName !== null &&
+    STATUS_CLIP_PATTERNS.speaking!.test(currentClipName)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Drives one avatar's animation: on a resolved base-clip target change,
  * starts an eased, pose-gap-adaptive crossfade via `beginCrossfade`/
  * `stepCrossfade` (never a live-clock timer); on every `update(delta)` call,
@@ -548,32 +632,32 @@ export function useAnimationController(params: {
     currentClipNameRef.current = name;
   }
 
+  // 11-13 gap-closure fix (G1/G3 — see the file-header 11-13 diagnosis
+  // block): the "should switchToClip run" decision (including the
+  // TALK-01/TRANS-01 speaking-variant ownership guard, previously inlined
+  // here) now lives in the exported, pure `shouldTriggerClipSwitch`, so
+  // this effect AND `update()`'s per-frame retry below call the exact same
+  // logic. This effect alone is NOT sufficient to fix G1: its `[targetName,
+  // chatStatus]` deps give it exactly one run in the pre-connect state, and
+  // if clips/root are not yet resolvable at that moment (VRM/animations
+  // still loading — see `useLoadVRM`'s async, non-suspending parse in
+  // VRMAvatar.tsx), neither value changes again before Connect is pressed,
+  // so this effect never gets a chance to re-fire. `update()`'s step 0
+  // retry (below) is what actually closes that gap; this effect remains
+  // for the ordinary chatStatus/targetName-change-driven case (Connect,
+  // status transitions, `animate()` calls).
   useEffect(() => {
-    if (!targetName) return;
-
-    // TALK-01/TRANS-01 speaking-variant ownership guard: while `speaking`,
-    // `talkCycle` (inside `update()`, step 9) is the SOLE owner of which
-    // talk variant is showing, driven by loop-boundary + dwell detection.
-    // `resolveBaseClip` always resolves the FIRST speaking-matched clip via
-    // `.find()` (RESEARCH Pitfall 4), so if this effect re-fires mid-speech
-    // (e.g. from a `currentVolume` tick re-render) and re-asserts that first
-    // clip, it fights talkCycle's already-advanced variant and snaps back to
-    // variant 1 — the bug reported in 11-06 (TALK-01). Guard: if we're
-    // already showing a speaking-matched clip while `speaking`, this effect
-    // has nothing useful to do — return without switching. The initial
-    // idle -> speaking switch is unaffected: at that moment
-    // currentClipNameRef.current still points at the idle/base clip, not a
-    // speaking variant, so the guard passes through and the first talk clip
-    // is selected normally.
     if (
-      chatStatus === "speaking" &&
-      currentClipNameRef.current !== null &&
-      STATUS_CLIP_PATTERNS.speaking!.test(currentClipNameRef.current)
+      shouldTriggerClipSwitch({
+        targetName,
+        chatStatus,
+        currentClipName: currentClipNameRef.current,
+        canResolveAction: targetName ? !!getAction(targetName) : false,
+        canResolveRoot: !!getRoot(),
+      })
     ) {
-      return;
+      switchToClip(targetName!);
     }
-
-    switchToClip(targetName);
     // getRoot/getAction intentionally omitted from deps: they're stable
     // per-render accessor closures (memoized via useCallback in both
     // VRMAvatar/GLBAvatar as of Task 1's part C), not values whose identity
@@ -600,7 +684,35 @@ export function useAnimationController(params: {
     // frame (11-09 previously skipped 4-7 entirely while
     // shouldRunProceduralBoneWrites(currentActionRef.current) was false;
     // 11-11 replaced that whole-block skip with the narrower 4b reset —
-    // see the file-header 11-11 diagnosis block for why).
+    // see the file-header 11-11 diagnosis block for why). 11-13 gap closure
+    // added step 0 (below) and refined step 4b's driving check — see the
+    // file-header 11-13 diagnosis block.
+
+    // 0. 11-13 gap closure (G1/G3 fix): retry a pending clip switch every
+    // frame, using the SAME `shouldTriggerClipSwitch` decision the effect
+    // above calls. `update()` already runs every animation frame regardless
+    // of React re-renders (mixer.update -> controller.update -> vrm.update,
+    // per the frame-ordering contract above) — this is what actually closes
+    // G1: if the effect's single pre-connect run happened while clips/root
+    // were not yet resolvable, neither `targetName` nor `chatStatus` change
+    // once they DO become resolvable, so the effect itself never gets a
+    // chance to re-fire; this per-frame check does, on the very next frame
+    // after clips/root resolve. Self-terminating and safe to run
+    // unconditionally every frame: once `switchToClip` succeeds,
+    // `currentClipNameRef.current` matches `targetName` and
+    // `shouldTriggerClipSwitch` returns `false` on every subsequent frame
+    // (no repeated re-triggering).
+    if (
+      shouldTriggerClipSwitch({
+        targetName,
+        chatStatus,
+        currentClipName: currentClipNameRef.current,
+        canResolveAction: targetName ? !!getAction(targetName) : false,
+        canResolveRoot: !!getRoot(),
+      })
+    ) {
+      switchToClip(targetName!);
+    }
 
     // 1. Advance the in-progress base-clip crossfade, if any (existing).
     if (blendRef.current.active) {
@@ -678,7 +790,19 @@ export function useAnimationController(params: {
     // 4b. Reset to the anchor while the base action isn't driving the
     // skeleton this frame; no-ops once it is (the mixer already wrote the
     // correct pose this frame, matching 11-09's steady-state behavior).
-    const baseActionDriving = shouldRunProceduralBoneWrites(currentActionRef.current);
+    // 11-13 gap closure (G4 fix — see the file-header 11-13 diagnosis
+    // block): `isBaseActionMeaningfullyDriving` also treats a real, non-null
+    // `blendRef.current.from` (the OUTGOING action in an active crossfade)
+    // as driving, not just the incoming action's own ramped-up weight. This
+    // distinguishes the true first-mount case (`from` is always null there)
+    // from a real two-action crossfade (idle->talking, talking->talking1,
+    // etc.), where the mixer's own blend already produces a continuous,
+    // non-frozen pose and resetting to the stale fixed anchor instead
+    // snapped the torso away from that live blend — the G4 jiggle.
+    const baseActionDriving = isBaseActionMeaningfullyDriving(
+      currentActionRef.current,
+      blendRef.current.from,
+    );
     resetToRestPoseIfNotDriven({ spine, chest, hips }, restPoseRef.current, baseActionDriving);
 
     // 11-11 dev-only diagnostic (off by default — see GATE_DEBUG above):

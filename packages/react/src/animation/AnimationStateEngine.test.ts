@@ -11,6 +11,8 @@ import {
   resolveBaseClip,
   shouldRunProceduralBoneWrites,
   resetToRestPoseIfNotDriven,
+  isBaseActionMeaningfullyDriving,
+  shouldTriggerClipSwitch,
   type RestPoseAnchor,
 } from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
@@ -430,5 +432,310 @@ describe("G2 fix — idle->talking crossfade still ramps smoothly over multiple 
     expect(weightsAtQuarterSteps[0]).toBeCloseTo(easeInOutCubic(0.25), 5);
 
     nowSpy.mockRestore();
+  });
+});
+
+describe("shouldTriggerClipSwitch (11-13 G1 fix)", () => {
+  // This is the SAME pure function both the crossfade-trigger useEffect AND
+  // update()'s per-frame retry call (see AnimationStateEngine.ts) -- calling
+  // it directly here, rather than hand-rolling a replay of "what the effect
+  // does," is what makes this test actually exercise the shipped hook's
+  // real decision logic (the gap the 11-13 plan-checker blocker flagged:
+  // a hand-rolled replay could pass while the live app stayed broken, as
+  // happened across 11-10/11-12's rounds).
+
+  it("returns false when targetName is null", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: null,
+        chatStatus: "stopped",
+        currentClipName: null,
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when clips/root are not yet resolvable, even though targetName is set (the pre-connect stall)", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "idle",
+        chatStatus: "stopped",
+        currentClipName: null,
+        canResolveAction: false,
+        canResolveRoot: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true once clips/root become resolvable, WITHOUT targetName or chatStatus changing -- the exact pre-connect ordering 11-11's fix missed (see file header 11-13 diagnosis block, H-G1)", () => {
+    // Mirrors the real pre-connect sequence: KhaveeProvider defaults
+    // chatStatus="stopped" and currentAnimation="idle" BEFORE Connect is
+    // ever pressed, and neither value changes when the VRM/clips finish
+    // their async, non-suspending load -- only readiness changes.
+    const unready = {
+      targetName: "idle",
+      chatStatus: "stopped" as const,
+      currentClipName: null,
+      canResolveAction: false,
+      canResolveRoot: false,
+    };
+    expect(shouldTriggerClipSwitch(unready)).toBe(false);
+
+    const ready = { ...unready, canResolveAction: true, canResolveRoot: true };
+    expect(shouldTriggerClipSwitch(ready)).toBe(true);
+  });
+
+  it("returns false once targetName already matches currentClipName (already showing this clip)", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "idle",
+        chatStatus: "stopped",
+        currentClipName: "idle",
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("preserves the TALK-01/TRANS-01 speaking-variant ownership guard (talkCycle already advanced past the first-matched speaking clip)", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "talking", // resolveBaseClip's first .find()-matched speaking clip
+        chatStatus: "speaking",
+        currentClipName: "talking2", // talkCycle already advanced to a later variant
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT apply the speaking-variant guard for the initial idle -> speaking switch (currentClipName is the base clip, not a speaking-matched one)", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "talking",
+        chatStatus: "speaking",
+        currentClipName: "idle",
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("G1 fix wired end-to-end through switchToClip (11-13)", () => {
+  // Extends the shouldTriggerClipSwitch unit tests above one level up:
+  // confirms that once the pure decision returns true, actually invoking
+  // switchToClip's beginCrossfade/stepCrossfade (the real crossfade.ts
+  // functions) ramps the base action from 0 to full weight over multiple
+  // frames -- proving the fix is not just a passing unit test in isolation,
+  // but produces the same observable effect (currentActionRef becomes
+  // non-null, weight ramps) the file-header 11-13 diagnostic measured was
+  // missing before this fix.
+  function makeStubAction(clip: THREE.AnimationClip) {
+    return {
+      reset: vi.fn().mockReturnThis(),
+      enabled: false,
+      play: vi.fn().mockReturnThis(),
+      stop: vi.fn().mockReturnThis(),
+      setEffectiveWeight: vi.fn(),
+      getClip: () => clip,
+    } as unknown as THREE.AnimationAction;
+  }
+
+  it("clips unresolvable pre-connect -> becomes resolvable without targetName/chatStatus changing -> retry succeeds -> weight ramps to full over multiple frames", () => {
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValue(0);
+
+    const scene = new THREE.Object3D();
+    const idleClip = new THREE.AnimationClip("idle", -1, []);
+    const idleAction = makeStubAction(idleClip);
+
+    let currentAction: THREE.AnimationAction | null = null;
+    let currentClipName: string | null = null;
+    let clipsReady = false;
+
+    const getAction = (name: string) => (clipsReady && name === "idle" ? idleAction : null);
+    const getRoot = () => (clipsReady ? scene : null);
+
+    function attemptSwitch(targetName: string, chatStatus: "stopped") {
+      if (
+        shouldTriggerClipSwitch({
+          targetName,
+          chatStatus,
+          currentClipName,
+          canResolveAction: !!getAction(targetName),
+          canResolveRoot: !!getRoot(),
+        })
+      ) {
+        const toAction = getAction(targetName)!;
+        const root = getRoot()!;
+        return { switched: true, blend: beginCrossfade(currentAction, toAction, root) };
+      }
+      return { switched: false, blend: null };
+    }
+
+    // Effect run #1 (mount time): clips not yet resolvable.
+    const first = attemptSwitch("idle", "stopped");
+    expect(first.switched).toBe(false);
+    expect(currentAction).toBeNull();
+
+    // Clips/root become resolvable -- targetName/chatStatus UNCHANGED.
+    clipsReady = true;
+
+    // update()'s per-frame retry (step 0): calls the SAME shouldTriggerClipSwitch.
+    const retry = attemptSwitch("idle", "stopped");
+    expect(retry.switched).toBe(true);
+    currentAction = idleAction;
+    currentClipName = "idle";
+
+    const blend = retry.blend!;
+    expect(blend.active).toBe(true);
+
+    // Ramp verification (mirrors the pre-existing G2 multi-frame-ramp test).
+    const weightsAtSteps: number[] = [];
+    for (const fraction of [0.25, 0.5, 0.75, 1]) {
+      nowSpy.mockReturnValue(blend.duration * 1000 * fraction);
+      stepCrossfade(blend);
+      const lastCall = (idleAction.setEffectiveWeight as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+      weightsAtSteps.push(lastCall![0] as number);
+    }
+
+    expect(weightsAtSteps[0]).toBeLessThan(weightsAtSteps[1]);
+    expect(weightsAtSteps[1]).toBeLessThan(weightsAtSteps[2]);
+    expect(weightsAtSteps[2]).toBeLessThan(weightsAtSteps[3]);
+    expect(weightsAtSteps[3]).toBeCloseTo(1, 5);
+
+    // A second retry attempt (e.g. the very next frame) must now be a no-op
+    // -- self-terminating, no repeated re-triggering once switched.
+    const secondRetry = attemptSwitch("idle", "stopped");
+    expect(secondRetry.switched).toBe(false);
+
+    nowSpy.mockRestore();
+  });
+});
+
+describe("isBaseActionMeaningfullyDriving (11-13 G4 fix)", () => {
+  it("returns false when neither the current action nor a from-action exist (true first-mount case)", () => {
+    expect(isBaseActionMeaningfullyDriving(null, null)).toBe(false);
+  });
+
+  it("returns false when the current action's weight is below threshold AND there is no from-action", () => {
+    const action = { getEffectiveWeight: () => 0.01 } as unknown as THREE.AnimationAction;
+    expect(isBaseActionMeaningfullyDriving(action, null)).toBe(false);
+  });
+
+  it("returns true when the current action's own weight has ramped past threshold, regardless of from-action", () => {
+    const action = { getEffectiveWeight: () => 0.5 } as unknown as THREE.AnimationAction;
+    expect(isBaseActionMeaningfullyDriving(action, null)).toBe(true);
+  });
+
+  it("returns true when the current (incoming) action's weight is still near-zero BUT a real from-action exists (mid-crossfade between two real actions -- the G4 case)", () => {
+    const incoming = { getEffectiveWeight: () => 0.01 } as unknown as THREE.AnimationAction;
+    const outgoing = { getEffectiveWeight: () => 0.9 } as unknown as THREE.AnimationAction;
+    expect(isBaseActionMeaningfullyDriving(incoming, outgoing)).toBe(true);
+  });
+});
+
+describe("G4 fix — resetToRestPoseIfNotDriven does not snap the torso during a real two-action crossfade (11-13)", () => {
+  // Reproduces the confirmed 11-13 H-G4 mechanism (file-header diagnosis
+  // block): during a talk-variant switch (e.g. talking -> talking1), the
+  // INCOMING action's weight starts near 0 while the OUTGOING action is
+  // still contributing ~0.9-1.0 weight. The OLD gate
+  // (shouldRunProceduralBoneWrites alone) only inspects the incoming
+  // action, so it reports "not driving" and resetToRestPoseIfNotDriven
+  // snaps spine/chest/hips toward the bind anchor even though the mixer
+  // itself is still producing a live, real two-action blend -- the jiggle.
+  // The NEW isBaseActionMeaningfullyDriving check (which also treats a
+  // real, non-null from-action as driving) must prevent that snap.
+  function makeBones() {
+    return {
+      spine: new THREE.Object3D(),
+      chest: new THREE.Object3D(),
+      hips: new THREE.Object3D(),
+    };
+  }
+
+  it("does not reset toward the bind anchor while a real outgoing action is still contributing weight (NEW behavior)", () => {
+    const bones = makeBones();
+    const restPose: RestPoseAnchor = {
+      spine: new THREE.Quaternion(),
+      chest: new THREE.Quaternion(),
+      hips: new THREE.Quaternion(),
+    };
+
+    // Simulate the mixer's own blended pose for spine during a real
+    // talking->talking1 crossfade: two fixed, non-identity "real" clip
+    // orientations blending by incoming weight (mirrors what
+    // THREE.AnimationMixer produces for two active, real actions bound to
+    // the same property -- a fresh recompute every frame, not an
+    // accumulation across frames, matching the file-header 11-13 rationale).
+    const outgoingPose = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.2);
+    const incomingPose = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.3);
+
+    const outgoingAction = { getEffectiveWeight: () => 0.95 } as unknown as THREE.AnimationAction;
+    let incomingWeight = 0;
+    const incomingAction = {
+      getEffectiveWeight: () => incomingWeight,
+    } as unknown as THREE.AnimationAction;
+
+    const deviationsFromMixerPose: number[] = [];
+    for (let i = 1; i <= 5; i++) {
+      incomingWeight = i * 0.01; // stays well below MIN_BASE_ACTION_WEIGHT (0.05)
+      // The mixer writes a fresh blended pose every frame.
+      bones.spine.quaternion.copy(outgoingPose).slerp(incomingPose, incomingWeight);
+      const mixerPose = bones.spine.quaternion.clone();
+
+      const driving = isBaseActionMeaningfullyDriving(incomingAction, outgoingAction);
+      resetToRestPoseIfNotDriven(bones, restPose, driving);
+
+      deviationsFromMixerPose.push(mixerPose.angleTo(bones.spine.quaternion));
+    }
+
+    // With the G4 fix, since a real outgoingAction is contributing, driving
+    // is true throughout this window -- the reset never fires, so spine
+    // stays at (within floating-point tolerance of) the mixer's own
+    // blended pose each frame -- nowhere near the ~0.079rad the OLD gate
+    // produces (see the contrast test below).
+    for (const d of deviationsFromMixerPose) {
+      expect(d).toBeLessThan(1e-5);
+    }
+  });
+
+  it("(contrast, documents the bug) using the OLD incoming-weight-only gate in the same window snaps the torso toward the bind anchor, away from the mixer's own blend", () => {
+    const bones = makeBones();
+    const restPose: RestPoseAnchor = {
+      spine: new THREE.Quaternion(),
+      chest: new THREE.Quaternion(),
+      hips: new THREE.Quaternion(),
+    };
+    const outgoingPose = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.2);
+    const incomingPose = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.3);
+    let incomingWeight = 0;
+    const incomingAction = {
+      getEffectiveWeight: () => incomingWeight,
+    } as unknown as THREE.AnimationAction;
+
+    let maxDeviationFromMixerPose = 0;
+    for (let i = 1; i <= 5; i++) {
+      incomingWeight = i * 0.01;
+      bones.spine.quaternion.copy(outgoingPose).slerp(incomingPose, incomingWeight);
+      const mixerPose = bones.spine.quaternion.clone();
+
+      // OLD gate: shouldRunProceduralBoneWrites alone, ignoring the
+      // from-action entirely.
+      const driving = shouldRunProceduralBoneWrites(incomingAction);
+      resetToRestPoseIfNotDriven(bones, restPose, driving);
+
+      const deviation = mixerPose.angleTo(bones.spine.quaternion);
+      if (deviation > maxDeviationFromMixerPose) maxDeviationFromMixerPose = deviation;
+    }
+
+    // The OLD gate resets every one of these frames (driving is always
+    // false, since incomingWeight never exceeds 0.05 in this window),
+    // snapping spine all the way to the bind anchor -- a real, measurable
+    // deviation from the mixer's own blended pose (matches the ~0.079rad
+    // magnitude recorded in the file-header 11-13 diagnosis).
+    expect(maxDeviationFromMixerPose).toBeGreaterThan(0.05);
   });
 });

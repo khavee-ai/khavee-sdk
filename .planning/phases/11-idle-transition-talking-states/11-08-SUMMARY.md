@@ -164,3 +164,8 @@ Confirmed passing and safe to treat as done (not requiring further gap-closure a
 ---
 *Phase: 11-idle-transition-talking-states*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/11-idle-transition-talking-states/11-08-SUMMARY.md`
+- FOUND: commit `eb1dfb2` in `git log --oneline --all`

@@ -368,7 +368,7 @@ Plans:
 **Wave 5** *(gap closure — 11-06 human verification found IDLE-02/TRANS-01/TRANS-02/TALK-01 failing on a live build; root causes diagnosed in 11-06-SUMMARY.md)*
 
 - [x] 11-07-PLAN.md — Fix the 3 diagnosed animation-timing bugs: drop unstable getAction from the crossfade-effect deps + memoize accessors + talkCycle-owns-speaking guard (TALK-01/TRANS-01), ease the stopped-settle scale over ~1.2s instead of an instant cut (TRANS-02), and fix expression drift to target present/visible VRoid candidates (relaxed/happy) with drift-ownership tracking instead of the self-freezing non-zero guard (IDLE-02)
-- [ ] 11-08-PLAN.md — Re-verify: objective invariant + fix-landed gates + full test suite, then blocking human re-check of the 4 previously-failing behaviors plus a re-check of IDLE-01/TALK-02/PERF-01 against the wayfinder checklist
+- [x] 11-08-PLAN.md — Re-verify: objective invariant + fix-landed gates + full test suite, then blocking human re-check of the 4 previously-failing behaviors plus a re-check of IDLE-01/TALK-02/PERF-01 against the wayfinder checklist — result: 5/7 pass (IDLE-01, TRANS-01, TRANS-02, TALK-01, PERF-01 confirmed); IDLE-02 still fails (no visible expression drift) and TALK-02 unconfirmed ("maybe pass"); further gap-closure needed
 
 **UI hint**: yes
 

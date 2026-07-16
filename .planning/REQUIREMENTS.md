@@ -15,8 +15,8 @@ Source: wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khav
 
 ### Idle & Transition States
 
-- [ ] **IDLE-01**: `ready`/`stopped` base state has randomized-range procedural breathing (chest/spine bone rotation) and weight-shift sway (hip/spine), independent cycles
-- [x] **IDLE-02**: VRM avatars additionally get subtle, randomized expression rest-state drift (1-2 expression values); GLB avatars do not (no expression system)
+- [x] **IDLE-01**: `ready`/`stopped` base state has randomized-range procedural breathing (chest/spine bone rotation) and weight-shift sway (hip/spine), independent cycles
+- [ ] **IDLE-02**: VRM avatars additionally get subtle, randomized expression rest-state drift (1-2 expression values); GLB avatars do not (no expression system)
 - [x] **TRANS-01**: `starting` plays a dedicated greeting/waking clip with a ~1.0–1.5s minimum duration floor (on top of pose-gap-adaptive timing)
 - [x] **TRANS-02**: `stopped` plays a dedicated goodbye/settling clip, distinct from `ready`'s idle base, with the same minimum duration floor
 
@@ -42,7 +42,7 @@ Source: wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khav
 
 ### Performance
 
-- [ ] **PERF-01**: Procedural systems touching the same bone (e.g. breathing + sway on spine) compose via additive delta-quaternion `multiply()`, not `.set()`/overwrite, in a fixed documented order, with combined magnitude bounded
+- [x] **PERF-01**: Procedural systems touching the same bone (e.g. breathing + sway on spine) compose via additive delta-quaternion `multiply()`, not `.set()`/overwrite, in a fixed documented order, with combined magnitude bounded
 - [ ] **PERF-02**: Under sustained frame-budget pressure, procedural systems degrade in tiers — blink never throttles, breathing/sway throttle first, expression drift throttles most aggressively, audio-reactive amplitude stays tied to its upstream hook's cadence
 
 ### Verification
@@ -76,38 +76,36 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 
 ## Traceability
 
-Empty — populated by the roadmapper during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ANIM-01 | TBD | Pending |
-| ANIM-02 | TBD | Pending |
-| ANIM-03 | TBD | Pending |
-| IDLE-01 | TBD | Pending |
-| IDLE-02 | TBD | Complete |
-| TRANS-01 | TBD | Complete |
-| TRANS-02 | TBD | Complete |
-| TALK-01 | TBD | Complete |
-| TALK-02 | TBD | Pending |
-| XFADE-01 | TBD | Pending |
-| GAZE-01 | TBD | Pending |
-| GAZE-02 | TBD | Pending |
-| GEST-01 | TBD | Pending |
-| GEST-02 | TBD | Pending |
-| API-01 | TBD | Pending |
-| API-02 | TBD | Pending |
-| API-03 | TBD | Pending |
-| API-04 | TBD | Pending |
-| PERF-01 | TBD | Pending |
-| PERF-02 | TBD | Pending |
-| VERIFY-01 | TBD | Pending |
-| VERIFY-02 | TBD | Pending |
+| ANIM-01 | Phase 10 | Pending |
+| ANIM-02 | Phase 10 | Pending |
+| ANIM-03 | Phase 10 | Pending |
+| IDLE-01 | Phase 11 | Complete |
+| IDLE-02 | Phase 11 | Pending (fails human re-check — no visible expression drift) |
+| TRANS-01 | Phase 11 | Complete |
+| TRANS-02 | Phase 11 | Complete |
+| TALK-01 | Phase 11 | Complete |
+| TALK-02 | Phase 11 | Pending (unconfirmed — "maybe pass") |
+| XFADE-01 | Phase 10 | Pending |
+| GAZE-01 | Phase 12 | Pending |
+| GAZE-02 | Phase 12 | Pending |
+| GEST-01 | Phase 12 | Pending |
+| GEST-02 | Phase 12 | Pending |
+| API-01 | Phase 13 | Pending |
+| API-02 | Phase 13 | Pending |
+| API-03 | Phase 13 | Pending |
+| API-04 | Phase 13 | Pending |
+| PERF-01 | Phase 11 | Complete |
+| PERF-02 | Phase 13 | Pending |
+| VERIFY-01 | Phase 13 | Pending |
+| VERIFY-02 | Phase 13 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 22 ⚠️
+- Mapped to phases: 22 (Phase 10: ANIM-01/02/03, XFADE-01; Phase 11: IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01; Phase 12: GAZE-01/02, GEST-01/02; Phase 13: API-01/02/03/04, PERF-02, VERIFY-01/02)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-12*
-*Last updated: 2026-07-12 after initial definition (from wayfinder map #1)*
+*Last updated: 2026-07-12 — roadmap created, all 22 v1 requirements mapped to Phases 10-13*

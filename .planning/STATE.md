@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
 status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-07-12T19:15:14.300Z"
-last_activity: 2026-07-12 -- Phase 11 execution started
+stopped_at: Phase 11 gap closure — IDLE-02/TALK-02 still unresolved after 11-08 re-verification
+last_updated: "2026-07-16T13:55:00.000Z"
+last_activity: 2026-07-16 -- Phase 11 plans 11-07/11-08 executed (--gaps-only): 11-07 fixed TALK-01/TRANS-01/TRANS-02/IDLE-02; 11-08 human re-verification found IDLE-02 still failing and TALK-02 unconfirmed
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 48
-  completed_plans: 46
+  completed_plans: 48
   percent: 69
 ---
 
@@ -21,16 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value (v2.2):** Replace `VRMAvatar`/`GLBAvatar`'s robotic chatStatus-driven animation switching with a unified, natural-feeling state architecture — shared internal module, procedural motion layer, and a zero-config public API.
-**Current focus:** Phase 11 — idle-transition-talking-states
+**Current focus:** Phase 11 — idle-transition-talking-states (gap closure — not yet done)
 
 ## Current Position
 
-Phase: 11 (idle-transition-talking-states) — EXECUTING
-Plan: 1 of 8
-Status: Executing Phase 11
-Last activity: 2026-07-12 -- Phase 11 execution started
+Phase: 11 (idle-transition-talking-states) — GAP CLOSURE IN PROGRESS
+Plan: 8 of 8 (all plans have SUMMARY.md; phase requirements not fully satisfied)
+Status: 11-07 (fixes) and 11-08 (re-verification) both executed. 11-08 result: 5/7 behaviors pass (IDLE-01, TRANS-01, TRANS-02, TALK-01, PERF-01). IDLE-02 still fails (no visible VRM expression drift) and TALK-02 is unconfirmed ("maybe pass"). A new, previously-untracked bug was also reported: the avatar "spins weird" on first load — not yet root-caused.
+Last activity: 2026-07-16 -- Phase 11 gap-closure wave (11-07, 11-08) executed via /gsd-execute-phase 11 --gaps-only
 
-Progress: [░░░░░░░░░░] 0% (v2.2 milestone; v2.1 Phase 9 tracked separately at 5/6 plans complete)
+Next: plan a further gap-closure pass for IDLE-02 (expression drift still not visible), a decisive TALK-02 re-check, and the new first-load spin bug — e.g. `/gsd-plan-phase 11 --gaps`. Phase 11 cannot be marked complete until these are resolved.
+
+Progress: [████████░░] 75% (v2.2 milestone; v2.1 Phase 9 tracked separately at 5/6 plans complete)
 
 ## Performance Metrics
 
@@ -84,6 +86,7 @@ None yet.
 
 ### Blockers/Concerns
 
+- v2.2: Phase 11 not fully closed after gap-closure wave (11-07/11-08, 2026-07-16): IDLE-02 (VRM expression drift) still fails live human re-check despite 11-07's fix landing and passing all objective code gates — needs further diagnosis, not just a re-check. TALK-02 (audio-reactive amplitude) is unconfirmed ("maybe pass"). New unfiled bug: avatar shows strange/spinning motion on first load, not yet root-caused. Needs a further gap-closure plan before Phase 11 can be marked complete.
 - v2.2: A stray untracked directory `.planning/phases/11-bone-masked-upper-body-animation-layering/` exists on disk (dated 2026-07-01, pre-dates this milestone's requirements) — not referenced by this roadmap and should not be treated as this milestone's real Phase 11; likely debris from an abandoned branch (see PROJECT.md's standing instruction not to mine `worktree-agent-*`/`fix/emotion-analyzer-provider-agnostic` branches). Flagged for cleanup, not blocking.
 - Phase 9 (v2.1): 09-06-PLAN.md (live UAT checkpoint) still pending — Block Studio not yet complete
 - Phase 5 (v1.0): VAD-loopback cooldown (currently a 500ms magic number tuned for OpenAI TTS) cannot be validated against JaiTTS until that service exists — must explicitly retest, not assume
@@ -110,6 +113,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T12:42:17.189Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-idle-transition-talking-states/11-CONTEXT.md
+Last session: 2026-07-16T13:55:00.000Z
+Stopped at: Phase 11 gap closure (11-07/11-08 executed, IDLE-02/TALK-02 still open)
+Resume file: .planning/phases/11-idle-transition-talking-states/11-08-SUMMARY.md

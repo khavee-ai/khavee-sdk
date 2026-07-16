@@ -377,7 +377,7 @@ Plans:
 
 **Wave 7** *(gap closure — 11-10 human re-check: IDLE-02/TALK-02 now confirmed, but two NEW regressions surfaced from 11-09's fix: T-pose stuck on load, and idle→talking transition now snaps)*
 
-- [ ] 11-11-PLAN.md — Diagnose-then-fix G1 (T-pose stuck on load) and G2 (idle→talking snap), both regressions from 11-09's `shouldRunProceduralBoneWrites` gate. Task 1: root-cause BOTH with recorded runtime evidence (headless frame-stepping against real male.vrm + Idle/talking clips — does the base action's weight ramp / does the base clip drive the bones; measured idle→talk crossfade duration) + off-by-default in-render instrumentation, determining whether G1/G2 share a cause. Task 2: apply the targeted fix that restores live idle motion + smooth crossfade WITHOUT reintroducing the 11-09 spin (bounded-accumulation regression test), keeping IDLE-02/TALK-02/PERF-01 intact
+- [x] 11-11-PLAN.md — Diagnose-then-fix G1 (T-pose stuck on load) and G2 (idle→talking snap), both regressions from 11-09's `shouldRunProceduralBoneWrites` gate. Task 1: root-cause BOTH with recorded runtime evidence (headless frame-stepping against real male.vrm + Idle/talking clips — does the base action's weight ramp / does the base clip drive the bones; measured idle→talk crossfade duration) + off-by-default in-render instrumentation, determining whether G1/G2 share a cause. Task 2: apply the targeted fix that restores live idle motion + smooth crossfade WITHOUT reintroducing the 11-09 spin (bounded-accumulation regression test), keeping IDLE-02/TALK-02/PERF-01 intact
 - [ ] 11-12-PLAN.md — Re-verify: invariant + fix-landed gates (11-11 fix present, 11-09 spin NOT reintroduced, IDLE-02/PERF-01/timer-free intact) + full react test suite, then a blocking DECISIVE human re-check of G1 (live idle on load, no T-pose, no spin) and G2 (smooth idle→talk crossfade) PLUS a full regression spot-check of all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — mandatory since regressions have now been introduced twice
 
 **UI hint**: yes
@@ -430,6 +430,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 10/12 | In Progress|  |
+| 11. Idle, Transition & Talking States | 11/12 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

@@ -5,11 +5,17 @@
  * 10-03/10-04, where it's exercised through real R3F components.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import { resolveBaseClip, shouldRunProceduralBoneWrites } from "./AnimationStateEngine";
+import {
+  resolveBaseClip,
+  shouldRunProceduralBoneWrites,
+  resetToRestPoseIfNotDriven,
+  type RestPoseAnchor,
+} from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
 import { createSwayState, stepSway } from "./sway";
+import { beginCrossfade, stepCrossfade, easeInOutCubic } from "./crossfade";
 import type { AvatarFormatAdapter } from "./types";
 
 describe("resolveBaseClip", () => {
@@ -192,5 +198,237 @@ describe("first-mount procedural-write accumulation repro (11-09)", () => {
     const withReset = runFrames(true);
 
     expect(withoutReset).toBeGreaterThan(withReset);
+  });
+});
+
+describe("resetToRestPoseIfNotDriven (11-11 gap closure)", () => {
+  function makeBones() {
+    return {
+      spine: new THREE.Object3D(),
+      chest: new THREE.Object3D(),
+      hips: new THREE.Object3D(),
+    };
+  }
+
+  it("no-ops when isBaseActionDriving is true (mixer already wrote this frame's pose)", () => {
+    const bones = makeBones();
+    bones.spine.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.3);
+    const before = bones.spine.quaternion.clone();
+    const restPose: RestPoseAnchor = {
+      spine: new THREE.Quaternion(),
+      chest: new THREE.Quaternion(),
+      hips: new THREE.Quaternion(),
+    };
+
+    resetToRestPoseIfNotDriven(bones, restPose, true);
+
+    expect(bones.spine.quaternion.equals(before)).toBe(true);
+  });
+
+  it("no-ops when restPose is null (anchor not yet captured)", () => {
+    const bones = makeBones();
+    bones.spine.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.3);
+    const before = bones.spine.quaternion.clone();
+
+    resetToRestPoseIfNotDriven(bones, null, false);
+
+    expect(bones.spine.quaternion.equals(before)).toBe(true);
+  });
+
+  it("resets spine/chest/hips to the anchor when isBaseActionDriving is false", () => {
+    const bones = makeBones();
+    // Simulate bones left drifted from a prior frame's procedural writes.
+    bones.spine.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.5);
+    bones.chest.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.2);
+    bones.hips.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), 0.4);
+
+    const restPose: RestPoseAnchor = {
+      spine: new THREE.Quaternion(),
+      chest: new THREE.Quaternion(),
+      hips: new THREE.Quaternion(),
+    };
+
+    resetToRestPoseIfNotDriven(bones, restPose, false);
+
+    expect(bones.spine.quaternion.equals(restPose.spine)).toBe(true);
+    expect(bones.chest.quaternion.equals(restPose.chest)).toBe(true);
+    expect(bones.hips.quaternion.equals(restPose.hips)).toBe(true);
+  });
+});
+
+describe("G1 fix — visible idle motion during a persistently near-zero-weight window (11-11)", () => {
+  // Reproduces the confirmed 11-11 mechanism: shouldRunProceduralBoneWrites
+  // stays false for an extended window (first mount, or -- per the headless
+  // diagnostic recorded in 11-11-SUMMARY.md -- any subsequent switchToClip
+  // call, since the new action's weight always restarts ramping from 0).
+  // Under 11-09's gate, this produced a frozen (T-pose-like) hold for the
+  // whole window. Under the 11-11 fix (resetToRestPoseIfNotDriven +
+  // unconditional breathing/sway), the same window must show VISIBLE,
+  // non-static idle motion instead.
+  it("produces non-static spine/chest/hips motion across frames even while the gate never opens", () => {
+    const spine = new THREE.Object3D();
+    const chest = new THREE.Object3D();
+    const hips = new THREE.Object3D();
+    const adapter: AvatarFormatAdapter = {
+      getMixer: () => {
+        throw new Error("not used in this test");
+      },
+      getBoneNode: () => null,
+      getHumanoidBoneNode: (role) => {
+        if (role === "spine") return spine;
+        if (role === "chest") return chest;
+        if (role === "hips") return hips;
+        return null;
+      },
+      getExpressionManager: () => null,
+    };
+
+    const restPose: RestPoseAnchor = {
+      spine: spine.quaternion.clone(),
+      chest: chest.quaternion.clone(),
+      hips: hips.quaternion.clone(),
+    };
+
+    const breathingState = createBreathingState();
+    breathingState.period = 5.0;
+    const swayState = createSwayState();
+    swayState.period = 8.0;
+    const delta = 1 / 30;
+
+    const spineAngles: number[] = [];
+    // Simulate 90 frames (a persistently near-zero-weight/"stuck" window --
+    // much longer than any real crossfade's ~0.9s ramp) with the gate
+    // NEVER opening (isBaseActionDriving always false), exactly mirroring
+    // update()'s new step 4a-4c sequence.
+    for (let i = 0; i < 90; i++) {
+      resetToRestPoseIfNotDriven({ spine, chest, hips }, restPose, false);
+      stepBreathing(breathingState, adapter, delta);
+      stepSway(swayState, adapter, delta);
+      spineAngles.push(spine.quaternion.angleTo(restPose.spine));
+    }
+
+    // Motion is visible (not frozen at the rest pose every frame).
+    expect(Math.max(...spineAngles)).toBeGreaterThan(0.001);
+    // And it's not a one-off blip -- most sampled frames show non-zero
+    // motion, consistent with continuous oscillation rather than a single
+    // spurious tick.
+    const nonStaticFrameCount = spineAngles.filter((a) => a > 1e-6).length;
+    expect(nonStaticFrameCount).toBeGreaterThan(spineAngles.length * 0.5);
+  });
+
+  it("stays BOUNDED across the same persistently-near-zero-weight window (11-09 spin not reintroduced)", () => {
+    const spine = new THREE.Object3D();
+    const chest = new THREE.Object3D();
+    const hips = new THREE.Object3D();
+    const adapter: AvatarFormatAdapter = {
+      getMixer: () => {
+        throw new Error("not used in this test");
+      },
+      getBoneNode: () => null,
+      getHumanoidBoneNode: (role) => {
+        if (role === "spine") return spine;
+        if (role === "chest") return chest;
+        if (role === "hips") return hips;
+        return null;
+      },
+      getExpressionManager: () => null,
+    };
+
+    const restPose: RestPoseAnchor = {
+      spine: spine.quaternion.clone(),
+      chest: chest.quaternion.clone(),
+      hips: hips.quaternion.clone(),
+    };
+
+    const breathingState = createBreathingState();
+    breathingState.period = 5.0;
+    const swayState = createSwayState();
+    swayState.period = 8.0;
+    const delta = 1 / 30;
+
+    // Bound: breathing's own peak (0.03rad) + sway's own peak (0.025rad) at
+    // amplitudeScale=1, matching the documented MAX_COMBINED_SPINE_DELTA_RAD
+    // (0.12rad) rationale in AnimationStateEngine.ts -- comfortably above
+    // either system's own per-frame peak, comfortably below what unbounded
+    // 11-09-style compounding produces over many frames (the ORIGINAL repro
+    // above shows unbounded compounding growing past this within 60 frames).
+    const PLAUSIBLE_BOUND_RAD = 0.1;
+
+    let maxAngle = 0;
+    for (let i = 0; i < 300; i++) {
+      // A much longer run than the G1 test above (300 vs 90 frames) to
+      // prove this isn't just "bounded for a while" -- it must stay bounded
+      // indefinitely, since resetToRestPoseIfNotDriven re-anchors every
+      // single frame rather than letting drift persist.
+      resetToRestPoseIfNotDriven({ spine, chest, hips }, restPose, false);
+      stepBreathing(breathingState, adapter, delta);
+      stepSway(swayState, adapter, delta);
+      const angle = spine.quaternion.angleTo(restPose.spine);
+      if (angle > maxAngle) maxAngle = angle;
+    }
+
+    expect(maxAngle).toBeLessThanOrEqual(PLAUSIBLE_BOUND_RAD);
+  });
+});
+
+describe("G2 fix — idle->talking crossfade still ramps smoothly over multiple frames after a second switch (11-11)", () => {
+  // 11-11's headless diagnostic (recorded in 11-11-SUMMARY.md) found
+  // crossfade.ts's own duration/ramp math unaffected by G1 -- this test
+  // guards that a SECOND switchToClip-style crossfade (idle -> talking,
+  // mirroring beginCrossfade(fromAction, toAction, root) with a non-null
+  // fromAction) still produces a genuine multi-frame eased ramp, not a
+  // single-frame jump to full weight ("snap").
+  function makeStubAction(clip: THREE.AnimationClip) {
+    return {
+      reset: vi.fn().mockReturnThis(),
+      enabled: false,
+      play: vi.fn().mockReturnThis(),
+      stop: vi.fn().mockReturnThis(),
+      setEffectiveWeight: vi.fn(),
+      getClip: () => clip,
+    } as unknown as THREE.AnimationAction;
+  }
+
+  it("ramps the idle->talking blend over several distinct eased steps rather than jumping straight to full weight", () => {
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValue(0);
+
+    const scene = new THREE.Object3D();
+    const idleClip = new THREE.AnimationClip("idle", -1, []);
+    const talkClip = new THREE.AnimationClip("talking", -1, []);
+    const idleAction = makeStubAction(idleClip);
+    const talkAction = makeStubAction(talkClip);
+
+    // First switch (mirrors the very first switchToClip call).
+    const firstBlend = beginCrossfade(null, idleAction, scene);
+    nowSpy.mockReturnValue(firstBlend.duration * 1000 + 50); // let it complete
+    stepCrossfade(firstBlend);
+
+    // Second switch (idle -> talking), mirroring switchToClip's
+    // `beginCrossfade(currentActionRef.current, toAction, root, floor)`
+    // call with a non-null fromAction.
+    const switchStartMs = firstBlend.duration * 1000 + 50;
+    nowSpy.mockReturnValue(switchStartMs);
+    const secondBlend = beginCrossfade(idleAction, talkAction, scene);
+    expect(secondBlend.duration).toBeGreaterThan(0);
+
+    const weightsAtQuarterSteps: number[] = [];
+    for (const fraction of [0.25, 0.5, 0.75]) {
+      nowSpy.mockReturnValue(switchStartMs + secondBlend.duration * 1000 * fraction);
+      stepCrossfade(secondBlend);
+      const lastCall = (talkAction.setEffectiveWeight as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+      weightsAtQuarterSteps.push(lastCall![0] as number);
+    }
+
+    // A genuine multi-frame ramp: weight strictly increases across the
+    // sampled steps, and none of the intermediate steps already sit at the
+    // final value (which would indicate a single-frame snap rather than a
+    // ramp).
+    expect(weightsAtQuarterSteps[0]).toBeLessThan(weightsAtQuarterSteps[1]);
+    expect(weightsAtQuarterSteps[1]).toBeLessThan(weightsAtQuarterSteps[2]);
+    expect(weightsAtQuarterSteps[2]).toBeLessThan(1);
+    expect(weightsAtQuarterSteps[0]).toBeCloseTo(easeInOutCubic(0.25), 5);
+
+    nowSpy.mockRestore();
   });
 });

@@ -373,7 +373,12 @@ Plans:
 **Wave 6** *(gap closure — 11-08 human re-check: IDLE-02 still fails, TALK-02 unconfirmed, plus a new untracked first-load spin bug)*
 
 - [x] 11-09-PLAN.md — Diagnose-then-fix the two open code items: runtime-diagnose why VRM expression drift is still invisible (leading cause: 0.12 amplitude damped to ~0.018 by the stopped-settle ramp, and the test page idles in `stopped` pre-connect) and raise DEFAULT_AMPLITUDE to a perceptible value while keeping 11-07's candidate/ownership fixes and the TRANS-02 settle damping (IDLE-02); root-cause the first-load 'spins weird' motion (first-mount additive breathing/sway deltas compounding on un-driven bones) and guard the procedural bone writes or triage it as a follow-up
-- [ ] 11-10-PLAN.md — Re-verify: fix-landed gates + full test suite, then a DECISIVE blocking human re-check — IDLE-02 judged in the connected `ready` state (not the pre-connect `stopped` state that damps drift), TALK-02 via an explicit loud/quiet side-by-side amplitude contrast, first-load spin gone, and no regression in the 5 already-passing requirements (IDLE-01, TRANS-01, TRANS-02, TALK-01, PERF-01)
+- [x] 11-10-PLAN.md — Re-verify: fix-landed gates + full test suite, then a DECISIVE blocking human re-check — result: NOT approved. IDLE-02 and TALK-02 now confirmed passing, but two NEW regressions surfaced from 11-09's changes: (G1) avatar stuck in T-pose on first load instead of playing/holding idle, and (G2) idle→talking transition now snaps instead of crossfading smoothly. Both suspected traceable to `shouldRunProceduralBoneWrites` and/or its interaction with the crossfade-trigger effect in `AnimationStateEngine.ts`. Further gap-closure needed.
+
+**Wave 7** *(gap closure — 11-10 human re-check: IDLE-02/TALK-02 now confirmed, but two NEW regressions surfaced from 11-09's fix: T-pose stuck on load, and idle→talking transition now snaps)*
+
+- [ ] 11-11-PLAN.md — Not yet planned. Root-cause and fix G1 (T-pose stuck on load) and G2 (idle→talking snap), most likely both traceable to 11-09's `shouldRunProceduralBoneWrites` first-mount gate and/or its interaction with the crossfade-trigger effect in `AnimationStateEngine.ts`
+- [ ] 11-12-PLAN.md — Not yet planned. Re-verify: fix-landed gates + full test suite, then a blocking human re-check of G1/G2 plus a full regression pass across all 7 requirements
 
 **UI hint**: yes
 
@@ -425,6 +430,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 9/10 | In Progress|  |
+| 11. Idle, Transition & Talking States | 10/12 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

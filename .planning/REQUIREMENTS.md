@@ -16,14 +16,14 @@ Source: wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khav
 ### Idle & Transition States
 
 - [x] **IDLE-01**: `ready`/`stopped` base state has randomized-range procedural breathing (chest/spine bone rotation) and weight-shift sway (hip/spine), independent cycles
-- [ ] **IDLE-02**: VRM avatars additionally get subtle, randomized expression rest-state drift (1-2 expression values); GLB avatars do not (no expression system)
+- [x] **IDLE-02**: VRM avatars additionally get subtle, randomized expression rest-state drift (1-2 expression values); GLB avatars do not (no expression system)
 - [x] **TRANS-01**: `starting` plays a dedicated greeting/waking clip with a ~1.0–1.5s minimum duration floor (on top of pose-gap-adaptive timing)
 - [x] **TRANS-02**: `stopped` plays a dedicated goodbye/settling clip, distinct from `ready`'s idle base, with the same minimum duration floor
 
 ### Talking & Crossfade
 
 - [x] **TALK-01**: `speaking` cycles through 2+ talk-clip variants via loop-completion-driven switching (~2s minimum dwell floor) — no live-clock (`setInterval`/`setTimeout`) interrupts anywhere in this state
-- [ ] **TALK-02**: Live volume signal from `useAudioLipSync` scales procedural motion amplitude during `speaking` only — never affects clip selection or timing
+- [x] **TALK-02**: Live volume signal from `useAudioLipSync` scales procedural motion amplitude during `speaking` only — never affects clip selection or timing
 - [ ] **XFADE-01**: All state transitions use `easeInOutCubic`-eased crossfades with pose-gap-adaptive duration (0.3–0.9s), where pose-gap is measured as the **max** (not average) per-bone quaternion angular distance
 
 ### Gaze & Gesture
@@ -82,11 +82,11 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | ANIM-02 | Phase 10 | Pending |
 | ANIM-03 | Phase 10 | Pending |
 | IDLE-01 | Phase 11 | Complete |
-| IDLE-02 | Phase 11 | Pending (fails human re-check — no visible expression drift) |
-| TRANS-01 | Phase 11 | Complete |
+| IDLE-02 | Phase 11 | Complete (confirmed visible drift in `ready` state, 2026-07-16 re-check) |
+| TRANS-01 | Phase 11 | Complete (not re-tested in 2026-07-16 checkpoint — see new G2 regression note below) |
 | TRANS-02 | Phase 11 | Complete |
-| TALK-01 | Phase 11 | Complete |
-| TALK-02 | Phase 11 | Pending (unconfirmed — "maybe pass") |
+| TALK-01 | Phase 11 | Complete — but flagged: 2026-07-16 human re-check reported the idle→talking transition now "snaps" (new regression G2, not yet root-caused as to whether it's a TALK-01 or XFADE-01 defect; not un-checked pending diagnosis) |
+| TALK-02 | Phase 11 | Complete (confirmed loud/quiet amplitude tracking, 2026-07-16 re-check) |
 | XFADE-01 | Phase 10 | Pending |
 | GAZE-01 | Phase 12 | Pending |
 | GAZE-02 | Phase 12 | Pending |
@@ -100,6 +100,10 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | PERF-02 | Phase 13 | Pending |
 | VERIFY-01 | Phase 13 | Pending |
 | VERIFY-02 | Phase 13 | Pending |
+
+**Untracked regressions (not mapped to a REQ-ID, found in 2026-07-16 gap-closure checkpoint 11-10):**
+- G1: Avatar stuck in T-pose on first load (regression from 11-09's fix for the earlier "spins weird" first-load bug) — not yet root-caused.
+- G2: Idle→talking transition now snaps instead of crossfading smoothly (also suspected traceable to 11-09's changes) — see TALK-01 note above.
 
 **Coverage:**
 - v1 requirements: 22 total

@@ -124,3 +124,7 @@ None — no external service configuration required.
 ---
 *Phase: 11-idle-transition-talking-states*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+`packages/react/src/animation/AnimationStateEngine.ts` and this SUMMARY.md confirmed present on disk. Commits `6cf54c8` (Task 1 diagnosis), `68669c9` (Task 2 fix), and `16cf1b4` (this SUMMARY) confirmed present in `git log --oneline --all`.

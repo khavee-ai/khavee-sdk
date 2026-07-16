@@ -107,3 +107,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-idle-transition-talking-states*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All 4 modified source files and this SUMMARY.md confirmed present on disk; all 4 commits (2730b7a, 0589b5f, 97b7cb2, f1b77eb) confirmed present in `git log --oneline --all`.

@@ -102,10 +102,11 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | VERIFY-02 | Phase 13 | Pending |
 
 **Untracked regressions (not mapped to a REQ-ID):**
-- G1: Avatar stuck in T-pose on first load (regression from 11-09's fix for the earlier "spins weird" first-load bug). 11-11 attempted a fix (`resetToRestPoseIfNotDriven`) but 2026-07-16 round-3 re-check found it STILL FAILS — T-pose persists pre-connect and only resolves once Connect is pressed, meaning 11-11's fix covered only a post-connect/crossfade-adjacent case, not the actual pre-connect resting state. Not yet fully root-caused.
-- G2: Idle→talking transition snap — FIXED and confirmed by 11-12's round-3 human re-check (2026-07-16).
-- G3 (new, found 2026-07-16 in 11-12's round-3 check): avatar visibly drops on the Y axis when Connect is first pressed. Not yet root-caused.
-- G4 (new, minor, found 2026-07-16 in 11-12's round-3 check): small jiggle observed during TALK-01's talk-clip cycling. Not yet root-caused; TALK-01 itself remains checked Complete pending further diagnosis since this was reported as minor, not a snap/regression of the core requirement.
+- G1: Avatar stuck in T-pose on first load — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17). Root cause (found by 11-13 via headless production-path replay): the crossfade-trigger effect's single pre-connect run happened while clips/root were unresolvable and never re-fired when the VRM finished loading. Fixed with a new exported pure function `shouldTriggerClipSwitch`.
+- G2: Idle→talking transition snap — FIXED and confirmed by 11-12's round-3 human re-check (2026-07-16), reconfirmed by 11-14 (2026-07-17).
+- G3: Y-axis drop when Connect is first pressed — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), sharing G1's root cause per 11-13's diagnosis.
+- G4: minor jiggle during TALK-01's talk-clip cycling — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17). Root cause (11-13): `resetToRestPoseIfNotDriven` snapped toward the bind-pose anchor during a talk-variant switch while the outgoing action was still contributing. Fixed with a new exported pure function `isBaseActionMeaningfullyDriving`.
+- G5 (new, found 2026-07-17 in 11-14's round-4 check): the underlying Y-axis-drop motion (same class as G3) still occurs, but relocated from the connect-time transition (now fixed) to the initial page-load T-pose-to-idle settle — a direct side effect of 11-13's G1 fix moving the base clip's first successful crossfade to page-load time instead of eliminating the drop itself. Not yet root-caused.
 
 **Coverage:**
 - v1 requirements: 22 total

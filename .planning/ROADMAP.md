@@ -383,7 +383,12 @@ Plans:
 **Wave 8** *(gap closure — 11-12 human re-check: G1 (T-pose) still fails pre-connect, new Y-axis-drop-on-connect regression, minor TALK-01 jiggle observed, 6 requirements unconfirmed)*
 
 - [x] 11-13-PLAN.md — Diagnose-then-fix (headless production-path replay, extending 11-11's harness): G1 pre-connect T-pose (crossfade-trigger effect never re-fires when clips load post-mount → base clip never drives pre-connect; why 11-11's fix was insufficient), G3 Y-drop-on-connect, G4 talk-cycle jiggle (11-11's reset-to-rest firing during variant-switch crossfade windows) — with explicit regression checks that neither the 11-09 spin nor the 11-11 G2 snap is reintroduced
-- [ ] 11-14-PLAN.md — Re-verify: 5 invariant + 5 fix-landed gates + full react test suite, then a blocking DECISIVE human re-check of G1/G3/G4 + a G2 re-confirm + a full regression spot-check of all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — the 4th verification checkpoint for this phase
+- [x] 11-14-PLAN.md — Re-verify: 5 invariant + 5 fix-landed gates + full react test suite, then a blocking DECISIVE human re-check of G1/G3/G4 + a G2 re-confirm + a full regression spot-check of all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — result: G1/G2/G3/G4 and the 7-requirement sweep all APPROVED. But a new finding (G5) surfaced: the connect-time Y-drop (G3) is fixed, but the SAME underlying Y-drop motion now happens during the initial page-load T-pose-to-idle settle instead — a direct side effect of 11-13's G1 fix moving the base clip's first crossfade to page-load time. Human questioned whether this drop should happen at all. Further gap-closure needed.
+
+**Wave 10** *(gap closure — 11-14 human re-check: G1/G2/G3/G4 fixed and 7-requirement sweep approved, but a new residual finding G5 surfaced — the Y-drop relocated from connect-time to page-load-time instead of being eliminated)*
+
+- [ ] 11-15-PLAN.md — Not yet planned. Root-cause and fix G5: the Y-axis drop during the initial T-pose-to-idle settle on page load. Likely connected to the same base-clip-crossfade mechanism 11-13 fixed for G1/G3 (the hips-Y ramp inherent to the idle clip's first frame finally driving the skeleton) — needs headless runtime evidence following the same discipline as 11-11/11-13, not an assumption
+- [ ] 11-16-PLAN.md — Not yet planned. Re-verify: fix-landed gates + full test suite, then a blocking human re-check of G5 plus a full regression pass across G1-G4 and all 7 original requirements (the 5th verification checkpoint for this phase)
 
 **UI hint**: yes
 
@@ -435,6 +440,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 13/14 | In Progress|  |
+| 11. Idle, Transition & Talking States | 14/16 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

@@ -112,6 +112,127 @@
  * that same reset-each-frame invariant from "only during the very first
  * crossfade" to "during any near-zero-weight window, however many times
  * it recurs."
+ *
+ * 11-13 gap closure (fourth pass — pre-connect T-pose [G1 STILL FAILING
+ * after 11-11] + Y-axis drop-on-connect [G3, new] + talk-cycle jiggle [G4,
+ * new]): 11-12's decisive human re-check found 11-11's `resetToRestPoseIf-
+ * NotDriven` fix did NOT resolve the actual pre-connect T-pose (it only
+ * resolved once Connect was pressed), plus two new findings. DIAGNOSIS
+ * (recorded runtime evidence via a headless replay of the REAL production
+ * path — real `public/models/male.vrm` + `Idle.fbx`/`talking.fbx` loaded
+ * via `GLTFLoader.parse()` + `VRMCoreLoaderPlugin`, the real
+ * `remapMixamoAnimationToVrm` retargeter, and the real `beginCrossfade`/
+ * `stepCrossfade` from `crossfade.ts`, `performance.now()` deterministically
+ * advanced per simulated frame per 11-11's precedent):
+ *
+ *   - H-G1 (pre-connect effect-ordering — the base clip's crossfade never
+ *     starts before Connect is ever pressed): CONFIRMED. Replayed the
+ *     EXACT pre-connect ordering: (1) the crossfade-trigger effect's single
+ *     mount-time run, with clips/root NOT yet resolvable (`getAction`
+ *     returns null because `processedClips` is still `[]` — `currentVrm`
+ *     hasn't finished its async parse in `useLoadVRM`, which does NOT
+ *     suspend, unlike the FBX loads) — `switchToClip` returns early via its
+ *     `if (!toAction) return` guard, so nothing is recorded; (2) clips/root
+ *     become resolvable on a LATER render, WITHOUT `targetName` or
+ *     `chatStatus` changing (both are already "idle"/"stopped" from
+ *     `KhaveeProvider`'s initial state); (3) ran `update()`'s step 4a-4c
+ *     bone-writing sequence for 90 simulated frames with NO further
+ *     `switchToClip` call (faithfully matching that the effect's
+ *     `[targetName, chatStatus]` deps never change again pre-connect).
+ *     Measured: `currentActionRef` stays null and the idle action's
+ *     effective weight stays exactly 0 for all 90 frames — the base clip
+ *     NEVER starts driving the skeleton until something changes
+ *     `chatStatus` (pressing Connect). This is the exact case 11-11's own
+ *     headless harness never covered: 11-11 only ever replayed frames
+ *     where `currentActionRef` was ALREADY non-null (a crossfade already
+ *     in progress) — it never replayed the "switchToClip was never
+ *     successfully invoked at all" case, because 11-11's own harness always
+ *     called `beginCrossfade` directly rather than replaying the
+ *     `useEffect`'s dependency-array gate. A separate isolated re-trigger
+ *     (calling `switchToClip` once AFTER clips became resolvable) succeeded
+ *     immediately and ramped normally, confirming the crossfade MATH itself
+ *     is fine — this is purely an invocation-timing bug in the effect's
+ *     re-fire condition, not a defect in `beginCrossfade`/`stepCrossfade`
+ *     or in `resetToRestPoseIfNotDriven`.
+ *   - H-G3 (Y-drop on connect — G1 symptom vs. independent hip-Y blend):
+ *     CONFIRMED SHARED with G1. `remapMixamoAnimationToVrm` normalizes the
+ *     hips `VectorKeyframeTrack` so its first authored keyframe's Y
+ *     component is exactly `0` (subtracts `firstY`), while the VRM's actual
+ *     bind-pose local hips Y (captured before any action ever plays) was
+ *     measured at `~1.008`. Empirically running a real
+ *     `beginCrossfade(null, idleAction, root)` + `mixer.update()` across 30
+ *     sampled frames showed `hips.position.y` ramping smoothly from `1.008`
+ *     to `~0.0003` (`totalDelta ≈ 1.008`, `maxSingleFrameDelta ≈ 0.094`,
+ *     ~9% of the total — no single frame dominates, i.e. a genuine eased
+ *     multi-frame ramp, not a discontinuous jump). Because this motion is
+ *     driven entirely by the SAME crossfade this file already runs, it is
+ *     not an independent hips-specific defect — it is real, always-present
+ *     motion that has simply never been visible before, because G1
+ *     prevents `switchToClip` from EVER succeeding until Connect is
+ *     pressed. Fixing G1 moves this same settle to page-load time (when the
+ *     idle clip first successfully starts driving), which is exactly the
+ *     "G1 symptom" framing this diagnosis set out to confirm or disprove.
+ *   - H-G4 (talk-cycle jiggle — reset-to-rest firing during variant-switch
+ *     crossfade windows): CONFIRMED, but as an INDEPENDENT mechanism (not
+ *     shared with G1/G3). Replayed idle (fully driven, weight 1) ->
+ *     talking (a real `beginCrossfade(idleAction, talkAction, root)`, i.e.
+ *     with a genuine non-null `from`) and sampled the spine bone across the
+ *     first 5 frames of that switch. During those frames `talkAction`
+ *     (incoming) weight is ~0-0.02 (below `MIN_BASE_ACTION_WEIGHT`), so
+ *     `shouldRunProceduralBoneWrites(currentActionRef.current)` — which
+ *     only inspects the INCOMING action — reports `false`, and
+ *     `resetToRestPoseIfNotDriven` snaps spine/chest/hips to the captured
+ *     BIND-POSE anchor every one of those frames, even though `idleAction`
+ *     (the OUTGOING action) is still contributing ~0.98-1.0 weight to the
+ *     mixer's own blended pose. Measured spine deviation between the
+ *     mixer's own blended pose and the post-reset pose peaked at
+ *     `~0.079rad` (~4.5°) — a real, measurable snap toward bind pose that
+ *     releases once `talkAction`'s weight clears the threshold, i.e. the
+ *     reported "jiggle." This is a DIFFERENT bug class than G1/G3: it does
+ *     not depend on whether the base action has EVER driven the skeleton
+ *     before (unlike G1) — it fires on every subsequent switch between two
+ *     already-real, already-driving actions, because the gate only
+ *     inspects the incoming action's own weight and never checks whether a
+ *     real outgoing action is still contributing.
+ *
+ * SHARED-VS-INDEPENDENT DETERMINATION: G1 and G3 are the SAME underlying
+ * bug (the crossfade-trigger effect's `[targetName, chatStatus]` deps never
+ * signal "clips/root just became resolvable," so `switchToClip` is never
+ * even called once before Connect) — fixing G1 structurally fixes G3 by
+ * construction (the settle simply moves to load time). G4 is an
+ * INDEPENDENT bug in `resetToRestPoseIfNotDriven`'s trigger condition
+ * (gates on the incoming action's own weight only, ignoring a still-
+ * contributing outgoing action) and requires its own fix.
+ *
+ * FIX (Task 2):
+ *   - G1/G3: extracted the "should switchToClip (re-)run" decision into a
+ *     new exported, pure function, `shouldTriggerClipSwitch`, mirroring
+ *     `shouldRunProceduralBoneWrites`'s testability pattern. The crossfade-
+ *     trigger `useEffect` now calls it (thin wrapper, same behavior as
+ *     before for the change-driven case); `update()` ALSO calls the exact
+ *     same function every frame (a one-shot-per-transition retry, since
+ *     `update()` already runs every animation frame regardless of React
+ *     re-renders — the frame-native equivalent of "re-evaluate once
+ *     clips/root become resolvable" without adding a new dependency-array
+ *     signal that could reintroduce a TALK-01-style double-trigger). Once
+ *     `switchToClip` succeeds, `currentClipNameRef.current` matches
+ *     `targetName` and the function returns `false` on every subsequent
+ *     frame — self-terminating, safe to call unconditionally every frame.
+ *   - G4: `isBaseActionDriving` (passed into `resetToRestPoseIfNotDriven`)
+ *     now also treats a real, non-null `from` action in the active blend as
+ *     "driving" — distinguishing "no action has ever driven the skeleton"
+ *     (true first-mount case, where `blendRef.current.from` is always null
+ *     because the very first `beginCrossfade` call is always
+ *     `beginCrossfade(null, toAction, ...)`) from "mid-crossfade between
+ *     two real actions" (every subsequent switch, where `from` is the
+ *     previously-driving action). In the latter case the reset is skipped
+ *     entirely — the mixer's own two-action blend already produces a
+ *     continuous, non-frozen pose, so breathing/sway (running
+ *     unconditionally per 11-11) compose additively onto that live blend
+ *     instead of a stale fixed anchor, eliminating the snap without
+ *     reintroducing the 11-09 freeze (the true first-mount case, where
+ *     `from` is null, is unaffected and still resets to the anchor exactly
+ *     as 11-11 fixed it).
  */
 
 import { useEffect, useRef } from "react";

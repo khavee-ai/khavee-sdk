@@ -43,6 +43,59 @@
  * not accumulating bone quaternions, so they are not part of this bug
  * class and gating them would just delay otherwise-harmless facial
  * behavior for no reason.
+ *
+ * 11-11 gap closure (T-pose-on-load [G1] + idle->talking snap [G2]):
+ * DIAGNOSIS (recorded runtime evidence, see 11-11-SUMMARY.md for the full
+ * headless harness output) — 11-09's two leading candidate causes were
+ * each directly tested against the REAL production code path
+ * (`beginCrossfade`/`stepCrossfade` from `crossfade.ts`, the real
+ * `remapMixamoAnimationToVrm` retargeter, a real `male.vrm` +
+ * `Idle.fbx`/`talking.fbx` loaded headless) and BOTH were disproven:
+ *   - G1-a (base `Idle` action never drives `male.vrm`'s bones, e.g. a
+ *     remap-coverage gap): DISPROVEN. All 53/53 remapped track targets
+ *     resolved against the live scene graph, and once the base action's
+ *     weight ramped up, the normalized spine bone moved ~0.09rad off bind
+ *     AND `vrm.update()` (the humanoid "unnormalize" step VRMAvatar.tsx
+ *     already calls every frame) correctly propagated that onto the RAW,
+ *     mesh-deforming bone. The base clip genuinely drives the full body.
+ *   - G1-b (the gate's effective-weight check never opens in the real
+ *     loop): DISPROVEN. Under a faithful headless replay of
+ *     `beginCrossfade(null, toAction, root)` + per-frame `stepCrossfade`
+ *     (with `performance.now()` deterministically advanced per simulated
+ *     frame, since `stepCrossfade` times off wall-clock, not the mixer's
+ *     `delta`), the gate opened at frame 5 (~0.167s into a 0.73s
+ *     crossfade) and stayed open — matching the ~t=0.23 prediction in the
+ *     11-09 comment above.
+ *   - G2's leading lead (pose-gap measured against a frozen/bind pose
+ *     collapses `poseGapToDuration` toward its 0.3s floor): DISPROVEN.
+ *     `computePoseGapAngle`/`poseGapToDuration` for idle->talking measured
+ *     the IDENTICAL duration (~0.497s, mid-range, no floor collapse)
+ *     whether the live pose was a genuinely-driven idle pose or a
+ *     synthetically-frozen bind pose — the crossfade engine's own duration
+ *     math is unaffected by G1 either way.
+ *   - CONFIRMED (the actual mechanism, found empirically, not one of the
+ *     two pre-defined leads): 11-09's own comment above assumed the gate's
+ *     near-zero-weight window only matters "at the very start of the very
+ *     first crossfade... in practice `currentActionRef` is never reset to
+ *     null after the first switch" — true, but incomplete: `switchToClip`
+ *     reassigns `currentActionRef.current` to the NEW target action
+ *     *synchronously*, and that new action's weight always restarts
+ *     ramping from 0 (`beginCrossfade`'s `toAction.setEffectiveWeight(0)`)
+ *     — so `shouldRunProceduralBoneWrites(currentActionRef.current)`
+ *     goes false again on **every** `switchToClip` call, not just the
+ *     first mount. A headless replay of a second (idle->talking) switch
+ *     confirmed the gate re-closes for a real, measurable window (3/60
+ *     simulated frames = ~0.1s in the recorded run, scaling with that
+ *     switch's own pose-gap-adaptive duration) every time. G1 and G2 are
+ *     therefore SHARED: both are symptoms of breathing/sway going
+ *     completely silent during ANY near-zero-weight window (first mount
+ *     covers G1; every later switch, including idle->talking, covers G2),
+ *     not just the originally-diagnosed first-mount case.
+ *
+ * The fix targeting this confirmed mechanism lands in Task 2 (see the
+ * `resetToRestPoseIfNotDriven` doc comment introduced there); this task
+ * adds ONLY the diagnosis above and the off-by-default `GATE_DEBUG`
+ * instrumentation below — no production behavior changes yet.
  */
 
 import { useEffect, useRef } from "react";
@@ -108,6 +161,14 @@ const MAX_COMBINED_SPINE_DELTA_RAD = 0.12;
 // start of the very first crossfade, without meaningfully delaying idle
 // motion once the base action is actually posing the skeleton.
 const MIN_BASE_ACTION_WEIGHT = 0.05;
+
+// 11-11 gap-closure dev-only diagnostic: hardcoded off, never wired to a
+// build flag (mirrors expressionDrift.ts's DRIFT_DEBUG precedent). Flip to
+// true locally (never commit as true) to log, once per second per
+// controller instance, the live gate/weight/clip/spine-angle state a human
+// re-verifying G1/G2 at the 11-12 checkpoint can cross-check directly in
+// devtools — see `update()`'s gate-status log call site.
+const GATE_DEBUG = false;
 
 /**
  * Pure gate for the 11-09 first-load-spin fix: true only when `action` is
@@ -262,6 +323,10 @@ export function useAnimationController(params: {
   // `target` capture the ramp's endpoints; `elapsed` accumulates seconds
   // since the ramp's current leg (toward `target`) began.
   const settleRampRef = useRef({ current: 1, from: 1, target: 1, elapsed: 0 });
+  // 11-11 GATE_DEBUG bookkeeping only — accumulates seconds since the last
+  // debug log so it fires at most once per second per instance. Inert (never
+  // read) when GATE_DEBUG is false.
+  const gateDebugElapsedRef = useRef(0);
 
   const targetName = resolveBaseClip(chatStatus, currentAnimation, availableNames);
 
@@ -383,6 +448,28 @@ export function useAnimationController(params: {
     const amplitudeScale = volumeToAmplitudeScale(currentVolume ?? 0, chatStatus);
     const settleScale = ramp.current;
     const proceduralScale = amplitudeScale * settleScale;
+
+    // 11-11 dev-only diagnostic (off by default — see GATE_DEBUG above):
+    // logs at most once per second per instance so a human re-verifying
+    // G1/G2 live can cross-check the same gate/weight/clip/spine-angle data
+    // this gap-closure pass's diagnosis used, directly in devtools. Placed
+    // BEFORE the 11-09 gate below so it always reports the gate's actual
+    // status this frame, whether open or closed.
+    if (GATE_DEBUG) {
+      gateDebugElapsedRef.current += delta;
+      if (gateDebugElapsedRef.current >= 1) {
+        gateDebugElapsedRef.current = 0;
+        const identity = new THREE.Quaternion();
+        const spineForDebug = adapter.getHumanoidBoneNode("spine");
+        // eslint-disable-next-line no-console
+        console.debug("[AnimationStateEngine] gate diagnostic", {
+          currentClipName: currentClipNameRef.current,
+          effectiveWeight: currentActionRef.current?.getEffectiveWeight() ?? null,
+          gateOpen: shouldRunProceduralBoneWrites(currentActionRef.current),
+          spineAngleFromIdentity: spineForDebug ? spineForDebug.quaternion.angleTo(identity) : null,
+        });
+      }
+    }
 
     // 4-7. 11-09 gap closure (first-load spin fix): the spine-base-capture/
     // breathing/sway/spine-clamp block below is gated on

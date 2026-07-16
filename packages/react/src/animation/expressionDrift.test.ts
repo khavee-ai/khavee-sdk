@@ -12,8 +12,16 @@ import {
   createExpressionDriftState,
   stepExpressionDrift,
   DEFAULT_AMPLITUDE,
+  PERCEPTIBLE_MIN_WEIGHT,
 } from "./expressionDrift";
 import type { AvatarFormatAdapter } from "./types";
+
+// AnimationStateEngine.ts's stopped-state SETTLE_SCALE, duplicated here as a
+// literal (not imported) to keep this test file's only dependency on
+// AnimationStateEngine.ts implicit/documentary rather than a real import
+// cycle -- mirrors how the plan's <empirical_findings> block states the
+// value directly.
+const STOPPED_SETTLE_SCALE = 0.15;
 
 /**
  * Minimal stub VRMExpressionManager backed by a Map. `present` controls
@@ -128,5 +136,45 @@ describe("stepExpressionDrift", () => {
     const halfWeight = emHalf.getValue("relaxed");
 
     expect(halfWeight).toBeCloseTo(fullWeight * 0.5, 10);
+  });
+
+  it("11-09 IDLE-02 H2 fix -- perceptible at ready: amplitudeScale=1 (ready-state settleScale) produces a peak weight >= PERCEPTIBLE_MIN_WEIGHT, within [0, DEFAULT_AMPLITUDE]", () => {
+    const em = makeStubExpressionManager(["relaxed"]);
+    const adapter = makeStubAdapter(em);
+    const state = createExpressionDriftState();
+    state.period = 8.0;
+    state.phase = Math.PI / 2; // peak of the half-rectified sine
+    state.phaseOffsets.relaxed = 0;
+
+    stepExpressionDrift(state, adapter, 0, 1);
+    const peak = em.getValue("relaxed");
+
+    expect(peak).toBeGreaterThanOrEqual(PERCEPTIBLE_MIN_WEIGHT);
+    expect(peak).toBeGreaterThanOrEqual(0);
+    expect(peak).toBeLessThanOrEqual(DEFAULT_AMPLITUDE);
+  });
+
+  it("11-09 IDLE-02 H2 fix -- still damped at stopped: amplitudeScale=0.15 (stopped-state settleScale) produces a peak strictly less than the ready-state peak, proving TRANS-02 settle damping still applies", () => {
+    const emReady = makeStubExpressionManager(["relaxed"]);
+    const adapterReady = makeStubAdapter(emReady);
+    const stateReady = createExpressionDriftState();
+    stateReady.period = 8.0;
+    stateReady.phase = Math.PI / 2;
+    stateReady.phaseOffsets.relaxed = 0;
+    stepExpressionDrift(stateReady, adapterReady, 0, 1);
+    const readyPeak = emReady.getValue("relaxed");
+
+    const emStopped = makeStubExpressionManager(["relaxed"]);
+    const adapterStopped = makeStubAdapter(emStopped);
+    const stateStopped = createExpressionDriftState();
+    stateStopped.period = 8.0;
+    stateStopped.phase = Math.PI / 2;
+    stateStopped.phaseOffsets.relaxed = 0;
+    stepExpressionDrift(stateStopped, adapterStopped, 0, STOPPED_SETTLE_SCALE);
+    const stoppedPeak = emStopped.getValue("relaxed");
+
+    expect(stoppedPeak).toBeLessThan(readyPeak);
+    // Sanity-check the exact damped value the H2 diagnosis computed.
+    expect(stoppedPeak).toBeCloseTo(DEFAULT_AMPLITUDE * STOPPED_SETTLE_SCALE, 10);
   });
 });

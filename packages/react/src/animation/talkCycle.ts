@@ -66,6 +66,37 @@ export function nextVariantIndex(currentIndex: number, length: number): number {
 }
 
 /**
+ * Pure loop-boundary detector, shared by both talk-cycle variant-switching
+ * and gesture queuing (GEST-02) so the two consumers can never silently
+ * disagree on where a loop boundary is.
+ *
+ * Returns `false` when there isn't enough information to decide (no current
+ * time/duration, non-positive duration, or no previous sample to compare
+ * against yet — the very first frame of an action).
+ *
+ * A boundary is detected when EITHER:
+ * - `currentTime` decreased frame-over-frame (a wrap), or
+ * - `currentTime` has crossed `duration` without necessarily wrapping (e.g. a
+ *   non-looping action clamped at its end) while `prevTime` was still under
+ *   `duration`.
+ *
+ * Comparing against the PREVIOUS frame's time means each boundary fires
+ * exactly once per loop, not every frame the clip sits near its end.
+ *
+ * Callers own tracking/advancing their own `prevTime` each frame — this
+ * function only computes the boolean decision, it never mutates state.
+ */
+export function detectLoopBoundary(
+  currentTime: number | null,
+  prevTime: number | null,
+  duration: number | null,
+): boolean {
+  if (currentTime === null || duration === null || duration <= 0) return false;
+  if (prevTime === null) return false;
+  return currentTime < prevTime || (currentTime >= duration && prevTime < duration);
+}
+
+/**
  * Advances the talk-cycle state machine by one frame and returns the name
  * of the next talk variant to switch to, or null if no switch should happen
  * this frame.
@@ -93,18 +124,8 @@ export function stepTalkCycle(state: TalkCycleState, params: TalkCycleStepParams
   const currentTime = currentAction ? currentAction.time : null;
   const duration = currentAction ? currentAction.getClip().duration : null;
 
-  let loopBoundary = false;
+  const loopBoundary = detectLoopBoundary(currentTime, state.prevActionTime, duration);
   if (currentTime !== null && duration !== null && duration > 0) {
-    if (state.prevActionTime !== null) {
-      // A wrap (time decreased frame-over-frame) or a crossing of the clip's
-      // duration (without necessarily wrapping, e.g. a non-looping action
-      // clamped at its end) both count as one completed loop. Comparing
-      // against the PREVIOUS frame's time means each boundary fires exactly
-      // once per loop, not every frame the clip sits near its end.
-      loopBoundary =
-        currentTime < state.prevActionTime ||
-        (currentTime >= duration && state.prevActionTime < duration);
-    }
     state.prevActionTime = currentTime;
   }
 

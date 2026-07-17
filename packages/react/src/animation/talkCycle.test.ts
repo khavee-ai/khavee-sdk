@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type * as THREE from "three";
 import {
   createTalkCycleState,
+  detectLoopBoundary,
   MIN_TALK_DWELL_SECONDS,
   nextVariantIndex,
   stepTalkCycle,
@@ -41,6 +42,37 @@ describe("nextVariantIndex", () => {
 
   it("treats an unknown current index (-1) as starting at index 0", () => {
     expect(nextVariantIndex(-1, 3)).toBe(0);
+  });
+});
+
+describe("detectLoopBoundary", () => {
+  it("returns false when currentTime is null", () => {
+    expect(detectLoopBoundary(null, 0.5, 1.0)).toBe(false);
+  });
+
+  it("returns false when duration is null", () => {
+    expect(detectLoopBoundary(0.5, 0.4, null)).toBe(false);
+  });
+
+  it("returns false when duration is non-positive", () => {
+    expect(detectLoopBoundary(0.5, 0.4, 0)).toBe(false);
+    expect(detectLoopBoundary(0.5, 0.4, -1)).toBe(false);
+  });
+
+  it("returns false when prevTime is null (first frame — no prior sample)", () => {
+    expect(detectLoopBoundary(0.95, null, 1.0)).toBe(false);
+  });
+
+  it("returns true when currentTime < prevTime (wrap)", () => {
+    expect(detectLoopBoundary(0.05, 0.9, 1.0)).toBe(true);
+  });
+
+  it("returns true when currentTime crosses duration without wrapping (non-looping clip clamped at end)", () => {
+    expect(detectLoopBoundary(1.0, 0.95, 1.0)).toBe(true);
+  });
+
+  it("returns false mid-clip with no boundary", () => {
+    expect(detectLoopBoundary(0.5, 0.3, 1.0)).toBe(false);
   });
 });
 

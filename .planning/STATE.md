@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
 status: executing
-stopped_at: Phase 11 gap closure round 5 needed — 11-14 checkpoint approved G1/G2/G3/G4 + full 7-req sweep, but surfaced a new residual finding G5 (Y-drop relocated to page-load time)
-last_updated: "2026-07-17T02:58:00.000Z"
-last_activity: 2026-07-17 -- Phase 11 plans 11-13/11-14 executed (--gaps-only): 11-13 diagnosed and fixed G1/G3 (shared cause) and G4 (independent) via headless production-path replay, extracting two new pure functions per plan-checker requirement (93/93 tests); 11-14 human re-verification approved G1/G2/G3/G4 and the full 7-requirement sweep, but found G5 — the Y-drop motion relocated from connect-time to page-load-time instead of being eliminated
+stopped_at: Phase 11 gap closure round 4 (11-13/11-14 executed; G1/G2/G3/G4 + 7-req sweep approved; G5 new finding — needs round 5)
+last_updated: "2026-07-17T06:41:52.850Z"
+last_activity: 2026-07-17 -- Phase 11 planning complete
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 56
-  completed_plans: 56
+  completed_plans: 54
   percent: 69
 ---
 
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 Phase: 11 (idle-transition-talking-states) — GAP CLOSURE IN PROGRESS (round 5 needed)
 Plan: 14 of 16 (11-01..11-14 have SUMMARY.md; 11-15/11-16 not yet planned; phase requirements not fully satisfied)
-Status: 11-13 (fix) and 11-14 (re-verification) both executed. 11-13 found the REAL G1/G3 root cause via headless runtime evidence (extending 11-11's harness): the crossfade-trigger effect's single pre-connect run happened while clips/root were unresolvable and never re-fired when the VRM finished loading — fixed with a new exported pure function `shouldTriggerClipSwitch` (G1/G3 share this cause). G4 (independent): `resetToRestPoseIfNotDriven` snapped toward bind pose during talk-variant switches — fixed with `isBaseActionMeaningfullyDriving` (93/93 tests). 11-14 result: G1, G2, G3, G4, and the full 7-requirement regression sweep were all APPROVED. But a NEW residual finding (G5) surfaced: the same underlying Y-drop motion still occurs, just relocated from the connect-time transition (now fixed) to the initial page-load T-pose-to-idle settle — a side effect of the G1 fix moving the base clip's first crossfade to page-load time instead of eliminating the drop. Not yet root-caused.
-Last activity: 2026-07-17 -- Phase 11 gap-closure wave (11-13, 11-14) executed via /gsd-execute-phase 11 --gaps-only
+Status: Ready to execute
+Last activity: 2026-07-17 -- Phase 11 planning complete
 
 Next: plan a fifth gap-closure pass (11-15/11-16) to root-cause and fix G5 (Y-drop during page-load T-pose-to-idle settle), then a full regression re-check — e.g. `/gsd-plan-phase 11 --gaps`. Phase 11 cannot be marked complete until this is resolved.
 

@@ -414,6 +414,8 @@ import { useBreathing } from "./breathing";
 import { useSway } from "./sway";
 import { useExpressionDrift } from "./expressionDrift";
 import { useTalkCycle } from "./talkCycle";
+import { useGaze } from "./gaze";
+import { useGesture, type GestureHint } from "./gesture";
 import { volumeToAmplitudeScale } from "./audioAmplitude";
 import type { AvatarFormatAdapter } from "./types";
 
@@ -789,6 +791,26 @@ export function useAnimationController(params: {
    * false) so its approved idle behavior is untouched.
    */
   dampProceduralOnManualClip?: boolean;
+  /**
+   * The R3F active scene camera (D-04, e.g. `useThree().camera` or
+   * `useFrame`'s first-argument `state.camera`), threaded through so
+   * camera-relative gaze (GAZE-01) has a moving reference to track. Optional
+   * — omitted/null is a full no-op for gaze's camera mode (see gaze.ts).
+   */
+  camera?: THREE.Camera | null;
+  /**
+   * The latest gesture hint from `useKhavee()` (GEST-01/02), typically
+   * written by an LLM tool's `execute` callback via the public
+   * `setGestureHint` (see `KhaveeProvider.tsx`). Optional — omitted/null/
+   * "none" is a no-op for gesture (see gesture.ts).
+   */
+  gestureHint?: GestureHint;
+  /**
+   * Called exactly once, the frame a queued/immediate gesture pulse actually
+   * begins — wired by the avatar component to `() => setGestureHint(null)`
+   * so the consumed hint is cleared and cannot re-trigger.
+   */
+  onGestureConsumed?: () => void;
 }): { update: (delta: number) => void } {
   const {
     adapter,
@@ -800,6 +822,9 @@ export function useAnimationController(params: {
     enableBlinking,
     currentVolume,
     dampProceduralOnManualClip,
+    camera,
+    gestureHint,
+    onGestureConsumed,
   } = params;
 
   const blink = useBlink();
@@ -807,6 +832,8 @@ export function useAnimationController(params: {
   const sway = useSway();
   const expressionDrift = useExpressionDrift();
   const talkCycle = useTalkCycle();
+  const gaze = useGaze();
+  const gesture = useGesture();
 
   // Never useState — mutated every frame (blendRef via stepCrossfade) or on
   // every base-clip change (currentActionRef/currentClipNameRef), neither
@@ -913,7 +940,8 @@ export function useAnimationController(params: {
     //   1. crossfade ramp -> 2. blink -> 3. amplitude/settle scale compute
     //   -> 4a. lazily capture rest-pose anchor -> 4b. reset-if-not-driven
     //   -> 4c. capture spine base -> 5. breathing -> 6. sway -> 7. spine
-    //   clamp -> 8. expression drift -> 9. talk-cycle.
+    //   clamp -> 8. expression drift -> 9. talk-cycle -> 10. gaze ->
+    //   11. gesture.
     // Any future addition to this stack should extend this list, not
     // reorder it silently. 11-11: steps 4a-7 now run UNCONDITIONALLY every
     // frame (11-09 previously skipped 4-7 entirely while
@@ -921,7 +949,10 @@ export function useAnimationController(params: {
     // 11-11 replaced that whole-block skip with the narrower 4b reset —
     // see the file-header 11-11 diagnosis block for why). 11-13 gap closure
     // added step 0 (below) and refined step 4b's driving check — see the
-    // file-header 11-13 diagnosis block.
+    // file-header 11-13 diagnosis block. 12-04 appended steps 10 (gaze) and
+    // 11 (gesture) after talk-cycle — see their own inline comments below
+    // for why gesture composes AFTER gaze (a discrete pulse on top of a
+    // continuous camera-relative offset).
 
     // 0. 11-13 gap closure (G1/G3 fix): retry a pending clip switch every
     // frame, using the SAME `shouldTriggerClipSwitch` decision the effect
@@ -1144,6 +1175,35 @@ export function useAnimationController(params: {
     if (nextVariant) {
       switchToClip(nextVariant);
     }
+
+    // 10. Gaze (GAZE-01/02): continuous, camera-relative head tracking
+    // (ready/listening/speaking), fixed aversion (thinking), full no-op
+    // (starting/stopped) — see gaze.ts's own per-state branch. Composes
+    // additively on top of the mixer/breathing/sway/talk-cycle writes above
+    // via its own multiply(), targeting only the head bone — breathing/sway
+    // (steps 5-6) target spine/chest, so there is no bone overlap and no
+    // additional clamp interaction is expected between gaze and the spine
+    // clamp (step 7). No-ops internally (gaze.ts) when no camera is
+    // supplied for camera mode, but the `if (camera)` guard here also
+    // short-circuits the call entirely when the consumer never threads a
+    // camera through (e.g. a controller instance not yet wired to R3F).
+    if (camera) gaze.step(adapter, camera, chatStatus, delta);
+
+    // 11. Gesture (GEST-01/02): a discrete, triggered one-shot pulse
+    // (nod/shake) that composes ON TOP of gaze's continuous offset — this is
+    // why gesture is step 11, after gaze. Immediate outside `speaking`;
+    // queued to the next talk-cycle loop boundary while `speaking` (D-06) —
+    // see gesture.ts's own trigger logic. `onConsume` fires exactly once,
+    // the frame the pulse begins, wired to clear the consumed hint via
+    // `onGestureConsumed` so it cannot re-trigger.
+    gesture.step({
+      adapter,
+      chatStatus,
+      gestureHint: gestureHint ?? null,
+      currentAction: currentActionRef.current,
+      delta,
+      onConsume: () => onGestureConsumed?.(),
+    });
   }
 
   return { update };

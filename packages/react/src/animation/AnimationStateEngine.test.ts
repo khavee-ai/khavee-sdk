@@ -1,8 +1,27 @@
 /**
  * AnimationStateEngine.test.ts — unit tests for `resolveBaseClip`, the pure
- * chatStatus/manual-animate -> base-clip resolver. `useAnimationController`
- * itself is verified by build here (tsc --noEmit) and by integration in
- * 10-03/10-04, where it's exercised through real R3F components.
+ * chatStatus/manual-animate -> base-clip resolver, plus (12-04) targeted
+ * `useAnimationController` integration tests for the new gaze/gesture
+ * composition steps.
+ *
+ * 12-04 NOTE on how `useAnimationController` (a real hook, using `useRef`/
+ * `useEffect`) is exercised below without a React renderer: this repo has no
+ * @testing-library/react or react-test-renderer devDependency (see
+ * vitest.config.ts's `environment: "node"` and this package's package.json —
+ * adding one is a package-manager install, out of this plan's scope). Every
+ * hook this controller composes (directly, and via useGaze/useGesture/
+ * useBlink/useBreathing/useSway/useExpressionDrift/useTalkCycle) uses ONLY
+ * `useRef`/`useEffect` from "react" — never `useState` or anything requiring
+ * true React reconciliation (verified via `grep -n "^import.*react"` across
+ * every animation/*.ts module). Since this suite only ever calls
+ * `useAnimationController` ONCE per test (never simulating a re-render of
+ * the same "component instance"), a minimal mock of just those two
+ * primitives — `useRef` returning a fresh `{ current: initial }` object and
+ * `useEffect` running its callback synchronously — is behaviorally
+ * equivalent to a real single-render hook call for this controller's
+ * purposes, without needing a renderer dependency. This mock is scoped to
+ * this file only and does not affect the plain pure-function tests above/
+ * below it (`resolveBaseClip`, `stepBreathing`, etc. call no hooks at all).
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -14,12 +33,24 @@ import {
   isBaseActionMeaningfullyDriving,
   shouldTriggerClipSwitch,
   shouldDisableProceduralForManualClip,
+  useAnimationController,
   type RestPoseAnchor,
 } from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
 import { createSwayState, stepSway } from "./sway";
 import { beginCrossfade, stepCrossfade, easeInOutCubic } from "./crossfade";
 import type { AvatarFormatAdapter } from "./types";
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  return {
+    ...actual,
+    useRef: <T,>(initial: T) => ({ current: initial }),
+    useEffect: (fn: () => void | (() => void)) => {
+      fn();
+    },
+  };
+});
 
 describe("resolveBaseClip", () => {
   it("speaking: prefers a talk/gesture/speak-named clip when one exists", () => {
@@ -911,5 +942,99 @@ describe("11-17 — GLB manual-clip procedural gate (OPEN ISSUE 2)", () => {
         activeClipName: MANUAL_CLIP,
       }),
     ).toBe(true);
+  });
+});
+
+describe("useAnimationController — gaze/gesture integration (12-04)", () => {
+  function makeAdapter(head: THREE.Object3D | null = null): AvatarFormatAdapter {
+    return {
+      getMixer: () => {
+        throw new Error("not used in this test");
+      },
+      getBoneNode: () => null,
+      getHumanoidBoneNode: (role) => (role === "head" ? head : null),
+      getExpressionManager: () => null,
+    };
+  }
+
+  it("update() runs without throwing when camera/gestureHint are omitted (backward-compatible)", () => {
+    const adapter = makeAdapter();
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+    });
+
+    expect(() => controller.update(1 / 30)).not.toThrow();
+  });
+
+  it("calls onGestureConsumed the frame a gesture hint arrives outside speaking (D-06 immediate path)", () => {
+    const head = new THREE.Object3D();
+    const adapter = makeAdapter(head);
+    const onGestureConsumed = vi.fn();
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+      gestureHint: "nod",
+      onGestureConsumed,
+    });
+
+    controller.update(1 / 30);
+
+    expect(onGestureConsumed).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw when a camera is supplied alongside a gesture hint (steps 10 and 11 both run)", () => {
+    const head = new THREE.Object3D();
+    const adapter = makeAdapter(head);
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 0, 3);
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "listening",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+      camera,
+      gestureHint: "shake",
+      onGestureConsumed: vi.fn(),
+    });
+
+    expect(() => controller.update(1 / 30)).not.toThrow();
+  });
+
+  it("does not call onGestureConsumed when gestureHint is omitted (no spurious trigger)", () => {
+    const head = new THREE.Object3D();
+    const adapter = makeAdapter(head);
+    const onGestureConsumed = vi.fn();
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+      onGestureConsumed,
+    });
+
+    controller.update(1 / 30);
+
+    expect(onGestureConsumed).not.toHaveBeenCalled();
   });
 });

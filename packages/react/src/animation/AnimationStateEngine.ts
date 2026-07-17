@@ -233,6 +233,135 @@
  *     reintroducing the 11-09 freeze (the true first-mount case, where
  *     `from` is null, is unaffected and still resets to the anchor exactly
  *     as 11-11 fixed it).
+ *
+ * 11-15 gap closure (fifth pass — G5, the page-load T-pose-to-idle Y-axis
+ * drop): 11-14's decisive human re-check APPROVED G1/G2/G3/G4 and the full
+ * 7-requirement regression sweep, but surfaced a NEW finding: on first page
+ * load, BEFORE Connect is ever pressed, the avatar visibly "T-pose -> drops
+ * on Y -> settles into idle." This is the SAME underlying hips-Y settle
+ * motion 11-13's H-G3 finding already measured (the crossfade this file
+ * always runs), simply relocated from connect-time (now fixed) to load-time
+ * — a direct, expected consequence of 11-13's G1 fix (which made the base
+ * clip's FIRST successful crossfade fire at page-load time instead of never
+ * firing pre-connect at all). DIAGNOSIS (recorded runtime evidence via a
+ * headless replay of the REAL production path — the real
+ * `public/models/male.vrm` loaded via `GLTFLoader.parse()` + real
+ * `VRMLoaderPlugin`, the real `public/models/animations/Idle.fbx` loaded via
+ * `FBXLoader` and the real `remapMixamoAnimationToVrm` retargeter, and the
+ * real `beginCrossfade`/`stepCrossfade` from `crossfade.ts`, with
+ * `performance.now()` deterministically advanced per simulated frame,
+ * 11-11/11-13 precedent; texture/image loading — irrelevant to the
+ * skeleton/bone graph this diagnosis measures — was stubbed out via a
+ * `self`/`THREE.TextureLoader.prototype.load` shim so the loader could run
+ * headless in Node):
+ *
+ *   - Bind-pose hips Y (captured via `vrm.humanoid.getNormalizedBoneNode(
+ *     "hips").position.y`, BEFORE any action ever played): measured
+ *     `1.00825679`. The line-27-style WORLD Y
+ *     (`getNormalizedBoneNode("hips").getWorldPosition(_vec3).y`) measured
+ *     the IDENTICAL `1.00825679` for this rig, because `male.vrm`'s scene
+ *     root sits at world Y `0` (`vrm.scene.getWorldPosition(_vec3).y === 0`)
+ *     — so for this rig the LOCAL bind-pose hips Y and the existing line-27
+ *     WORLD hips Y coincide exactly (delta `0`). This is rig-dependent (a
+ *     VRM whose scene root were offset from world-origin Y would NOT see
+ *     these coincide), so the fix below explicitly reads the LOCAL value
+ *     (`position.y`), not the existing line-27 world value, to stay correct
+ *     for every rig, not just this one.
+ *   - `remapMixamoAnimationToVrm`'s CURRENT anchor-to-0 behavior confirmed:
+ *     the remapped hips `VectorKeyframeTrack`'s first keyframe Y measured
+ *     exactly `0` (the `- firstY` normalization at lines 82-87 already
+ *     visually identified as the mechanism).
+ *   - Replayed the EXACT page-load sequence: `chatStatus` is `"stopped"` at
+ *     mount (`KhaveeProvider`'s initial `useState`), so `resolveBaseClip`
+ *     falls through to the manually-set `currentAnimation`/first-available
+ *     clip (idle), and `switchToClip`'s `floor` branch applies (`chatStatus
+ *     === "starting" || "stopped"` is true) — meaning the page-load base
+ *     clip's first crossfade uses the SAME `1.2`s TRANS-01/02 floor as any
+ *     starting/stopped transition, not the shorter 0.3-0.9s pose-gap-
+ *     adaptive range. `beginCrossfade(null, idleAction, vrm.scene, 1.2)`
+ *     was driven for 78 simulated 60fps frames (1.2s + a few frames past
+ *     completion) via the real `stepCrossfade`, recording `hips.position.y`
+ *     AND `idleAction.getEffectiveWeight()` every frame.
+ *   - Measured: `startY = 1.00825679` (frame 0, weight 0) ->
+ *     `endY = 0.00027984` (settled), `totalDelta ≈ 1.00798`,
+ *     `maxSingleFrameDelta ≈ 0.04085` (~4.1% of total — no single frame
+ *     dominates; a genuine smooth, eased multi-frame ramp, matching 11-13's
+ *     H-G3 "smooth ramp" character exactly, just spread over more frames
+ *     since page-load's `1.2`s floor is longer than G3's shorter connect-
+ *     time pose-gap-adaptive duration, hence a SMALLER max-single-frame-
+ *     delta percentage here). At the frame where
+ *     `idleAction.getEffectiveWeight()` first crosses `MIN_BASE_ACTION_
+ *     WEIGHT` (`0.05`) — frame 18, `t ≈ 0.300s`, `w ≈ 0.05265` — the
+ *     measured `hips.position.y` was `≈ 0.95518`. A HYPOTHETICAL flat
+ *     additive correction gated on `isBaseActionMeaningfullyDriving`
+ *     (`offset = bindPoseHipsY` added unconditionally once the gate opens)
+ *     would compute `0.95518 + 1.00826 ≈ 1.96344` at that exact frame —
+ *     confirming the plan's predicted ~1.966 overshoot and why a flat,
+ *     gate-triggered additive correction is the WRONG fix (it would replace
+ *     a smooth drop with a sudden near-doubling pop-up at the gate-flip
+ *     frame).
+ *   - Cross-checked every recorded frame against THREE's PropertyMixer
+ *     single-active-action blend model, `applied = original*(1-w) +
+ *     animated*w`, where `original` is the fixed bind-pose local hips Y and
+ *     `animated` is the clip's OWN time-varying hips-Y at that frame's
+ *     elapsed playback time (sampled via an isolated weight-1 mixer driving
+ *     a cloned hips bone in lockstep — NOT a constant equal to the track's
+ *     first keyframe, since `Idle.fbx`'s hips track has its own inherent
+ *     bob/motion as the clip plays, distinct from the retarget-time Y
+ *     normalization). ALL 78 frames matched this model within floating-
+ *     point tolerance (`< 1e-9` observed) — CONFIRMING the applied
+ *     `hips.position.y` is fully explained by a single-action position-
+ *     binding blend between the bind pose and the (currently 0-anchored)
+ *     animated track, exactly the model the retargeter-anchor fix depends
+ *     on.
+ *   - CHARACTER DETERMINATION: G5 is character-(a) — the IDENTICAL smooth,
+ *     eased hips-Y ramp 11-13's H-G3 already measured for the connect-time
+ *     drop (now fixed), simply present at page-load time instead, per the
+ *     `totalDelta`/no-single-frame-dominates evidence above. It is NOT a
+ *     distinct or discontinuous artifact (character-(b)) specific to the
+ *     T-pose starting point — the T-pose is just this rig's true bind pose,
+ *     and the same crossfade math that shared-root-caused G1/G3 governs it
+ *     identically.
+ *   - ROOT CAUSE (confirmed, matches the plan's hypothesis exactly):
+ *     `remapMixamoAnimationToVrm` normalizes every retargeted clip's hips
+ *     `VectorKeyframeTrack` so its first authored keyframe's Y is exactly
+ *     `0` (subtracting `firstY`), while `male.vrm`'s actual bind-pose local
+ *     hips Y is `~1.008`. Because THREE's `AnimationMixer` captures
+ *     `original` (the pre-action bone value, i.e. the bind pose) the moment
+ *     an action first activates, and blends toward the animated track value
+ *     as weight ramps 0->1, the mismatch between these two endpoints (`1.008`
+ *     vs `0`) IS the drop — confirmed by the exact `applied =
+ *     original*(1-w)+animated*w` frame-by-frame match above.
+ *   - FIX-SITE DETERMINATION: the retargeter anchor (`remapMixamoAnimation-
+ *     ToVrm.ts`, replacing the anchor-to-`0` normalization with an anchor to
+ *     the VRM bind-pose LOCAL hips Y) is CONFIRMED as the correct fix site —
+ *     the evidence above shows the applied value IS a single-action
+ *     `original*(1-w)+animated*w` blend, so making `animated`'s first frame
+ *     equal `original` (both become `~1.008`) makes the blend flat
+ *     (`applied ≈ bindPoseY`) at EVERY weight, eliminating the drop with no
+ *     mid-ramp overshoot and no controller-local gating/RestPoseAnchor
+ *     change needed. The controller-local weight-proportional fallback
+ *     described in the plan is NOT needed — the evidence does not show the
+ *     retargeter anchor "cannot work"; it shows exactly the opposite (a
+ *     clean single-action blend the anchor fix directly flattens). GLB is
+ *     confirmed unaffected: `remapMixamoAnimationToVrm` is imported only by
+ *     `VRMAvatar.tsx` (lines 337/353) and `src/app/components/
+ *     VRMAvatarRef.tsx` — `grep remapMixamoAnimationToVrm
+ *     packages/react/src/GLBAvatar.tsx` returns 0 matches, so `happy.glb`'s
+ *     already-correct hips heights are untouched by this fix.
+ *
+ * FIX (Task 2): `remapMixamoAnimationToVrm.ts`'s hips `VectorKeyframeTrack`
+ * branch now anchors the retargeted track at the VRM bind-pose LOCAL hips Y
+ * (`vrm.humanoid?.getNormalizedBoneNode("hips")?.position.y`) instead of
+ * `0` — `value = scaled.map((v, i) => (i % 3 === 1 ? v - firstY +
+ * bindPoseHipsY : v))`. Every clip retargeted through this function still
+ * starts at the SAME shared height (the original inter-clip jump-prevention
+ * purpose of this normalization, unchanged), but that shared height is now
+ * the bind pose instead of `0`, so the crossfade's `original` and `animated`
+ * endpoints coincide and the blend is flat at every weight. No change to
+ * `AnimationStateEngine.ts`'s `RestPoseAnchor`, `resetToRestPoseIfNot-
+ * Driven`, or `isBaseActionMeaningfullyDriving` was needed or made this
+ * round — the fix lives entirely at the retarget source.
  */
 
 import { useEffect, useRef } from "react";

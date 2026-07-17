@@ -23,6 +23,11 @@ interface KhaveeContextType {
   realtimeProvider: RealtimeProvider | null;
   chatStatus: import('@khaveeai/core').ChatStatus;
   currentVolume: number;
+  // Gesture hint (GAZE-01/02, GEST-01/02): the LLM-triggered nod/shake signal
+  // consumed by useAnimationController. Unlike currentVolume above, the
+  // setter here is PUBLIC (see setGestureHint's own doc comment for why).
+  gestureHint: "nod" | "shake" | null;
+  setGestureHint: (gesture: string | null) => void;
 }
 
 const KhaveeContext = createContext<KhaveeContextType | null>(null);
@@ -96,6 +101,7 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
   );
   const [chatStatus, setChatStatus] = useState<import('@khaveeai/core').ChatStatus>("stopped");
   const [currentVolume, setCurrentVolume] = useState(0);
+  const [gestureHint, setGestureHintState] = useState<"nod" | "shake" | null>(null);
 
   // Note: Realtime provider connection is now manual - user must call connect() explicitly
 
@@ -264,6 +270,47 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
     setCurrentAnimation(null);
   }, []);
 
+  /**
+   * setGestureHint - Trigger a semantic nod/shake gesture on the avatar (GEST-01/02)
+   *
+   * Unlike `currentVolume`'s setter (internal-only, driven from inside
+   * KhaveeProvider by the realtime provider's own event), this setter is
+   * PUBLIC on useKhavee()'s return: the writer is typically an LLM tool's
+   * `execute` callback, which is supplied by app code at provider-
+   * construction time OUTSIDE the React tree (RESEARCH Pitfall 3) — there is
+   * no other way for that code to reach this state.
+   *
+   * Validates the incoming value against the `"nod"` | `"shake"` | `"none"`
+   * allow-list (T-12-04 tampering mitigation, since the value can originate
+   * from an LLM tool call): `"nod"`/`"shake"` are stored as-is; `"none"`,
+   * `null`, or any unrecognized value is stored as `null`. Never throws —
+   * mirrors `setExpression`'s clamp-not-throw convention.
+   *
+   * @param gesture - `"nod"`, `"shake"`, `"none"`, or any other string/null.
+   *
+   * @example
+   * ```tsx
+   * const { setGestureHint } = useKhavee();
+   *
+   * const tools = [{
+   *   name: 'nod_or_shake',
+   *   description: 'Nod or shake the avatar's head',
+   *   parameters: { gesture: 'nod' | 'shake' },
+   *   handler: async ({ gesture }) => {
+   *     setGestureHint(gesture);
+   *     return 'done';
+   *   },
+   * }];
+   * ```
+   */
+  const setGestureHint = useCallback((gesture: string | null) => {
+    if (gesture === 'nod' || gesture === 'shake') {
+      setGestureHintState(gesture);
+    } else {
+      setGestureHintState(null);
+    }
+  }, []);
+
   return (
     <KhaveeContext.Provider value={{
       config,
@@ -281,6 +328,8 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
       realtimeProvider,
       chatStatus,
       currentVolume,
+      gestureHint,
+      setGestureHint,
     }}>
       {children}
     </KhaveeContext.Provider>

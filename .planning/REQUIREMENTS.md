@@ -30,7 +30,7 @@ Source: wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khav
 
 - [ ] **GAZE-01**: `ready`/`listening`/`speaking` show camera-relative soft gaze (no tracked-user-position dependency); `thinking` shows brief gaze aversion; `starting`/`stopped` get no separate gaze treatment
 - [ ] **GAZE-02**: Gaze applies symmetrically to both VRM and GLB (bone-level behavior, not expression-dependent)
-- [ ] **GEST-01**: The LLM can emit a gesture hint (`nod`/`shake`/`none`) via tool-calling as part of its normal response generation (no separate classification call, no keyword/regex matching)
+- [x] **GEST-01**: The LLM can emit a gesture hint (`nod`/`shake`/`none`) via tool-calling as part of its normal response generation (no separate classification call, no keyword/regex matching)
 - [ ] **GEST-02**: Triggered gestures are procedural bone deltas (no new animation clip), queued for the ambient talk-cycle's next natural loop boundary — never interrupt mid-clip
 
 ### Public API
@@ -90,7 +90,7 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | XFADE-01 | Phase 10 | Pending |
 | GAZE-01 | Phase 12 | Pending |
 | GAZE-02 | Phase 12 | Pending |
-| GEST-01 | Phase 12 | Pending |
+| GEST-01 | Phase 12 | Complete |
 | GEST-02 | Phase 12 | Pending |
 | API-01 | Phase 13 | Pending |
 | API-02 | Phase 13 | Pending |

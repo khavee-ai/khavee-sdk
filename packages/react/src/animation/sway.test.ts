@@ -1,8 +1,12 @@
 /**
- * sway.test.ts — unit tests for the ref-driven hips/spine weight-shift sway
+ * sway.test.ts — unit tests for the ref-driven spine/chest weight-shift sway
  * delta (IDLE-01). Covers the pure sine math (`swayDeltaAngle`) and the
  * additive `stepSway` write via a stub `AvatarFormatAdapter` — no React
  * rendering required (see breathing.ts/sway.ts's Testability note).
+ *
+ * 11-17 gap closure (OPEN ISSUE 1): sway no longer writes `hips` (a stub
+ * hips bone passed via the adapter must remain exactly at its incoming
+ * orientation after stepSway) — it writes `spine`+`chest` instead.
  */
 
 import { describe, expect, it } from "vitest";
@@ -12,7 +16,7 @@ import { breathingDeltaAngle, createBreathingState } from "./breathing";
 import type { AvatarFormatAdapter } from "./types";
 
 function makeStubAdapter(
-  bones: Partial<Record<"hips" | "spine", THREE.Object3D | null>>,
+  bones: Partial<Record<"hips" | "spine" | "chest", THREE.Object3D | null>>,
 ): AvatarFormatAdapter {
   return {
     getMixer: () => new THREE.AnimationMixer(new THREE.Object3D()),
@@ -20,6 +24,7 @@ function makeStubAdapter(
     getHumanoidBoneNode: (role) => {
       if (role === "hips") return bones.hips ?? null;
       if (role === "spine") return bones.spine ?? null;
+      if (role === "chest") return bones.chest ?? null;
       return null;
     },
     getExpressionManager: () => null,
@@ -45,10 +50,10 @@ describe("swayDeltaAngle", () => {
 });
 
 describe("stepSway", () => {
-  it("one step at sine-phase peak produces a non-identity bone quaternion bounded by amplitude", () => {
-    const hips = new THREE.Object3D();
+  it("one step at sine-phase peak produces a non-identity spine+chest quaternion bounded by amplitude", () => {
     const spine = new THREE.Object3D();
-    const adapter = makeStubAdapter({ hips, spine });
+    const chest = new THREE.Object3D();
+    const adapter = makeStubAdapter({ spine, chest });
 
     const state = createSwayState();
     state.period = 8.0;
@@ -57,17 +62,34 @@ describe("stepSway", () => {
     stepSway(state, adapter, 0.001, 1);
 
     const identity = new THREE.Quaternion();
-    const angle = hips.quaternion.angleTo(identity);
-    expect(angle).toBeGreaterThan(0);
-    expect(angle).toBeLessThanOrEqual(0.026); // amplitude ceiling with float margin
+    const spineAngle = spine.quaternion.angleTo(identity);
+    const chestAngle = chest.quaternion.angleTo(identity);
+    expect(spineAngle).toBeGreaterThan(0);
+    expect(spineAngle).toBeLessThanOrEqual(0.026); // amplitude ceiling with float margin
+    expect(chestAngle).toBeGreaterThan(0);
+    expect(chestAngle).toBeLessThanOrEqual(0.026);
   });
 
-  it("writes additively via multiply: preserves a pre-existing non-identity base orientation", () => {
-    const hips = new THREE.Object3D();
-    const baseQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.4);
-    hips.quaternion.copy(baseQuat);
+  it("never mutates a hips bone passed via the adapter (11-17: legs, children of hips, cannot be rotated by sway)", () => {
     const spine = new THREE.Object3D();
-    const adapter = makeStubAdapter({ hips, spine });
+    const chest = new THREE.Object3D();
+    const hips = new THREE.Object3D();
+    const hipsBaseQuat = hips.quaternion.clone();
+    const adapter = makeStubAdapter({ spine, chest, hips });
+
+    const state = createSwayState();
+    state.phase = 1;
+    stepSway(state, adapter, 0.3, 1);
+
+    expect(hips.quaternion.equals(hipsBaseQuat)).toBe(true);
+  });
+
+  it("writes additively via multiply: preserves a pre-existing non-identity base orientation on spine", () => {
+    const spine = new THREE.Object3D();
+    const baseQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.4);
+    spine.quaternion.copy(baseQuat);
+    const chest = new THREE.Object3D();
+    const adapter = makeStubAdapter({ spine, chest });
 
     const state = createSwayState();
     state.phase = 1;
@@ -77,9 +99,9 @@ describe("stepSway", () => {
       new THREE.Vector3(0, 0, 1),
       swayDeltaAngle(state.phase, 0.025, 1),
     );
-    expect(hips.quaternion.equals(baseQuat)).toBe(false);
-    expect(hips.quaternion.equals(deltaOnly)).toBe(false);
-    const recovered = hips.quaternion.clone().multiply(deltaOnly.clone().invert());
+    expect(spine.quaternion.equals(baseQuat)).toBe(false);
+    expect(spine.quaternion.equals(deltaOnly)).toBe(false);
+    const recovered = spine.quaternion.clone().multiply(deltaOnly.clone().invert());
     expect(recovered.angleTo(baseQuat)).toBeLessThan(1e-3);
   });
 
@@ -101,18 +123,12 @@ describe("stepSway", () => {
     expect(typeof breathingDeltaAngle).toBe("function");
   });
 
-  it("returns without throwing when adapter.getHumanoidBoneNode('hips') or ('spine') returns null", () => {
-    const spine = new THREE.Object3D();
-    const adapterNullHips = makeStubAdapter({ hips: null, spine });
-    const stateA = createSwayState();
-    expect(() => stepSway(stateA, adapterNullHips, 0.5)).not.toThrow();
+  it("returns without throwing and writes nothing when adapter.getHumanoidBoneNode('spine') returns null", () => {
+    const chest = new THREE.Object3D();
+    const adapterNullSpine = makeStubAdapter({ spine: null, chest });
+    const state = createSwayState();
+    expect(() => stepSway(state, adapterNullSpine, 0.5)).not.toThrow();
     const identity = new THREE.Quaternion();
-    expect(spine.quaternion.equals(identity)).toBe(true); // early-return before either bone is written
-
-    const hips = new THREE.Object3D();
-    const adapterNullSpine = makeStubAdapter({ hips, spine: null });
-    const stateB = createSwayState();
-    expect(() => stepSway(stateB, adapterNullSpine, 0.5)).not.toThrow();
-    expect(hips.quaternion.equals(identity)).toBe(true);
+    expect(chest.quaternion.equals(identity)).toBe(true); // early-return before chest is written
   });
 });

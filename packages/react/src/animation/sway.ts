@@ -1,5 +1,6 @@
 /**
- * sway.ts — Ref-driven procedural hips/spine weight-shift sway delta (IDLE-01).
+ * sway.ts — Ref-driven procedural spine/chest weight-shift sway delta
+ * (IDLE-01).
  *
  * This is an internal helper module and is NOT exported from index.ts.
  *
@@ -8,8 +9,21 @@
  * axis, and period band differ. Sway's period is drawn from an INDEPENDENT
  * band so it is never phase-locked to breathing (IDLE-01 "independent
  * cycles"); `AnimationStateEngine` runs breathing before sway in
- * `update(delta)`, and both compose on the shared spine bone via
+ * `update(delta)`, and both compose on the shared spine+chest bones via
  * `multiply()` (PERF-01), never `.set()`.
+ *
+ * 11-17 gap closure (OPEN ISSUE 1 — VRM leg sway): sway used to write
+ * `hips` (a root-bone rotation whose children include both upper-leg
+ * bones, so rotating hips visibly rotated the legs too — reported by a
+ * human as "the sway/breath should not affect the legs"). Sway is now
+ * targeted at `spine`+`chest` only (an upper-body-only subtree containing
+ * no leg bones), mirroring `breathing.ts`'s existing chest+spine target.
+ * `hips` is no longer resolved or written by this module at all. Spine and
+ * chest were chosen specifically because both are already members of
+ * `AnimationStateEngine.ts`'s `RestPoseAnchor` (captured/reset every
+ * frame), so this retarget introduces no new bone that could accumulate
+ * procedural drift during a near-zero-weight window (avoids reintroducing
+ * the 11-09 accumulation bug class on a fresh bone).
  *
  * Testability: the phase/period state and the per-frame write are factored
  * out of the hook into `createSwayState`/`stepSway` (plain functions
@@ -75,9 +89,12 @@ export function createSwayState(): SwayState {
 
 /**
  * Advances `state` by `delta` seconds and applies the resulting additive
- * delta-quaternion to the adapter's hips/spine bones. Early-returns without
- * throwing if either bone cannot be resolved (defensive gate — scene not
- * loaded, or the rig has no mapping for that humanoid role).
+ * delta-quaternion to the adapter's spine (required) and chest (optional)
+ * bones. Early-returns without throwing if `spine` cannot be resolved
+ * (defensive gate — scene not loaded, or the rig has no mapping for that
+ * humanoid role). `hips` is never resolved or written by this function —
+ * see the 11-17 gap-closure file-header note for why (leg bones are
+ * children of hips, so rotating hips also rotated the legs).
  */
 export function stepSway(
   state: SwayState,
@@ -85,9 +102,9 @@ export function stepSway(
   delta: number,
   amplitudeScale = 1,
 ): void {
-  const hips = adapter.getHumanoidBoneNode("hips");
   const spine = adapter.getHumanoidBoneNode("spine");
-  if (!hips || !spine) return;
+  if (!spine) return;
+  const chest = adapter.getHumanoidBoneNode("chest");
 
   // Advance phase by a full 2*PI cycle every `state.period` seconds.
   state.phase += (delta / state.period) * Math.PI * 2;
@@ -97,9 +114,13 @@ export function stepSway(
 
   // Additive write (PERF-01): multiply(), never set() — preserves whatever
   // base orientation the mixer/pose already wrote to these bones this frame
-  // (including breathing's own delta, which runs first).
-  hips.quaternion.multiply(_scratchDelta);
+  // (including breathing's own delta, which runs first). Upper-body only
+  // (spine+chest) — hips is deliberately never touched (11-17), so no leg
+  // bone (a child of hips) can be rotated by sway.
   spine.quaternion.multiply(_scratchDelta);
+  if (chest) {
+    chest.quaternion.multiply(_scratchDelta);
+  }
 }
 
 /**

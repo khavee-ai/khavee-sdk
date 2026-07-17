@@ -969,8 +969,10 @@ export function useAnimationController(params: {
     // spine orientation rather than the reverse. This is an arbitrary but
     // fixed order (PERF-01 requires *a* documented order, not a specific
     // one) — breathing before sway matches this module's own read order in
-    // the interface comment block and keeps chest-first, hips-second
-    // grouped with their driving systems.
+    // the interface comment block. 11-17 gap closure: breathing writes
+    // chest+spine and sway now ALSO writes spine+chest (upper-body only) —
+    // hips is intentionally never written by either system, so leg bones
+    // (children of hips) stay static regardless of procedural amplitude.
     sway.step(adapter, delta, proceduralScale);
 
     // 7. PERF-01 bounded magnitude: clamp the COMBINED breathing+sway

@@ -409,7 +409,25 @@ Plans:
   3. The LLM emits a `nod`/`shake`/`none` gesture hint as part of its normal tool-calling response, with no separate classification call and no keyword/regex matching in the pipeline
   4. A triggered gesture plays as a procedural bone-delta overlay (no new animation clip is loaded) and only begins at the ambient talk cycle's next natural loop boundary — it never interrupts a clip mid-play
 
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1** *(three independent surfaces — core tool, gaze module, loop-boundary+gesture module — zero file overlap, fully parallel)*
+
+- [ ] 12-01-PLAN.md — toolGesture (set_gesture) factory + core barrel export fix (GEST-01)
+- [ ] 12-02-PLAN.md — gaze.ts camera-relative soft-gaze + thinking aversion + head-axis empirical spike (GAZE-01, GAZE-02)
+- [ ] 12-03-PLAN.md — extract detectLoopBoundary from talkCycle.ts + gesture.ts triggered one-shot pulse (GEST-02)
+
+**Wave 2** *(blocked on 12-02/12-03 — plumbing + controller integration)*
+
+- [ ] 12-04-PLAN.md — KhaveeProvider gestureHint + public setGestureHint + useAnimationController gaze/gesture steps 10/11 (GAZE-01/02, GEST-01/02)
+
+**Wave 3** *(blocked on 12-04/12-01 — avatar wiring + demo)*
+
+- [ ] 12-05-PLAN.md — VRMAvatar/GLBAvatar useThree camera + gesture threading + openai-avatar-test set_gesture registration (GAZE-01/02, GEST-01/02)
+
+**Wave 4** *(blocked on 12-05 — objective gates + blocking human-verify)*
+
+- [ ] 12-06-PLAN.md — objective code-level gates + human per-state gaze (VRM+GLB) + nod/shake gesture verification (GAZE-01/02, GEST-01/02)
 
 ### Phase 13: Public API, Performance Tiers & Verification
 

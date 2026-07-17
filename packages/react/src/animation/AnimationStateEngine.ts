@@ -362,6 +362,47 @@
  * `AnimationStateEngine.ts`'s `RestPoseAnchor`, `resetToRestPoseIfNot-
  * Driven`, or `isBaseActionMeaningfullyDriving` was needed or made this
  * round — the fix lives entirely at the retarget source.
+ *
+ * 11-17 gap closure (sixth pass — closes the two OPEN ISSUEs recorded
+ * verbatim in 11-16-SUMMARY.md's decisive human checkpoint):
+ *
+ *   OPEN ISSUE 1 (VRM leg sway): "the sway/breath should not affect the
+ *   legs cause its weird seeing legs also sway." Root cause was structural
+ *   and required no further diagnosis — `sway.ts`'s `stepSway` wrote its
+ *   rotation delta to the `hips` bone, the humanoid rig's skeleton root,
+ *   whose direct children include both upper-leg bones; any hips rotation
+ *   therefore rotated the entire lower body. FIX: `sway.ts` now targets
+ *   `spine`+`chest` (mirroring `breathing.ts`'s existing upper-body-only
+ *   target) and never resolves or writes `hips`. See `sway.ts`'s own
+ *   11-17 file-header note for the full rationale (including why
+ *   spine+chest, specifically, introduce no new accumulation surface).
+ *
+ *   OPEN ISSUE 2 (GLB sway too strong after animation change): "the glb
+ *   side sway/breath is fine until i changed its animation, the sway
+ *   intensity is too much. may be turn that off when animating?"
+ *   `proceduralScale` in `update()` was computed only from
+ *   `amplitudeScale` (speaking volume) x `settleScale` (stopped settle
+ *   ramp) — independent of which base clip is active. When a GLB user
+ *   parks the avatar on a manually-selected non-idle clip via `animate()`,
+ *   procedural breathing+sway kept applying their additive deltas on top
+ *   of a clip that may not fully re-drive spine/chest every frame, reading
+ *   as excessive. FIX: a new exported pure gate,
+ *   `shouldDisableProceduralForManualClip` (see its own doc comment for
+ *   the full decision table), forces `proceduralScale` to
+ *   `MANUAL_CLIP_PROCEDURAL_SCALE` (`0`) whenever GLB has opted in
+ *   (`dampProceduralOnManualClip: true`, passed only by `GLBAvatar.tsx` —
+ *   `VRMAvatar.tsx` omits it, so VRM's approved idle behavior is
+ *   byte-for-byte unchanged) AND the active clip is the user's own
+ *   non-idle `animate()` selection. The default idle clip's procedural
+ *   motion (and every status-driven state — speaking/listening/thinking/
+ *   starting) is unaffected. Verified against `happy.glb`'s clip set
+ *   (enumerated in `src/app/glb-avatar-test/page.tsx`) — the non-idle
+ *   clips the human parks on (e.g. "State 3 Welcome (loop)", "State 4
+ *   Taking (loop)") are exactly the ones this gate now silences procedural
+ *   motion on; the idle-pattern-matching clip ("State 1 Idle (loop)")
+ *   keeps its motion. Decisive live confirmation is deferred to 11-18's
+ *   human checkpoint per this phase's established diagnose-fix-then-
+ *   re-verify pattern.
  */
 
 import { useEffect, useRef } from "react";
@@ -397,6 +438,16 @@ const _spineComposedScratch = new THREE.Quaternion();
 // decision block near STATUS_CLIP_PATTERNS above; issue #17 tracks the real
 // dedicated goodbye clip).
 const SETTLE_SCALE = 0.15;
+
+// 11-17 gap closure (OPEN ISSUE 2 — GLB sway too strong after animation
+// change): when `shouldDisableProceduralForManualClip` gates procedural
+// body motion off for a manually-selected, non-idle GLB clip, proceduralScale
+// is forced to this value instead of `amplitudeScale * settleScale`. Fully
+// disables breathing/sway's additive deltas ("turn that off when
+// animating" — the human's own suggested remedy). Kept as a named,
+// tunable constant (rather than inlining `0`) in case a subtler damp (a
+// small non-zero fraction) is preferred over a hard cutoff later.
+const MANUAL_CLIP_PROCEDURAL_SCALE = 0;
 
 // TRANS-02 gap closure (11-07): the settle scale above used to be applied
 // as an instant binary cut (`chatStatus === "stopped" ? SETTLE_SCALE : 1`),
@@ -489,6 +540,53 @@ export function isBaseActionMeaningfullyDriving(
   blendFromAction: THREE.AnimationAction | null,
 ): boolean {
   return shouldRunProceduralBoneWrites(currentAction) || blendFromAction !== null;
+}
+
+/**
+ * 11-17 gap-closure fix (OPEN ISSUE 2 — GLB sway too strong after animation
+ * change; see the file-header 11-17 diagnosis block). A human reported that
+ * on the GLB avatar, procedural breathing+sway are "fine until i changed its
+ * animation, the sway intensity is too much" and suggested "may be turn
+ * that off when animating?". This pure gate implements exactly that: it
+ * returns `true` only when the avatar is currently parked on a
+ * manually-selected, non-idle clip via `animate()` — the one case the
+ * human flagged as over-strong — and `false` in every other case,
+ * including the approved default idle clip's procedural motion.
+ *
+ * Decision table (all conditions must hold for `true`):
+ *   - `enabled` is true (the GLB opt-in — see `dampProceduralOnManualClip`
+ *     on `useAnimationController`'s params). VRM never passes this, so it
+ *     always gets `false` here and its approved idle behavior is untouched
+ *     ("the vrm side is working fine").
+ *   - `chatStatus` is `"ready"` or `"stopped"` — status-driven states
+ *     (`speaking`/`listening`/`thinking`/`starting`) keep their existing,
+ *     already-approved procedural amplitude behavior regardless of the
+ *     active clip.
+ *   - `currentAnimation` and `activeClipName` are both non-null AND equal
+ *     to each other — i.e. the clip actually showing IS the user's explicit
+ *     `animate()` selection, not some other clip mid-transition.
+ *   - `activeClipName` does NOT match `STATUS_CLIP_PATTERNS.ready` (the
+ *     idle/ready base clip) — the default idle clip's procedural motion is
+ *     the approved baseline and must stay on even if a consumer happened to
+ *     pass its name to `animate()` explicitly.
+ *
+ * Exported and pure so it is unit-testable without rendering a React
+ * component or scene, mirroring `shouldRunProceduralBoneWrites`'s own
+ * testability pattern — see `AnimationStateEngine.test.ts`.
+ */
+export function shouldDisableProceduralForManualClip(params: {
+  enabled: boolean;
+  chatStatus: ChatStatus;
+  currentAnimation: string | null;
+  activeClipName: string | null;
+}): boolean {
+  const { enabled, chatStatus, currentAnimation, activeClipName } = params;
+  if (!enabled) return false;
+  if (chatStatus !== "ready" && chatStatus !== "stopped") return false;
+  if (currentAnimation === null || activeClipName === null) return false;
+  if (activeClipName !== currentAnimation) return false;
+  if (STATUS_CLIP_PATTERNS.ready!.test(activeClipName)) return false;
+  return true;
 }
 
 /** A captured spine/chest/hips rest-pose anchor — see `resetToRestPoseIfNotDriven`. */
@@ -684,6 +782,13 @@ export function useAnimationController(params: {
   enableBlinking: boolean;
   /** Live TTS playback volume (0-1), from useKhavee(). Scales speaking-only procedural amplitude (TALK-02); undefined/omitted is treated as 0 (neutral). */
   currentVolume?: number;
+  /**
+   * GLB opt-in (11-17, OPEN ISSUE 2): when true, procedural breathing/sway
+   * are disabled while a manually-selected non-idle clip is the active base
+   * (see `shouldDisableProceduralForManualClip`). VRM omits this (default
+   * false) so its approved idle behavior is untouched.
+   */
+  dampProceduralOnManualClip?: boolean;
 }): { update: (delta: number) => void } {
   const {
     adapter,
@@ -694,6 +799,7 @@ export function useAnimationController(params: {
     getRoot,
     enableBlinking,
     currentVolume,
+    dampProceduralOnManualClip,
   } = params;
 
   const blink = useBlink();
@@ -880,7 +986,21 @@ export function useAnimationController(params: {
 
     const amplitudeScale = volumeToAmplitudeScale(currentVolume ?? 0, chatStatus);
     const settleScale = ramp.current;
-    const proceduralScale = amplitudeScale * settleScale;
+    // 11-17 gap closure (OPEN ISSUE 2): on GLB, fully disable procedural
+    // body motion (breathing+sway) while a manually-selected non-idle clip
+    // is the active base — see `shouldDisableProceduralForManualClip`'s
+    // doc comment for the full decision table. VRM never opts in
+    // (dampProceduralOnManualClip is omitted there), so this is always
+    // false on that path and proceduralScale is unaffected.
+    const disableForManualClip = shouldDisableProceduralForManualClip({
+      enabled: dampProceduralOnManualClip ?? false,
+      chatStatus,
+      currentAnimation,
+      activeClipName: currentClipNameRef.current,
+    });
+    const proceduralScale = disableForManualClip
+      ? MANUAL_CLIP_PROCEDURAL_SCALE
+      : amplitudeScale * settleScale;
 
     // 4-7. 11-11 gap closure (G1 T-pose-on-load / G2 idle->talking snap —
     // see the file-header 11-11 diagnosis block): unlike 11-09's approach

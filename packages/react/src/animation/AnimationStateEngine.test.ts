@@ -13,6 +13,7 @@ import {
   resetToRestPoseIfNotDriven,
   isBaseActionMeaningfullyDriving,
   shouldTriggerClipSwitch,
+  shouldDisableProceduralForManualClip,
   type RestPoseAnchor,
 } from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
@@ -819,5 +820,96 @@ describe("G5 fix — hips height holds at bind pose during the load-time idle se
     expect(Math.min(...sampledYs)).toBeGreaterThan(0.5);
 
     nowSpy.mockRestore();
+  });
+});
+
+describe("11-17 — GLB manual-clip procedural gate (OPEN ISSUE 2)", () => {
+  const IDLE_CLIP = "State 1 Idle (loop)";
+  const MANUAL_CLIP = "State 3 Welcome (loop)";
+
+  it("returns false when enabled is false (VRM path / gate off), regardless of other inputs", () => {
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: false,
+        chatStatus: "stopped",
+        currentAnimation: MANUAL_CLIP,
+        activeClipName: MANUAL_CLIP,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when chatStatus is a status-driven state (e.g. speaking), even when clip === currentAnimation", () => {
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: true,
+        chatStatus: "speaking",
+        currentAnimation: MANUAL_CLIP,
+        activeClipName: MANUAL_CLIP,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when currentAnimation is null", () => {
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: true,
+        chatStatus: "stopped",
+        currentAnimation: null,
+        activeClipName: MANUAL_CLIP,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when activeClipName is null", () => {
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: true,
+        chatStatus: "stopped",
+        currentAnimation: MANUAL_CLIP,
+        activeClipName: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when activeClipName !== currentAnimation (showing clip is not the user's explicit selection)", () => {
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: true,
+        chatStatus: "stopped",
+        currentAnimation: MANUAL_CLIP,
+        activeClipName: IDLE_CLIP,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when activeClipName matches the ready/idle pattern (the default idle base clip stays on)", () => {
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: true,
+        chatStatus: "ready",
+        currentAnimation: IDLE_CLIP,
+        activeClipName: IDLE_CLIP,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true when enabled + stopped/ready + a manually-selected non-idle clip is showing", () => {
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: true,
+        chatStatus: "stopped",
+        currentAnimation: MANUAL_CLIP,
+        activeClipName: MANUAL_CLIP,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldDisableProceduralForManualClip({
+        enabled: true,
+        chatStatus: "ready",
+        currentAnimation: MANUAL_CLIP,
+        activeClipName: MANUAL_CLIP,
+      }),
+    ).toBe(true);
   });
 });

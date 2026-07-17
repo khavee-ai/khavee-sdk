@@ -165,6 +165,11 @@ export function GLBAvatar({
     getRoot,
     enableBlinking: true, // harmless no-op on GLB — adapter's expression manager is always null.
     currentVolume,
+    // 11-17 gap closure (OPEN ISSUE 2): disable procedural breathing/sway
+    // while a manually-selected non-idle clip is the active base — see
+    // `shouldDisableProceduralForManualClip` in AnimationStateEngine.ts.
+    // VRMAvatar.tsx intentionally omits this param.
+    dampProceduralOnManualClip: true,
   });
 
   // drei's useAnimations already runs mixer.update(delta) internally via its

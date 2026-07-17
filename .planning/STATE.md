@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
 status: planning
-stopped_at: Phase 11 COMPLETE (11-18 sixth gap-closure round — all 7 requirements + G1-G5 both pages confirmed by human)
-last_updated: "2026-07-17T13:42:06.905Z"
+stopped_at: Phase 12 context gathered
+last_updated: "2026-07-17T14:04:58.918Z"
 last_activity: 2026-07-17
 progress:
   total_phases: 13
@@ -117,6 +117,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-17T13:42:06.899Z
-Stopped at: Phase 11 COMPLETE (11-18 sixth gap-closure round — all 7 requirements + G1-G5 both pages confirmed by human)
-Resume file: .planning/phases/11-idle-transition-talking-states/11-18-SUMMARY.md
+Last session: 2026-07-17T14:04:58.910Z
+Stopped at: Phase 12 context gathered
+Resume file: .planning/phases/12-gaze-gesture/12-CONTEXT.md

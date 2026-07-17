@@ -739,3 +739,85 @@ describe("G4 fix — resetToRestPoseIfNotDriven does not snap the torso during a
     expect(maxDeviationFromMixerPose).toBeGreaterThan(0.05);
   });
 });
+
+describe("G5 fix — hips height holds at bind pose during the load-time idle settle (11-15)", () => {
+  // Drives a REAL beginCrossfade(null, idleAction, root) + stepCrossfade
+  // settle (the production path, not a stub) with a synthetic hips position
+  // track built the way the FIXED remapMixamoAnimationToVrm.ts now produces
+  // one -- anchored at the bind-pose Y, not 0 (see remapMixamoAnimationToVrm.
+  // test.ts for the retargeter-level unit tests, and this file's "11-15 gap
+  // closure" header block for the headless production-path evidence this
+  // fix targets). Before the fix, an identical setup with the track anchored
+  // at 0 would have shown hips.position.y ramp the FULL ~1.008-unit distance
+  // from the bind pose down toward 0 across this exact settle.
+  it("hips.position.y stays within a small tolerance of the bind-pose Y across the full real crossfade settle (matches the 11-15 fix, not the pre-fix ~1-unit drop)", () => {
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValue(0);
+
+    const root = new THREE.Object3D();
+    const hips = new THREE.Object3D();
+    hips.name = "hips";
+    root.add(hips);
+
+    const bindPoseHipsY = 1.008;
+    // The bind pose, exactly as it would read before any action has ever
+    // played (mirrors the 11-15 headless diagnosis's captured
+    // `hips.position.y` measurement, 1.00825679, rounded here for a clean
+    // fixture).
+    hips.position.set(0, bindPoseHipsY, 0);
+
+    // Simulated FIXED remapped clip: hips position track anchored at the
+    // bind-pose Y (11-15 fix), NOT 0 -- mirrors what
+    // remapMixamoAnimationToVrm.ts's hips VectorKeyframeTrack branch now
+    // produces. A small amount of secondary motion (+-0.02) is included so
+    // this test also proves the clip's own natural idle-bob motion stays
+    // bounded, not just a single frozen value.
+    const track = new THREE.VectorKeyframeTrack(
+      "hips.position",
+      [0, 0.5, 1],
+      [0, bindPoseHipsY, 0, 0, bindPoseHipsY - 0.02, 0, 0, bindPoseHipsY + 0.01, 0],
+    );
+    const clip = new THREE.AnimationClip("idle", 1, [track]);
+
+    const mixer = new THREE.AnimationMixer(root);
+    const idleAction = mixer.clipAction(clip);
+
+    // chatStatus === "stopped" at page load (KhaveeProvider's initial
+    // state) means switchToClip's TRANS-01/02 floor branch applies even for
+    // the idle target -- see the 11-15 header diagnosis. floorSeconds=1.2
+    // reproduces that exact real page-load duration.
+    const blend = beginCrossfade(null, idleAction, root, 1.2);
+    expect(blend.duration).toBeCloseTo(1.2, 6);
+
+    // Generously above the fixture's own +-0.02 secondary motion, and two
+    // orders of magnitude below the ~1.008-unit pre-fix drop this test
+    // guards against.
+    const TOLERANCE = 0.03;
+    const frameMs = 1000 / 60;
+    let simulatedMs = 0;
+    const totalFrames = Math.ceil((blend.duration * 1000) / frameMs) + 5;
+
+    const sampledYs: number[] = [];
+    for (let frame = 0; frame <= totalFrames; frame++) {
+      const delta = frame === 0 ? 0 : frameMs / 1000;
+      mixer.update(delta);
+      sampledYs.push(hips.position.y);
+
+      nowSpy.mockReturnValue(simulatedMs);
+      stepCrossfade(blend);
+      simulatedMs += frameMs;
+    }
+
+    for (const y of sampledYs) {
+      expect(y).toBeGreaterThan(bindPoseHipsY - TOLERANCE);
+      expect(y).toBeLessThan(bindPoseHipsY + TOLERANCE);
+    }
+
+    // Explicit contrast with the pre-fix magnitude: no single frame comes
+    // anywhere close to the OLD anchor-to-0 behavior's ~1.008-unit total
+    // drop toward 0.
+    expect(Math.min(...sampledYs)).toBeGreaterThan(0.5);
+
+    nowSpy.mockRestore();
+  });
+});

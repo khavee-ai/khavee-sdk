@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mixamoVRMRigMap } from "./mixamoVRMRigMap";
 
-export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNode: (arg0: string) => { (): any; new(): any; getWorldPosition: { (arg0: THREE.Vector3): { (): any; new(): any; y: any; }; new(): any; }; name: any; }; }; scene: { getWorldPosition: (arg0: THREE.Vector3) => { (): any; new(): any; y: any; }; }; meta: { metaVersion: string; }; }, asset: THREE.Group<THREE.Object3DEventMap>) {
+export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNode: (arg0: string) => { (): any; new(): any; getWorldPosition: { (arg0: THREE.Vector3): { (): any; new(): any; y: any; }; new(): any; }; name: any; position: { y: number }; }; }; scene: { getWorldPosition: (arg0: THREE.Vector3) => { (): any; new(): any; y: any; }; }; meta: { metaVersion: string; }; }, asset: THREE.Group<THREE.Object3DEventMap>) {
   const foundClip = THREE.AnimationClip.findByName(
     asset.animations,
     "mixamo.com"
@@ -28,6 +28,18 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
   const vrmRootY = vrm.scene.getWorldPosition(_vec3).y;
   const vrmHipsHeight = Math.abs(vrmHipsY - vrmRootY);
   const hipsPositionScale = vrmHipsHeight / motionHipsHeight;
+
+  // (11-15 gap closure — FIX) The VRM's bind-pose LOCAL hips Y, read BEFORE
+  // any animation has ever played (so the bone's local `.position.y` IS the
+  // bind pose). This is deliberately the LOCAL value, not the WORLD
+  // `vrmHipsY` above — for `male.vrm` the two happen to coincide (the
+  // scene root sits at world Y 0, confirmed by the 11-15 headless
+  // diagnosis), but THREE's `AnimationMixer`/`PropertyMixer` binds and
+  // blends the LOCAL `hips.position` property, so anchoring against
+  // anything other than the LOCAL bind-pose value would be wrong for a rig
+  // whose scene root is offset from world-origin Y.
+  const bindPoseHipsY =
+    vrm.humanoid?.getNormalizedBoneNode("hips")?.position.y ?? 0;
 
   clip.tracks.forEach((track) => {
     // Convert each tracks for VRM use, and push to `tracks`
@@ -80,11 +92,32 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
         );
 
         // Normalize Y (vertical axis, index % 3 === 1) by subtracting the
-        // first keyframe's Y. This prevents the avatar from jumping to a
-        // different height when switching between animations that were exported
-        // from Mixamo with different hip Y offsets.
+        // first keyframe's Y, then re-anchoring at the VRM's bind-pose
+        // LOCAL hips Y instead of 0. This still prevents the avatar from
+        // jumping to a different height when switching between animations
+        // that were exported from Mixamo with different hip Y offsets (every
+        // clip retargeted through this function is still anchored at the
+        // SAME shared constant — the only change is that the shared height
+        // is now the bind pose instead of 0).
+        //
+        // (11-15 gap closure — FIX) Anchoring at 0 (the prior behavior) made
+        // THREE's PropertyMixer blend from the bind-pose `original` value
+        // (~1.008 for `male.vrm`) down to the animated track's `0`-anchored
+        // first frame every time this clip's crossfade started from a
+        // never-yet-driven skeleton (T-pose on page load, before 11-13's G1
+        // fix; the same settle simply relocated to load time after that
+        // fix) -- a visible Y-axis drop, root-caused via headless
+        // production-path replay (see AnimationStateEngine.ts's 11-15
+        // gap-closure diagnosis block). Anchoring at the bind-pose Y instead
+        // makes BOTH crossfade blend endpoints (the bind pose the mixer
+        // starts from, and the animated first frame) equal, so
+        // `applied(w) = original*(1-w) + animated*w = bindPoseHipsY` at
+        // EVERY weight -- the blend is flat across the whole settle, no
+        // drop and no mid-ramp overshoot.
         const firstY = scaled[1] ?? 0;
-        const value = scaled.map((v, i) => (i % 3 === 1 ? v - firstY : v));
+        const value = scaled.map((v, i) =>
+          i % 3 === 1 ? v - firstY + bindPoseHipsY : v
+        );
 
         tracks.push(
           new THREE.VectorKeyframeTrack(

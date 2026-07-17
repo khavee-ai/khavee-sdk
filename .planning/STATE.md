@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
-status: executing
-stopped_at: Phase 11 gap closure round 4 (11-13/11-14 executed; G1/G2/G3/G4 + 7-req sweep approved; G5 new finding — needs round 5)
-last_updated: "2026-07-17T12:50:38.363Z"
-last_activity: 2026-07-17 -- Phase 11 planning complete
+status: planning
+stopped_at: Phase 11 COMPLETE (11-18 sixth gap-closure round — all 7 requirements + G1-G5 both pages confirmed by human)
+last_updated: "2026-07-17T13:42:06.905Z"
+last_activity: 2026-07-17
 progress:
   total_phases: 13
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 58
-  completed_plans: 56
-  percent: 69
+  completed_plans: 58
+  percent: 77
 ---
 
 # Project State
@@ -21,23 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value (v2.2):** Replace `VRMAvatar`/`GLBAvatar`'s robotic chatStatus-driven animation switching with a unified, natural-feeling state architecture — shared internal module, procedural motion layer, and a zero-config public API.
-**Current focus:** Phase 11 — idle-transition-talking-states (gap closure — not yet done)
+**Current focus:** Phase 11 (idle-transition-talking-states) COMPLETE — Phase 12 (Gaze & Gesture) not yet planned
 
 ## Current Position
 
-Phase: 11 (idle-transition-talking-states) — GAP CLOSURE IN PROGRESS (round 6 needed)
-Plan: 16 of 16 (11-01..11-16 all have SUMMARY.md; phase requirements not fully satisfied — two open findings from round 5's human checkpoint)
-Status: Ready to execute
-Last activity: 2026-07-17 -- Phase 11 planning complete
+Phase: 11 (idle-transition-talking-states) — COMPLETE (18/18 plans, all 7 requirements confirmed)
+Plan: 18 of 18 (11-01..11-18 all have SUMMARY.md; all phase requirements satisfied via 11-18's decisive human re-sweep)
+Status: Ready to plan next phase (Phase 12)
+Last activity: 2026-07-17
 
-Round 5 result: 11-15 root-caused and fixed G5 (page-load Y-axis hips-height drop) by anchoring the retargeted hips track at the VRM bind-pose Y. 11-16's 10 code gates all PASS (98/98 tests, tsc clean) and the human confirmed G5 fixed on the VRM page. G1-G4 and the full 7-requirement sweep were NOT walked item-by-item by the human this round. Two NEW open findings surfaced:
+Round 6 (final) result: 11-17 fixed both open findings from round 5 (VRM leg-bone sway retargeted onto spine+chest; GLB manual-clip procedural gate silences sway/breathing when a manually-selected non-idle clip is active). 11-18's 9 code-level gates all PASS (106/106 tests, tsc clean), and the human's decisive live verdict — collected across two turns with an explicit clarifying question to resolve scope ambiguity in "the other is fine" — explicitly confirmed: both new findings resolved, G1-G5 on BOTH the VRM and GLB pages (closing the previously-outstanding GLB-side G5 confirmation), and all 7 phase requirements (IDLE-01, IDLE-02, TRANS-01, TRANS-02, TALK-01, TALK-02, PERF-01). No open issues remain.
 
-1. VRM: sway/breathing procedural motion visibly affects leg bones — should be scoped away from legs.
-2. GLB: sway/breathing intensity is too strong after the human swaps the active animation clip (fine on default animation) — needs reducing/disabling when a non-default animation is active.
+Phase 11 is now fully complete. Next: plan Phase 12 (Gaze & Gesture) — camera-relative soft gaze/attention per state and LLM tool-called nod/shake gestures — e.g. `/gsd-plan-phase 12`.
 
-Next: plan a sixth gap-closure pass (11-17/11-18 or similar) to (a) exclude leg bones from VRM sway/breathing, (b) scale down or disable procedural sway on GLB when animation is swapped — e.g. `/gsd-plan-phase 11 --gaps`. Phase 11 cannot be marked complete until this is resolved and a full G1-G4 + 7-requirement sweep is re-confirmed.
-
-Progress: [████████░░] 75% (v2.2 milestone; v2.1 Phase 9 tracked separately at 5/6 plans complete)
+Progress: [████████░░] 77% (10/13 roadmap phases fully summarized; 58/58 plans currently on disk all have SUMMARY.md)
 
 ## Performance Metrics
 
@@ -59,8 +56,8 @@ Progress: [████████░░] 75% (v2.2 milestone; v2.1 Phase 9 tra
 | 7 | 5 | - | - |
 | 8 | 5 | - | - |
 | 9 | 5/6 | - | - |
-| 10 | 0/TBD | - | - |
-| 11 | 0/TBD | - | - |
+| 10 | 4/4 | - | - |
+| 11 | 18/18 | - | - |
 | 12 | 0/TBD | - | - |
 | 13 | 0/TBD | - | - |
 
@@ -70,6 +67,7 @@ Progress: [████████░░] 75% (v2.2 milestone; v2.1 Phase 9 tra
 - Trend: v2.1 Phase 9 (Block Studio) at 5/6 plans, blocked on 09-06 live UAT checkpoint. v2.2 roadmap just created — 4 phases (10-13), no plans decomposed yet.
 
 *Updated after each plan completion*
+| Phase 11 P18 | 25min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -84,6 +82,7 @@ Recent decisions affecting current work:
 - v2.2: Phase 10 (shared module + crossfade) sequenced first as the foundation every other phase's procedural systems route through; Phase 13 (public API + perf tiers + verification) sequenced last since it configures/gates behavior built in Phases 10-12
 - v2.0: WordPress plugin targets `OpenAIRealtimeProvider` (full-duplex WebRTC), not `generic-stt-tts` — matches the WP embedding use case shape
 - v2.0: Custom mode only this milestone (self-configured); Platform mode is an explicit fast-follow blocked on a `khavee-app` backend addition
+- [Phase 11]: v2.2: Phase 11 gap closure fully resolved (11-18, 2026-07-17) - sway retargeted off hips onto spine+chest (no leg motion) and GLB manual-clip procedural gate silences sway/breathing when a non-idle clip is manually selected; all 7 phase requirements and G1-G5 (both VRM and GLB) explicitly re-confirmed by decisive human verdict
 
 ### Pending Todos
 
@@ -91,7 +90,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- v2.2: Phase 11 not fully closed after gap-closure wave (11-13/11-14, 2026-07-17): 11-13 correctly root-caused G1/G3 (shared cause: crossfade-trigger effect never re-fires when clips load post-mount without a chatStatus change) and G4 (independent: reset-to-rest-pose firing mid-talk-variant-switch) via headless production-path replay, fixing both with new exported pure functions per an explicit plan-checker requirement (to make the regression tests actually exercise the same decision logic the shipped hook uses). 11-14's human re-check APPROVED G1, G2, G3, G4, and the full 7-requirement regression sweep. But a NEW finding (G5) surfaced: the same Y-drop motion still happens, just relocated from connect-time (now fixed) to the initial page-load T-pose-to-idle settle. Not root-caused yet. Needs a fifth gap-closure plan (11-15/11-16) before Phase 11 can be marked complete.
+- v2.2: Phase 11 is now fully CLOSED (2026-07-17, 11-18 sixth gap-closure round). History: 11-13 root-caused G1/G3 (shared cause: crossfade-trigger effect never re-fires when clips load post-mount) and G4 (reset-to-rest-pose firing mid-talk-variant-switch); 11-14 confirmed G1-G4 + 7-req sweep but surfaced G5 (page-load Y-drop, relocated from connect-time); 11-15 root-caused and fixed G5 (retargeter bind-pose Y anchor); 11-16 confirmed G5 fixed on VRM but surfaced two NEW findings (VRM leg-bone sway, GLB sway too strong after animation swap); 11-17 fixed both; 11-18's decisive human re-sweep confirmed everything — both new findings resolved, G1-G5 on both VRM and GLB, and all 7 requirements. No open issues remain.
 - v2.2: A stray untracked directory `.planning/phases/11-bone-masked-upper-body-animation-layering/` exists on disk (dated 2026-07-01, pre-dates this milestone's requirements) — not referenced by this roadmap and should not be treated as this milestone's real Phase 11; likely debris from an abandoned branch (see PROJECT.md's standing instruction not to mine `worktree-agent-*`/`fix/emotion-analyzer-provider-agnostic` branches). Flagged for cleanup, not blocking.
 - Phase 9 (v2.1): 09-06-PLAN.md (live UAT checkpoint) still pending — Block Studio not yet complete
 - Phase 5 (v1.0): VAD-loopback cooldown (currently a 500ms magic number tuned for OpenAI TTS) cannot be validated against JaiTTS until that service exists — must explicitly retest, not assume
@@ -118,6 +117,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-17T02:58:00.000Z
-Stopped at: Phase 11 gap closure round 4 (11-13/11-14 executed; G1/G2/G3/G4 + 7-req sweep approved; G5 new finding — needs round 5)
-Resume file: .planning/phases/11-idle-transition-talking-states/11-14-SUMMARY.md
+Last session: 2026-07-17T13:42:06.899Z
+Stopped at: Phase 11 COMPLETE (11-18 sixth gap-closure round — all 7 requirements + G1-G5 both pages confirmed by human)
+Resume file: .planning/phases/11-idle-transition-talking-states/11-18-SUMMARY.md

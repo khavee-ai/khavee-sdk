@@ -81,12 +81,12 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | ANIM-01 | Phase 10 | Pending |
 | ANIM-02 | Phase 10 | Pending |
 | ANIM-03 | Phase 10 | Pending |
-| IDLE-01 | Phase 11 | Complete |
-| IDLE-02 | Phase 11 | Complete (confirmed visible drift in `ready` state, 2026-07-16 re-check) |
-| TRANS-01 | Phase 11 | Complete (not re-tested in 2026-07-16 checkpoint — see new G2 regression note below) |
-| TRANS-02 | Phase 11 | Complete |
-| TALK-01 | Phase 11 | Complete — but flagged: 2026-07-16 human re-check reported the idle→talking transition now "snaps" (new regression G2, not yet root-caused as to whether it's a TALK-01 or XFADE-01 defect; not un-checked pending diagnosis) |
-| TALK-02 | Phase 11 | Complete (confirmed loud/quiet amplitude tracking, 2026-07-16 re-check) |
+| IDLE-01 | Phase 11 | Complete (final re-confirmation 2026-07-17, 11-18 sixth gap-closure round — legs no longer sway, all other behavior confirmed) |
+| IDLE-02 | Phase 11 | Complete (confirmed visible drift in `ready` state; re-confirmed 2026-07-17, 11-18) |
+| TRANS-01 | Phase 11 | Complete (re-confirmed 2026-07-17, 11-18 sixth gap-closure round) |
+| TRANS-02 | Phase 11 | Complete (re-confirmed 2026-07-17, 11-18 sixth gap-closure round) |
+| TALK-01 | Phase 11 | Complete — G2 snap regression fixed and confirmed by 11-14 (2026-07-17), re-confirmed again 2026-07-17 in 11-18's final sweep |
+| TALK-02 | Phase 11 | Complete (confirmed loud/quiet amplitude tracking, 2026-07-16 re-check; re-confirmed 2026-07-17, 11-18) |
 | XFADE-01 | Phase 10 | Pending |
 | GAZE-01 | Phase 12 | Pending |
 | GAZE-02 | Phase 12 | Pending |
@@ -96,17 +96,19 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | API-02 | Phase 13 | Pending |
 | API-03 | Phase 13 | Pending |
 | API-04 | Phase 13 | Pending |
-| PERF-01 | Phase 11 | Complete |
+| PERF-01 | Phase 11 | Complete (re-confirmed 2026-07-17, 11-18 sixth gap-closure round, incl. GLB manual-clip procedural gate) |
 | PERF-02 | Phase 13 | Pending |
 | VERIFY-01 | Phase 13 | Pending |
 | VERIFY-02 | Phase 13 | Pending |
 
-**Untracked regressions (not mapped to a REQ-ID):**
-- G1: Avatar stuck in T-pose on first load — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17). Root cause (found by 11-13 via headless production-path replay): the crossfade-trigger effect's single pre-connect run happened while clips/root were unresolvable and never re-fired when the VRM finished loading. Fixed with a new exported pure function `shouldTriggerClipSwitch`.
-- G2: Idle→talking transition snap — FIXED and confirmed by 11-12's round-3 human re-check (2026-07-16), reconfirmed by 11-14 (2026-07-17).
-- G3: Y-axis drop when Connect is first pressed — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), sharing G1's root cause per 11-13's diagnosis.
-- G4: minor jiggle during TALK-01's talk-clip cycling — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17). Root cause (11-13): `resetToRestPoseIfNotDriven` snapped toward the bind-pose anchor during a talk-variant switch while the outgoing action was still contributing. Fixed with a new exported pure function `isBaseActionMeaningfullyDriving`.
-- G5 (new, found 2026-07-17 in 11-14's round-4 check): the underlying Y-axis-drop motion (same class as G3) still occurs, but relocated from the connect-time transition (now fixed) to the initial page-load T-pose-to-idle settle — a direct side effect of 11-13's G1 fix moving the base clip's first successful crossfade to page-load time instead of eliminating the drop itself. Not yet root-caused.
+**Untracked regressions (not mapped to a REQ-ID) — ALL RESOLVED as of 11-18 (2026-07-17):**
+- G1: Avatar stuck in T-pose on first load — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), re-confirmed by 11-18's sixth-round sweep. Root cause (found by 11-13 via headless production-path replay): the crossfade-trigger effect's single pre-connect run happened while clips/root were unresolvable and never re-fired when the VRM finished loading. Fixed with a new exported pure function `shouldTriggerClipSwitch`.
+- G2: Idle→talking transition snap — FIXED and confirmed by 11-12's round-3 human re-check (2026-07-16), reconfirmed by 11-14 (2026-07-17) and 11-18 (2026-07-17).
+- G3: Y-axis drop when Connect is first pressed — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), reconfirmed by 11-18 (2026-07-17), sharing G1's root cause per 11-13's diagnosis.
+- G4: minor jiggle during TALK-01's talk-clip cycling — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), reconfirmed by 11-18 (2026-07-17). Root cause (11-13): `resetToRestPoseIfNotDriven` snapped toward the bind-pose anchor during a talk-variant switch while the outgoing action was still contributing. Fixed with a new exported pure function `isBaseActionMeaningfullyDriving`.
+- G5: page-load Y-axis-drop settle (same class as G3, relocated to initial page load by 11-13's G1 fix) — FIXED by 11-15 (retargeter bind-pose Y anchor), confirmed on VRM by 11-16 (2026-07-17), and confirmed on BOTH VRM and GLB by 11-18's sixth-round sweep (2026-07-17).
+- OPEN ISSUE 1 (new, found 2026-07-17 in 11-16's fifth-round check): VRM procedural sway/breathing visibly affected leg bones — FIXED by 11-17 (sway retargeted off hips onto spine+chest) and confirmed by 11-18 (2026-07-17).
+- OPEN ISSUE 2 (new, found 2026-07-17 in 11-16's fifth-round check): GLB procedural sway intensity too strong after swapping the active animation clip — FIXED by 11-17 (`shouldDisableProceduralForManualClip` gate) and confirmed by 11-18 (2026-07-17).
 
 **Coverage:**
 - v1 requirements: 22 total

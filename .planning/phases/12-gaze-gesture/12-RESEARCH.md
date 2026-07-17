@@ -359,19 +359,19 @@ Not broadly applicable — this is internal-precedent-driven work, not an extern
 
 **If this table is empty:** N/A — see entries above.
 
-## Open Questions
+## Open Questions (RESOLVED — operationalized in plans, see notes below)
 
-1. **What is the bundled VRM/GLB head bone's actual local "forward" axis convention, and does it match between formats?**
+1. **RESOLVED in 12-02 Task 1 (empirical spike).** What is the bundled VRM/GLB head bone's actual local "forward" axis convention, and does it match between formats?
    - What we know: VRM 1.0's specification standardizes the whole-avatar ROOT to face -Z (with three-vrm auto-correcting VRM 0.x rigs at load time); a three-vrm GitHub issue (#1173) documents a developer needing manual axis correction when doing exactly this kind of head-bone look-at math, suggesting individual bone-local conventions are NOT automatically standardized the same way.
    - What's unclear: whether `male.vrm`'s normalized head bone and `happy.glb`'s literal head bone share a consistent local-forward convention, or whether each needs its own axis handling.
    - Recommendation: before implementing gaze's camera-relative math, run a small headless (or in-browser devtools) empirical check — set the head bone's world quaternion to a known "looking straight at world +Z" orientation, read back its LOCAL quaternion, and compare across both assets — rather than assuming a convention from documentation alone. This is a ~30-minute spike, not a research-blocking unknown, but should be its own early task/checkpoint in the plan given Pattern 3 is the phase's one genuinely novel piece of math.
 
-2. **Does `toolGesture`'s parameter shape need to satisfy BOTH `RealtimeTool["parameters"]` (from `packages/core/src/types/realtime.ts`) AND whatever `toolAnimate`'s nested JSON-Schema shape implies, or should `toolAnimate` be left as-is (possibly already broken/unused) while `toolGesture` uses the correct, type-checking shape?**
+2. **RESOLVED in 12-01 Task 1 (flat shape chosen, per Assumption A2).** Does `toolGesture`'s parameter shape need to satisfy BOTH `RealtimeTool["parameters"]` (from `packages/core/src/types/realtime.ts`) AND whatever `toolAnimate`'s nested JSON-Schema shape implies, or should `toolAnimate` be left as-is (possibly already broken/unused) while `toolGesture` uses the correct, type-checking shape?**
    - What we know: `toolAnimate` is unexported and unused anywhere in this repo, so its shape mismatch with `RealtimeTool` has never been caught by any consumer or test.
    - What's unclear: whether "mirror `toolAnimate`'s shape exactly" (D-01) was intended literally (reproduce the same mismatch) or as "mirror the pattern of a plain exported object with `name`/`description`/`parameters`, no `execute`" (functionally correct, textually different).
    - Recommendation: planner should treat D-01 as constraining the OUTER shape (`name`/`description`/`parameters`, no `execute`, plain exported const) and use the `RealtimeTool`-compatible flatter `parameters` shape for `toolGesture` specifically, since GEST-01 requires this tool to actually function through `RealtimeConfig.tools` — unlike `toolAnimate`, which has never been exercised end-to-end and so never had to satisfy that constraint.
 
-3. **Where exactly should the "app wires `execute`" bridging code live for a demo/verification page, given this phase's tool-construction-timing mismatch (Pitfall 3)?**
+3. **RESOLVED in 12-05 Task 2 (`useEffect` + `registerFunction` bridge).** Where exactly should the "app wires `execute`" bridging code live for a demo/verification page, given this phase's tool-construction-timing mismatch (Pitfall 3)?**
    - What we know: the existing `rag-realtime/page.tsx` demo constructs its `RealtimeProvider` (and its `tools` array) at MODULE scope, outside any component, while `useKhavee()`'s new gesture setter only exists inside the React tree.
    - What's unclear: whether this phase's plan should include a new/updated demo page exercising `set_gesture` end-to-end (useful for the phase's human-verify checkpoint, matching Phase 10/11's `openai-avatar-test`/`glb-avatar-test` precedent), and if so, whether it should use `registerFunction()` post-construction (inside a `useEffect`) or restructure tool construction to happen inside a component.
    - Recommendation: planner should scope a small demo-page task (or reuse an existing one) specifically to exercise GEST-01 end-to-end for verification purposes, using `registerFunction()` inside a `useEffect` after the provider is available via `useKhavee()`/`useRealtime()` — this avoids restructuring the existing module-scope-provider-construction pattern other demo pages already rely on.

@@ -345,7 +345,7 @@ Plans:
   5. Speaking louder or more quietly visibly changes the procedural motion's amplitude in real time (via `useAudioLipSync`'s live volume signal), but never changes which talk clip is selected or when the next cycle switch happens
   6. When breathing and sway both write to the spine bone in the same frame, the combined rotation is produced by additive delta-quaternion `multiply()` in a fixed, documented order with a bounded combined magnitude — not one system's `.set()` overwriting the other's
 
-**Plans**: 16 plans (6 + 10 gap closure)
+**Plans**: 18 plans (6 + 12 gap closure)
 Plans:
 **Wave 1** *(foundation — adapter contract + volume plumbing, zero file overlap)*
 
@@ -389,6 +389,11 @@ Plans:
 
 - [x] 11-15-PLAN.md — Diagnose-then-fix G5 (page-load T-pose-to-idle Y-axis drop): Task 1 root-causes it via headless production-path replay (frame-by-frame hips.position.y, confirming the remap first-keyframe-Y normalization vs. ~1.008 VRM bind-pose hips Y, and that resetToRestPoseIfNotDriven anchors only quaternions not hips.position); Task 2 fixes it with a bind-pose-aware hips-Y anchor gated on isBaseActionMeaningfullyDriving, with a real-path G5 regression test and no 11-09/11-11/11-13 regression
 - [x] 11-16-PLAN.md — Re-verify (5th checkpoint): 10/10 code gates PASS, 98/98 tests, tsc clean. Human confirmed G5 fixed on VRM but did not walk the full G1-G4/7-req sweep, and surfaced TWO NEW findings: (1) VRM sway/breathing visibly affects leg bones, (2) GLB sway intensity too strong after swapping the active animation clip. Phase 11 gap closure NOT complete — sixth round needed.
+
+**Wave 11** *(gap closure — 11-16 human re-check: G5 confirmed fixed on VRM, but two new findings block completion — VRM leg sway, GLB sway too strong after animation change; full G1-G5 + 7-requirement re-sweep still owed)*
+
+- [ ] 11-17-PLAN.md — Fix the two new findings: retarget procedural sway off the hips root onto spine+chest so leg bones no longer rotate (OPEN ISSUE 1, IDLE-01), and add an exported shouldDisableProceduralForManualClip gate that forces proceduralScale to 0 on GLB when a manually-selected non-idle clip is the active base (OPEN ISSUE 2, PERF-01); GLBAvatar opts in, VRMAvatar untouched; sway/engine unit tests updated, full suite green, tsc clean
+- [ ] 11-18-PLAN.md — Re-verify (6th checkpoint): 9 code-level gates (invariants + both 11-17 fixes landed) then a blocking DECISIVE human re-sweep of BOTH new findings AND the full G1-G5 (incl. GLB-side G5) + all 7 phase requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — none assumed to hold by default; completes Phase 11 only if every item is explicitly confirmed
 
 **UI hint**: yes
 

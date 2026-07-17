@@ -345,7 +345,7 @@ Plans:
   5. Speaking louder or more quietly visibly changes the procedural motion's amplitude in real time (via `useAudioLipSync`'s live volume signal), but never changes which talk clip is selected or when the next cycle switch happens
   6. When breathing and sway both write to the spine bone in the same frame, the combined rotation is produced by additive delta-quaternion `multiply()` in a fixed, documented order with a bounded combined magnitude — not one system's `.set()` overwriting the other's
 
-**Plans**: 14 plans (6 + 8 gap closure)
+**Plans**: 16 plans (6 + 10 gap closure)
 Plans:
 **Wave 1** *(foundation — adapter contract + volume plumbing, zero file overlap)*
 
@@ -387,8 +387,8 @@ Plans:
 
 **Wave 10** *(gap closure — 11-14 human re-check: G1/G2/G3/G4 fixed and 7-requirement sweep approved, but a new residual finding G5 surfaced — the Y-drop relocated from connect-time to page-load-time instead of being eliminated)*
 
-- [ ] 11-15-PLAN.md — Not yet planned. Root-cause and fix G5: the Y-axis drop during the initial T-pose-to-idle settle on page load. Likely connected to the same base-clip-crossfade mechanism 11-13 fixed for G1/G3 (the hips-Y ramp inherent to the idle clip's first frame finally driving the skeleton) — needs headless runtime evidence following the same discipline as 11-11/11-13, not an assumption
-- [ ] 11-16-PLAN.md — Not yet planned. Re-verify: fix-landed gates + full test suite, then a blocking human re-check of G5 plus a full regression pass across G1-G4 and all 7 original requirements (the 5th verification checkpoint for this phase)
+- [ ] 11-15-PLAN.md — Diagnose-then-fix G5 (page-load T-pose-to-idle Y-axis drop): Task 1 root-causes it via headless production-path replay (frame-by-frame hips.position.y, confirming the remap first-keyframe-Y normalization vs. ~1.008 VRM bind-pose hips Y, and that resetToRestPoseIfNotDriven anchors only quaternions not hips.position); Task 2 fixes it with a bind-pose-aware hips-Y anchor gated on isBaseActionMeaningfullyDriving, with a real-path G5 regression test and no 11-09/11-11/11-13 regression
+- [ ] 11-16-PLAN.md — Re-verify (5th checkpoint): 5 invariant + 5 fix-landed gates + full react suite, then a blocking DECISIVE human re-check of G5 (page-load settle no longer drops) plus a full regression sweep of G1-G4 and all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01)
 
 **UI hint**: yes
 

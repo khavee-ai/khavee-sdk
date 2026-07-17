@@ -13,11 +13,12 @@
  *
  * Dev/test page only — not shipped SDK surface.
  */
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
-import { KhaveeProvider, VRMAvatar, useRealtime, type AnimationConfig } from '@khaveeai/react';
+import { toolGesture } from '@khaveeai/core';
+import { KhaveeProvider, VRMAvatar, useRealtime, useKhavee, type AnimationConfig } from '@khaveeai/react';
 
 const openaiProvider = new OpenAIRealtimeProvider({
   useProxy: true,
@@ -52,6 +53,23 @@ function Scene() {
 
 function OpenAIAvatarTestPage() {
   const { connect, disconnect, sendMessage, conversation, isConnected, chatStatus } = useRealtime();
+  const { setGestureHint } = useKhavee();
+
+  // GEST-01/02 end-to-end wiring: register the LLM tool inside the React
+  // tree (not at module scope, per RESEARCH Open Question 3 / T-12-04) so
+  // the app-supplied `execute` can reach the public `setGestureHint` setter.
+  // `openaiProvider` is constructed once at module scope (unchanged); only
+  // the tool registration happens here, after `KhaveeProvider` makes
+  // `setGestureHint` available via `useKhavee()`.
+  useEffect(() => {
+    openaiProvider.registerFunction({
+      ...toolGesture,
+      execute: async (args) => {
+        setGestureHint(args?.gesture ?? null);
+        return { success: true, message: `gesture: ${args?.gesture}` };
+      },
+    });
+  }, [setGestureHint]);
 
   return (
     <div className="flex h-screen">
@@ -68,8 +86,11 @@ function OpenAIAvatarTestPage() {
           <h1 className="text-3xl font-bold mb-2">OpenAI Realtime Avatar Test</h1>
           <p className="text-sm text-gray-600 mb-6">
             Speak into your mic after connecting. Watch for: lips moving in sync with AI speech
-            audio, and smooth animated transitions as chatStatus changes (idle -&gt; listening -&gt;
-            thinking -&gt; speaking).
+            audio, smooth animated transitions as chatStatus changes (idle -&gt; listening -&gt;
+            thinking -&gt; speaking), camera-relative gaze/attention (the avatar&apos;s head should
+            softly track your viewpoint as you orbit the camera — this is automatic, no button
+            needed), and a nod/shake head gesture as the assistant affirms or disagrees during
+            conversation (GEST-01/02, driven by the <code>set_gesture</code> tool call above).
           </p>
 
           <div className="flex gap-4 mb-6">
@@ -90,6 +111,23 @@ function OpenAIAvatarTestPage() {
             <div className="px-4 py-2 bg-gray-100 rounded-lg">
               Status: {chatStatus}
             </div>
+          </div>
+
+          {/* Manual gesture triggers: verify GEST-01/02 playback deterministically
+              without depending on the LLM emitting a set_gesture tool call. */}
+          <div className="flex gap-4 mb-6">
+            <button
+              onClick={() => setGestureHint('nod')}
+              className="px-6 py-2 bg-indigo-600 text-white rounded-lg"
+            >
+              Nod
+            </button>
+            <button
+              onClick={() => setGestureHint('shake')}
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg"
+            >
+              Shake
+            </button>
           </div>
         </div>
 

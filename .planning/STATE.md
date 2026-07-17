@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
 status: executing
-stopped_at: Phase 11 gap closure round 4 (11-13/11-14 executed; G1/G2/G3/G4 + 7-req sweep approved; G5 new finding — needs round 5)
-last_updated: "2026-07-17T06:41:52.850Z"
+stopped_at: Phase 11 gap closure round 5 (11-15/11-16 executed; G5 fixed and confirmed on VRM; two new findings — leg-sway on VRM, GLB sway too strong after animation change — needs round 6)
+last_updated: "2026-07-17T15:45:00.000Z"
 last_activity: 2026-07-17 -- Phase 11 planning complete
 progress:
   total_phases: 13
@@ -25,12 +25,16 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 11 (idle-transition-talking-states) — GAP CLOSURE IN PROGRESS (round 5 needed)
-Plan: 14 of 16 (11-01..11-14 have SUMMARY.md; 11-15/11-16 not yet planned; phase requirements not fully satisfied)
+Phase: 11 (idle-transition-talking-states) — GAP CLOSURE IN PROGRESS (round 6 needed)
+Plan: 16 of 16 (11-01..11-16 all have SUMMARY.md; phase requirements not fully satisfied — two open findings from round 5's human checkpoint)
 Status: Ready to execute
-Last activity: 2026-07-17 -- Phase 11 planning complete
+Last activity: 2026-07-17 -- Phase 11 gap closure round 5 (11-15/11-16) executed
 
-Next: plan a fifth gap-closure pass (11-15/11-16) to root-cause and fix G5 (Y-drop during page-load T-pose-to-idle settle), then a full regression re-check — e.g. `/gsd-plan-phase 11 --gaps`. Phase 11 cannot be marked complete until this is resolved.
+Round 5 result: 11-15 root-caused and fixed G5 (page-load Y-axis hips-height drop) by anchoring the retargeted hips track at the VRM bind-pose Y. 11-16's 10 code gates all PASS (98/98 tests, tsc clean) and the human confirmed G5 fixed on the VRM page. G1-G4 and the full 7-requirement sweep were NOT walked item-by-item by the human this round. Two NEW open findings surfaced:
+1. VRM: sway/breathing procedural motion visibly affects leg bones — should be scoped away from legs.
+2. GLB: sway/breathing intensity is too strong after the human swaps the active animation clip (fine on default animation) — needs reducing/disabling when a non-default animation is active.
+
+Next: plan a sixth gap-closure pass (11-17/11-18 or similar) to (a) exclude leg bones from VRM sway/breathing, (b) scale down or disable procedural sway on GLB when animation is swapped — e.g. `/gsd-plan-phase 11 --gaps`. Phase 11 cannot be marked complete until this is resolved and a full G1-G4 + 7-requirement sweep is re-confirmed.
 
 Progress: [████████░░] 75% (v2.2 milestone; v2.1 Phase 9 tracked separately at 5/6 plans complete)
 

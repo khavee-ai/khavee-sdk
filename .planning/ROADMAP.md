@@ -388,7 +388,7 @@ Plans:
 **Wave 10** *(gap closure — 11-14 human re-check: G1/G2/G3/G4 fixed and 7-requirement sweep approved, but a new residual finding G5 surfaced — the Y-drop relocated from connect-time to page-load-time instead of being eliminated)*
 
 - [x] 11-15-PLAN.md — Diagnose-then-fix G5 (page-load T-pose-to-idle Y-axis drop): Task 1 root-causes it via headless production-path replay (frame-by-frame hips.position.y, confirming the remap first-keyframe-Y normalization vs. ~1.008 VRM bind-pose hips Y, and that resetToRestPoseIfNotDriven anchors only quaternions not hips.position); Task 2 fixes it with a bind-pose-aware hips-Y anchor gated on isBaseActionMeaningfullyDriving, with a real-path G5 regression test and no 11-09/11-11/11-13 regression
-- [ ] 11-16-PLAN.md — Re-verify (5th checkpoint): 5 invariant + 5 fix-landed gates + full react suite, then a blocking DECISIVE human re-check of G5 (page-load settle no longer drops) plus a full regression sweep of G1-G4 and all 7 original requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01)
+- [x] 11-16-PLAN.md — Re-verify (5th checkpoint): 10/10 code gates PASS, 98/98 tests, tsc clean. Human confirmed G5 fixed on VRM but did not walk the full G1-G4/7-req sweep, and surfaced TWO NEW findings: (1) VRM sway/breathing visibly affects leg bones, (2) GLB sway intensity too strong after swapping the active animation clip. Phase 11 gap closure NOT complete — sixth round needed.
 
 **UI hint**: yes
 
@@ -440,6 +440,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 15/16 | In Progress|  |
+| 11. Idle, Transition & Talking States | 16/16 | In Progress (gap closure round 6 needed) |  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

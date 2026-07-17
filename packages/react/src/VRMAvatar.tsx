@@ -1,6 +1,6 @@
 import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { useFBX, useGLTF } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -304,7 +304,14 @@ export function VRMAvatar({
   enableBlinking = true,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume } = useKhavee();
+  const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume, gestureHint, setGestureHint } =
+    useKhavee();
+  // D-04: read the R3F active scene camera once per render (NOT inside
+  // useFrame) so camera-relative gaze (GAZE-01) has a moving reference to
+  // track. `useThree((state) => state.camera)` and `useFrame`'s first-arg
+  // `state.camera` are the same object; reading it here (component scope)
+  // keeps the controller call site symmetric with GLBAvatar.tsx.
+  const camera = useThree((state) => state.camera);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
@@ -474,6 +481,9 @@ export function VRMAvatar({
     getRoot,
     enableBlinking,
     currentVolume,
+    camera,
+    gestureHint,
+    onGestureConsumed: () => setGestureHint(null),
   });
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {

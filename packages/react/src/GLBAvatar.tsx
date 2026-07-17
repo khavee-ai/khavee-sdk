@@ -1,6 +1,6 @@
 "use client";
 import { useAnimations as useDreiAnimations, useGLTF } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useKhavee } from "./KhaveeProvider";
@@ -94,7 +94,13 @@ export function GLBAvatar({
   autoPlayAnimation = 0,
   ...props
 }: GLBAvatarProps) {
-  const { currentAnimation, chatStatus, setAvailableAnimations, currentVolume } = useKhavee();
+  const { currentAnimation, chatStatus, setAvailableAnimations, currentVolume, gestureHint, setGestureHint } =
+    useKhavee();
+  // D-04: read the R3F active scene camera once per render (NOT inside
+  // useFrame) — see the matching comment in VRMAvatar.tsx. Kept symmetric
+  // across both avatar components so gaze/gesture behave identically
+  // (GAZE-02).
+  const camera = useThree((state) => state.camera);
   const groupRef = useRef<THREE.Group>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
 
@@ -170,6 +176,9 @@ export function GLBAvatar({
     // `shouldDisableProceduralForManualClip` in AnimationStateEngine.ts.
     // VRMAvatar.tsx intentionally omits this param.
     dampProceduralOnManualClip: true,
+    camera,
+    gestureHint,
+    onGestureConsumed: () => setGestureHint(null),
   });
 
   // drei's useAnimations already runs mixer.update(delta) internally via its

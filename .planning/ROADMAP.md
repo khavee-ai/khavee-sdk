@@ -423,7 +423,7 @@ Plans:
 
 **Wave 3** *(blocked on 12-04/12-01 — avatar wiring + demo)*
 
-- [ ] 12-05-PLAN.md — VRMAvatar/GLBAvatar useThree camera + gesture threading + openai-avatar-test set_gesture registration (GAZE-01/02, GEST-01/02)
+- [x] 12-05-PLAN.md — VRMAvatar/GLBAvatar useThree camera + gesture threading + openai-avatar-test set_gesture registration (GAZE-01/02, GEST-01/02)
 
 **Wave 4** *(blocked on 12-05 — objective gates + blocking human-verify)*
 
@@ -464,5 +464,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
 | 11. Idle, Transition & Talking States | 18/18 | Complete   | 2026-07-17 |
-| 12. Gaze & Gesture | 4/6 | In Progress|  |
+| 12. Gaze & Gesture | 5/6 | In Progress|  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

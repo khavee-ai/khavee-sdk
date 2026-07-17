@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
-status: planning
+status: executing
 stopped_at: Phase 12 context gathered
-last_updated: "2026-07-17T14:04:58.918Z"
-last_activity: 2026-07-17
+last_updated: "2026-07-17T18:23:25.070Z"
+last_activity: 2026-07-17 -- Phase 12 planning complete
 progress:
   total_phases: 13
   completed_phases: 10
-  total_plans: 58
+  total_plans: 64
   completed_plans: 58
   percent: 77
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 Phase: 11 (idle-transition-talking-states) — COMPLETE (18/18 plans, all 7 requirements confirmed)
 Plan: 18 of 18 (11-01..11-18 all have SUMMARY.md; all phase requirements satisfied via 11-18's decisive human re-sweep)
-Status: Ready to plan next phase (Phase 12)
-Last activity: 2026-07-17
+Status: Ready to execute
+Last activity: 2026-07-17 -- Phase 12 planning complete
 
 Round 6 (final) result: 11-17 fixed both open findings from round 5 (VRM leg-bone sway retargeted onto spine+chest; GLB manual-clip procedural gate silences sway/breathing when a manually-selected non-idle clip is active). 11-18's 9 code-level gates all PASS (106/106 tests, tsc clean), and the human's decisive live verdict — collected across two turns with an explicit clarifying question to resolve scope ambiguity in "the other is fine" — explicitly confirmed: both new findings resolved, G1-G5 on BOTH the VRM and GLB pages (closing the previously-outstanding GLB-side G5 confirmation), and all 7 phase requirements (IDLE-01, IDLE-02, TRANS-01, TRANS-02, TALK-01, TALK-02, PERF-01). No open issues remain.
 

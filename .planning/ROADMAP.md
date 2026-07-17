@@ -413,9 +413,9 @@ Plans:
 Plans:
 **Wave 1** *(three independent surfaces — core tool, gaze module, loop-boundary+gesture module — zero file overlap, fully parallel)*
 
-- [ ] 12-01-PLAN.md — toolGesture (set_gesture) factory + core barrel export fix (GEST-01)
-- [ ] 12-02-PLAN.md — gaze.ts camera-relative soft-gaze + thinking aversion + head-axis empirical spike (GAZE-01, GAZE-02)
-- [ ] 12-03-PLAN.md — extract detectLoopBoundary from talkCycle.ts + gesture.ts triggered one-shot pulse (GEST-02)
+- [x] 12-01-PLAN.md — toolGesture (set_gesture) factory + core barrel export fix (GEST-01)
+- [x] 12-02-PLAN.md — gaze.ts camera-relative soft-gaze + thinking aversion + head-axis empirical spike (GAZE-01, GAZE-02)
+- [x] 12-03-PLAN.md — extract detectLoopBoundary from talkCycle.ts + gesture.ts triggered one-shot pulse (GEST-02)
 
 **Wave 2** *(blocked on 12-02/12-03 — plumbing + controller integration)*
 
@@ -464,5 +464,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
 | 11. Idle, Transition & Talking States | 18/18 | Complete   | 2026-07-17 |
-| 12. Gaze & Gesture | 0/TBD | Not started | - |
+| 12. Gaze & Gesture | 3/6 | In Progress|  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

@@ -392,7 +392,7 @@ Plans:
 
 **Wave 11** *(gap closure — 11-16 human re-check: G5 confirmed fixed on VRM, but two new findings block completion — VRM leg sway, GLB sway too strong after animation change; full G1-G5 + 7-requirement re-sweep still owed)*
 
-- [ ] 11-17-PLAN.md — Fix the two new findings: retarget procedural sway off the hips root onto spine+chest so leg bones no longer rotate (OPEN ISSUE 1, IDLE-01), and add an exported shouldDisableProceduralForManualClip gate that forces proceduralScale to 0 on GLB when a manually-selected non-idle clip is the active base (OPEN ISSUE 2, PERF-01); GLBAvatar opts in, VRMAvatar untouched; sway/engine unit tests updated, full suite green, tsc clean
+- [x] 11-17-PLAN.md — Fix the two new findings: retarget procedural sway off the hips root onto spine+chest so leg bones no longer rotate (OPEN ISSUE 1, IDLE-01), and add an exported shouldDisableProceduralForManualClip gate that forces proceduralScale to 0 on GLB when a manually-selected non-idle clip is the active base (OPEN ISSUE 2, PERF-01); GLBAvatar opts in, VRMAvatar untouched; sway/engine unit tests updated, full suite green, tsc clean
 - [ ] 11-18-PLAN.md — Re-verify (6th checkpoint): 9 code-level gates (invariants + both 11-17 fixes landed) then a blocking DECISIVE human re-sweep of BOTH new findings AND the full G1-G5 (incl. GLB-side G5) + all 7 phase requirements (IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01) — none assumed to hold by default; completes Phase 11 only if every item is explicitly confirmed
 
 **UI hint**: yes
@@ -445,6 +445,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Frontend Bundle, Shortcode & Block | 5/5 | Complete   | 2026-06-25 |
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
-| 11. Idle, Transition & Talking States | 16/16 | In Progress (gap closure round 6 needed) |  |
+| 11. Idle, Transition & Talking States | 17/18 | In Progress|  |
 | 12. Gaze & Gesture | 0/TBD | Not started | - |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

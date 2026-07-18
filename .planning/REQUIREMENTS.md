@@ -28,7 +28,7 @@ Source: wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khav
 
 ### Gaze & Gesture
 
-- [ ] **GAZE-01**: `ready`/`listening`/`speaking` show camera-relative soft gaze (no tracked-user-position dependency); `thinking` shows brief gaze aversion; `starting`/`stopped` get no separate gaze treatment
+- [x] **GAZE-01**: `ready`/`listening`/`speaking` show camera-relative soft gaze (no tracked-user-position dependency); `thinking` shows brief gaze aversion; `starting`/`stopped` get no separate gaze treatment
 - [ ] **GAZE-02**: Gaze applies symmetrically to both VRM and GLB (bone-level behavior, not expression-dependent)
 - [x] **GEST-01**: The LLM can emit a gesture hint (`nod`/`shake`/`none`) via tool-calling as part of its normal response generation (no separate classification call, no keyword/regex matching)
 - [x] **GEST-02**: Triggered gestures are procedural bone deltas (no new animation clip), queued for the ambient talk-cycle's next natural loop boundary — never interrupt mid-clip
@@ -88,8 +88,8 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | TALK-01 | Phase 11 | Complete — G2 snap regression fixed and confirmed by 11-14 (2026-07-17), re-confirmed again 2026-07-17 in 11-18's final sweep |
 | TALK-02 | Phase 11 | Complete (confirmed loud/quiet amplitude tracking, 2026-07-16 re-check; re-confirmed 2026-07-17, 11-18) |
 | XFADE-01 | Phase 10 | Pending |
-| GAZE-01 | Phase 12 | Pending |
-| GAZE-02 | Phase 12 | Pending |
+| GAZE-01 | Phase 12 | Complete (confirmed 2026-07-18, 12-09 human re-verification) |
+| GAZE-02 | Phase 12 | Pending (open gap: GLB idle-animation spin persists after 12-08 fix — see 12-09-VERIFICATION.md, 12-REVIEW-wave7.md) |
 | GEST-01 | Phase 12 | Complete |
 | GEST-02 | Phase 12 | Complete |
 | API-01 | Phase 13 | Pending |

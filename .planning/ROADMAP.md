@@ -41,7 +41,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 10: Shared Animation Architecture & Crossfade Engine** - One shared internal state+procedural module, consumed by both `VRMAvatar` and `GLBAvatar` via a format-adapter interface, replacing the old ad-hoc switching code, with pose-gap-adaptive eased crossfades for every transition (completed 2026-07-12)
 - [x] **Phase 11: Idle, Transition & Talking States** - Natural breathing/sway/expression-drift idle motion, dedicated starting/stopped moments with a minimum duration floor, loop-boundary-driven talk-clip cycling, and audio-reactive procedural amplitude (completed 2026-07-17)
-- [x] **Phase 12: Gaze & Gesture** - Camera-relative soft gaze/attention per state and LLM tool-called nod/shake gestures queued to the next natural loop boundary (completed 2026-07-18)
+- [ ] **Phase 12: Gaze & Gesture** - Camera-relative soft gaze/attention per state and LLM tool-called nod/shake gestures queued to the next natural loop boundary (GAZE-02 open gap: GLB idle-animation spin persists after 12-08 fix — see 12-09-VERIFICATION.md)
 - [ ] **Phase 13: Public API, Performance Tiers & Verification** - `enableNaturalMotion` + granular overrides, reserved-key `animations` prop, zero-config full behavior, tiered graceful degradation under frame pressure, and sign-off against the locked verification checklist
 
 ## Phase Details
@@ -439,7 +439,7 @@ Plans:
 
 **Wave 7** *(blocked on 12-07/12-08 — blocking human re-verify)*
 
-- [ ] 12-09-PLAN.md — human re-verify smooth gaze (VRM, all states) + smooth gaze & no idle spin (GLB); GAZE-01/GAZE-02 sign-off (GAZE-01, GAZE-02)
+- [x] 12-09-PLAN.md — human re-verify smooth gaze (VRM, all states) + smooth gaze & no idle spin (GLB); GAZE-01/GAZE-02 sign-off (GAZE-01, GAZE-02)
 
 ### Phase 13: Public API, Performance Tiers & Verification
 
@@ -476,5 +476,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
 | 11. Idle, Transition & Talking States | 18/18 | Complete   | 2026-07-17 |
-| 12. Gaze & Gesture | 8/9 | In Progress|  |
+| 12. Gaze & Gesture | 9/9 | Gap found  |  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

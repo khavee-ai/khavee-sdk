@@ -41,7 +41,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 10: Shared Animation Architecture & Crossfade Engine** - One shared internal state+procedural module, consumed by both `VRMAvatar` and `GLBAvatar` via a format-adapter interface, replacing the old ad-hoc switching code, with pose-gap-adaptive eased crossfades for every transition (completed 2026-07-12)
 - [x] **Phase 11: Idle, Transition & Talking States** - Natural breathing/sway/expression-drift idle motion, dedicated starting/stopped moments with a minimum duration floor, loop-boundary-driven talk-clip cycling, and audio-reactive procedural amplitude (completed 2026-07-17)
-- [ ] **Phase 12: Gaze & Gesture** - Camera-relative soft gaze/attention per state and LLM tool-called nod/shake gestures queued to the next natural loop boundary (GAZE-02 open gap: GLB idle-animation spin persists after 12-08 fix — see 12-09-VERIFICATION.md)
+- [ ] **Phase 12: Gaze & Gesture** - Camera-relative soft gaze/attention per state and LLM tool-called nod/shake gestures queued to the next natural loop boundary (GAZE-02 deferred: GLB idle-animation spin persists; root cause confirmed as happy.glb's own idle-clip loop-seam, not gaze.ts — deprioritized by user, see 12-10-SUMMARY.md)
 - [ ] **Phase 13: Public API, Performance Tiers & Verification** - `enableNaturalMotion` + granular overrides, reserved-key `animations` prop, zero-config full behavior, tiered graceful degradation under frame pressure, and sign-off against the locked verification checklist
 
 ## Phase Details
@@ -409,7 +409,7 @@ Plans:
   3. The LLM emits a `nod`/`shake`/`none` gesture hint as part of its normal tool-calling response, with no separate classification call and no keyword/regex matching in the pipeline
   4. A triggered gesture plays as a procedural bone-delta overlay (no new animation clip is loaded) and only begins at the ambient talk cycle's next natural loop boundary — it never interrupts a clip mid-play
 
-**Plans**: 9 plans (6 original + 3 gap-closure)
+**Plans**: 10 plans (6 original + 4 gap-closure)
 Plans:
 **Wave 1** *(three independent surfaces — core tool, gaze module, loop-boundary+gesture module — zero file overlap, fully parallel)*
 
@@ -440,6 +440,10 @@ Plans:
 **Wave 7** *(blocked on 12-07/12-08 — blocking human re-verify)*
 
 - [x] 12-09-PLAN.md — human re-verify smooth gaze (VRM, all states) + smooth gaze & no idle spin (GLB); GAZE-01/GAZE-02 sign-off (GAZE-01, GAZE-02)
+
+**Wave 8** *(gap closure round 4 — 12-09 confirmed GAZE-02 REMAINING GAP: GLB idle spin persists after 12-08; blocked on 12-09)*
+
+- [x] 12-10-PLAN.md — CR-01 final-delta re-clamp (bound gaze delta under discontinuous base-pose jump) + RED-first regression test + real-asset CR-01-vs-fallback diagnosis + blocking human GAZE-02 sign-off (GAZE-02)
 
 ### Phase 13: Public API, Performance Tiers & Verification
 
@@ -476,5 +480,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
 | 11. Idle, Transition & Talking States | 18/18 | Complete   | 2026-07-17 |
-| 12. Gaze & Gesture | 9/9 | Gap found  |  |
+| 12. Gaze & Gesture | 10/10 | Gap deferred |  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

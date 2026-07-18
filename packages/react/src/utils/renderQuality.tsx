@@ -148,6 +148,15 @@ export function AvatarLightRig() {
         // which R3F's Canvas `shadows` boolean prop already selects by
         // default. No-op (harmless) under a hard shadow map type.
         shadow-radius={4}
+        // Forcing castShadow on EVERY mesh (applyMeshRenderFlags) means
+        // hair now casts a real shadow onto shoulders/chest — at full
+        // shadow.intensity (three.js default 1 = fully black-out) that
+        // reads as a hard, wrong-colored patch, especially stacked on top
+        // of MToon's own toon shade-color. 0.6 blends the shadowed area
+        // 60% toward black / 40% toward its lit color instead of full
+        // black — visible depth without the garment appearing to change
+        // color under the shadow.
+        shadow-intensity={0.6}
       />
     </>
   );

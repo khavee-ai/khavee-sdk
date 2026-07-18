@@ -7,6 +7,12 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lerp } from "three/src/math/MathUtils.js";
 import { useKhavee } from "./KhaveeProvider";
 import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
+import {
+  applyMeshRenderFlags,
+  applyRendererDefaults,
+  AvatarLightRig,
+  resolveAnisotropy,
+} from "./utils/renderQuality";
 import { useAnimationController } from "./animation/AnimationStateEngine";
 import type { AvatarFormatAdapter } from "./animation/types";
 
@@ -118,6 +124,16 @@ interface VRMAvatarProps {
   scale?: [number, number, number];
   animations?: AnimationConfig;
   enableBlinking?: boolean;
+  /** Force `castShadow` on every avatar mesh at load time. Default: true */
+  castShadow?: boolean;
+  /** Force `receiveShadow` on every avatar mesh at load time. Default: true */
+  receiveShadow?: boolean;
+  /** Texture anisotropy for material maps, clamped to hardware max. Default: 8 (resolved) */
+  anisotropy?: number;
+  /** Renderer tone mapping mode, applied Canvas-wide on mount. Default: THREE.ACESFilmicToneMapping */
+  toneMapping?: THREE.ToneMapping;
+  /** Mount a scoped ambient+directional light rig inside the avatar group. Default: true */
+  autoLighting?: boolean;
 }
 
 /**
@@ -219,6 +235,11 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param scale - Scale [x, y, z]. Default: [1, 1, 1]
  * @param animations - Optional animation configuration using URLs to FBX files
  * @param enableBlinking - Enable natural blinking animations. Default: true
+ * @param castShadow - Force castShadow on every avatar mesh. Default: true
+ * @param receiveShadow - Force receiveShadow on every avatar mesh. Default: true
+ * @param anisotropy - Texture anisotropy for material maps. Default: resolved against hardware max (8)
+ * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.ACESFilmicToneMapping
+ * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
  *
  * @example
  * // Basic usage
@@ -302,6 +323,11 @@ export function VRMAvatar({
   scale = [1, 1, 1],
   animations,
   enableBlinking = true,
+  castShadow = true,
+  receiveShadow = true,
+  anisotropy,
+  toneMapping,
+  autoLighting = true,
   ...props
 }: VRMAvatarProps) {
   const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume, gestureHint, setGestureHint } =
@@ -312,6 +338,7 @@ export function VRMAvatar({
   // `state.camera` are the same object; reading it here (component scope)
   // keeps the controller call site symmetric with GLBAvatar.tsx.
   const camera = useThree((state) => state.camera);
+  const gl = useThree((state) => state.gl);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
@@ -319,6 +346,17 @@ export function VRMAvatar({
   const parsed = useLoadVRM(src);
   const scene = parsed?.scene;
   const currentVrm = parsed?.userData.vrm as VRM | undefined;
+
+  // Force renderer defaults (tone mapping + output color space) once on
+  // mount. NOTE: this mutates the Canvas-shared `gl` (WebGLRenderer)
+  // instance, not just this avatar — see the detailed explanation in
+  // utils/renderQuality.tsx (applyRendererDefaults).
+  useEffect(() => {
+    applyRendererDefaults(gl, {
+      toneMapping: toneMapping ?? THREE.ACESFilmicToneMapping,
+      colorSpace: THREE.SRGBColorSpace,
+    });
+  }, [gl, toneMapping]);
 
   // SDK automatically loads FBX and GLB files from URLs!
   const loadedAnimations = useAnimationFiles(animations);
@@ -444,7 +482,16 @@ export function VRMAvatar({
     currentVrm.scene.traverse((obj: any) => {
       obj.frustumCulled = false;
     });
-  }, [scene, currentVrm, setVrm]);
+
+    // Force shadow-casting/receiving + material map anisotropy on every
+    // mesh — today no avatar mesh sets these anywhere, so a consuming
+    // page's <Canvas shadows> is otherwise a dead no-op.
+    applyMeshRenderFlags(scene, {
+      castShadow,
+      receiveShadow,
+      anisotropy: resolveAnisotropy(gl, anisotropy),
+    });
+  }, [scene, currentVrm, setVrm, gl, castShadow, receiveShadow, anisotropy]);
 
   // Shared animation module (ANIM-01): one adapter + controller drives all
   // chatStatus-triggered crossfading and blink for this avatar, replacing
@@ -527,6 +574,7 @@ export function VRMAvatar({
 
   return (
     <group position={position} rotation={rotation} scale={scale} {...props}>
+      {autoLighting && <AvatarLightRig />}
       {scene && <primitive object={scene} />}
     </group>
   );

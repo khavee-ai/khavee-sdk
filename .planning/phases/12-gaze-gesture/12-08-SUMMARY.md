@@ -155,3 +155,12 @@ None — no external service configuration required.
 ---
 *Phase: 12-gaze-gesture*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+- FOUND: packages/react/src/animation/gaze.ts
+- FOUND: packages/react/src/animation/gaze.test.ts
+- FOUND: .planning/phases/12-gaze-gesture/12-08-SUMMARY.md
+- FOUND commit 9c87786 (fix(12-08): compute gaze camera target from head's actual world forward)
+- FOUND commit c764057 (test(12-08): add GLB/VRM-analog symmetry + camera-behind relax regression tests)
+- FOUND commit 1b3ed92 (docs(12-08): complete GLB idle-spin gap-closure plan)

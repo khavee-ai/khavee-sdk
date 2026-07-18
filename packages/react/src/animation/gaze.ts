@@ -99,10 +99,27 @@
  *      (`starting`/`stopped` -> a live mode); a switch between two
  *      already-live modes (camera<->aversion) eases onward from wherever
  *      the smoothed target already is, so the head never snaps back
- *      through the neutral base first.
- *   5. Derive the final LOCAL delta (`current^-1 * easedTarget`) and apply
- *      it additively via `head.quaternion.multiply(delta)` — PERF-01,
- *      never `.set()`.
+ *      through the neutral base first. CAUTION (12-10 gap closure, CR-01 —
+ *      see `12-REVIEW-wave7.md`): because `smoothedTarget` is a PERSISTED
+ *      ABSOLUTE quaternion re-seeded only on that "none" transition, it can
+ *      legitimately fall many multiples of `MAX_GAZE_ANGLE_RAD` away from
+ *      the CURRENT frame's base if the base pose itself changes
+ *      DISCONTINUOUSLY between two consecutive `stepGaze` calls (an
+ *      idle-clip loop-seam discontinuity, or a `switchToClip`/crossfade
+ *      boundary — both of which run earlier in `AnimationStateEngine.ts`'s
+ *      per-frame `update()`, before gaze). Step 5's final re-clamp exists
+ *      specifically to guard against this.
+ *   5. Derive the final LOCAL delta and apply it additively via
+ *      `head.quaternion.multiply(delta)` — PERF-01, never `.set()`. Before
+ *      deriving the delta, the smoothed target from step 4 is RE-CLAMPED to
+ *      `MAX_GAZE_ANGLE_RAD` from THIS frame's `_scratchCurrent` (the SAME
+ *      `angleTo()`+`copy().slerp()` idiom as step 3's clamp, on an
+ *      independent scratch) — this is what GUARANTEES the applied bound
+ *      holds even when step 4's persisted `smoothedTarget` has drifted from
+ *      a discontinuous base-pose change the smoothing hasn't caught up to
+ *      yet (12-10 gap closure, CR-01). The persisted `smoothedTarget` value
+ *      itself is left untouched by this re-clamp so it keeps
+ *      drifting/re-converging naturally on subsequent frames.
  *
  * `thinking`'s aversion (Pattern 2) skips steps 2-3 entirely — its "target"
  * is simply the current base rotated by a FIXED constant offset
@@ -144,6 +161,7 @@ const _scratchLocalTarget = new THREE.Quaternion(); // absolute target converted
 const _scratchClampedTarget = new THREE.Quaternion(); // _scratchLocalTarget, clamped to MAX_GAZE_ANGLE_RAD from current
 const _scratchRelaxedTarget = new THREE.Quaternion(); // 12-08 gap closure: _scratchClampedTarget eased toward "no offset" when camera is outside the frontal range
 const _scratchEasedTarget = new THREE.Quaternion(); // snapshot of state.smoothedTarget used to derive this frame's delta
+const _scratchBoundedEasedTarget = new THREE.Quaternion(); // 12-10 gap closure (CR-01): _scratchEasedTarget re-clamped to MAX_GAZE_ANGLE_RAD from THIS frame's base, guarding against a discontinuous base-pose jump the persisted smoothedTarget hasn't caught up to yet
 const _scratchDelta = new THREE.Quaternion(); // final LOCAL delta actually applied via multiply()
 const _scratchHeadWorldPos = new THREE.Vector3();
 const _scratchCameraWorldPos = new THREE.Vector3();
@@ -443,9 +461,38 @@ export function stepGaze(
   // Use the persisted smoothed target as this frame's eased target.
   _scratchEasedTarget.copy(state.smoothedTarget);
 
-  // Final LOCAL delta: current^-1 * easedTarget, so that
-  // current.multiply(delta) === easedTarget.
-  _scratchDelta.copy(_scratchCurrent).invert().multiply(_scratchEasedTarget);
+  // 12-10 gap closure (CR-01 — 12-REVIEW-wave7.md): FINAL re-clamp of the
+  // eased target to MAX_GAZE_ANGLE_RAD from THIS frame's `_scratchCurrent`,
+  // regardless of how far the PERSISTED `state.smoothedTarget` has drifted
+  // from the current base. `_scratchClampedTarget`'s clamp above only
+  // bounds the angle relative to the base pose CAPTURED AT THE START of
+  // THIS SAME CALL — it says nothing about the ABSOLUTE `state.smoothedTarget`
+  // carried in from prior frames. If the head bone's mixer-driven base pose
+  // changes DISCONTINUOUSLY between two consecutive `stepGaze` calls (an
+  // idle-clip loop-seam discontinuity, or a `switchToClip`/crossfade
+  // boundary — both of which run earlier in `AnimationStateEngine.ts`'s
+  // per-frame `update()`, well before gaze), `state.smoothedTarget` is still
+  // anchored near the OLD base and can be many multiples of
+  // `MAX_GAZE_ANGLE_RAD` away from the NEW one; applying it unclamped
+  // produced a verified 0.177 rad delta (3.5x the bound) for an 8-degree
+  // base jump. Reuse the SAME angleTo()+copy().slerp() idiom as the earlier
+  // clamp (two independent scratches, never slerping on the live bone).
+  // Note this deliberately does NOT mutate `state.smoothedTarget` itself —
+  // only the bounded snapshot used to derive this frame's delta — so the
+  // persisted target keeps drifting/re-converging naturally on subsequent
+  // frames rather than being permanently clipped.
+  const deltaAngle = _scratchCurrent.angleTo(_scratchEasedTarget);
+  if (deltaAngle > MAX_GAZE_ANGLE_RAD && deltaAngle > 0) {
+    const boundT = MAX_GAZE_ANGLE_RAD / deltaAngle;
+    _scratchBoundedEasedTarget.copy(_scratchCurrent).slerp(_scratchEasedTarget, boundT);
+  } else {
+    _scratchBoundedEasedTarget.copy(_scratchEasedTarget);
+  }
+
+  // Final LOCAL delta: current^-1 * boundedEasedTarget, so that
+  // current.multiply(delta) === boundedEasedTarget, and the applied angle
+  // from current is guaranteed <= MAX_GAZE_ANGLE_RAD.
+  _scratchDelta.copy(_scratchCurrent).invert().multiply(_scratchBoundedEasedTarget);
 
   // Additive write (PERF-01): multiply(), never set()/lookAt() — preserves
   // whatever orientation the mixer/other procedural systems already wrote

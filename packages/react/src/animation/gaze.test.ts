@@ -446,3 +446,66 @@ describe("stepGaze — group-rotation-agnostic camera target (12-08 gap closure,
     expect(angle).toBeLessThan(MAX_GAZE_ANGLE_RAD * 0.5);
   });
 });
+
+describe("stepGaze — bounded delta under a discontinuous base-pose jump between frames (12-10 gap closure, CR-01/WR-01 regression)", () => {
+  // 12-REVIEW-wave7.md CR-01: `state.smoothedTarget` is a PERSISTED ABSOLUTE
+  // quaternion re-seeded from the base pose only on a mode transition out of
+  // "none". If the head bone's mixer-driven base pose changes
+  // DISCONTINUOUSLY between two consecutive `stepGaze` calls (idle-clip
+  // loop-seam, clip switch, or crossfade boundary — all of which run in
+  // `AnimationStateEngine.ts`'s per-frame `update()` BEFORE gaze), the
+  // persisted smoothed target is no longer within `MAX_GAZE_ANGLE_RAD` of
+  // the NEW base, and (pre-fix) the final delta is applied WITHOUT a
+  // post-smoothing re-clamp. The reviewer reproduced 0.177 rad (~10.1deg,
+  // 3.5x the bound) for an 8-degree base jump. Neither `runUntilConverged`
+  // nor any pre-existing test ever varies the base pose between frames
+  // (WR-01) — this describe block is the first to do so.
+  it("Test A (camera mode, the CR-01 repro): applied delta from the NEW base stays within MAX_GAZE_ANGLE_RAD after a discontinuous ~8deg base-pose jump", () => {
+    const { parent, head } = makeHeadWithParent();
+    parent.rotation.set(0, 0, 0); // GLB-analog convention (12-08's "front" camera math)
+    const adapter = makeStubAdapter(head);
+    const camera = makeStubCamera(1, 0.3, -3);
+    const state = createGazeState();
+    const identity = new THREE.Quaternion();
+
+    // Converge fully from a FIXED base pose in camera mode ("ready").
+    runUntilConverged(state, head, identity, adapter, camera, "ready");
+
+    // Discontinuous base-pose jump (~8 degrees / 0.14 rad around Y) — mimics
+    // an idle-clip loop-seam discontinuity or a clip-switch/crossfade
+    // boundary writing a NEW base pose to the head bone before gaze runs
+    // this frame. Capture the jumped base into `newBase` immediately after
+    // setting head.quaternion and BEFORE the stepGaze call, per the plan's
+    // measurement contract.
+    const newBase = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.14);
+    head.quaternion.copy(newBase);
+
+    stepGaze(state, adapter, camera, "ready", FRAME_DT);
+
+    // The applied delta THIS FRAME, measured from the frame's NEW base, must
+    // still respect the declared bound. Pre-fix (CR-01), `state.smoothedTarget`
+    // is still anchored near the OLD (pre-jump) base and is applied without a
+    // post-smoothing re-clamp, so this assertion is expected to FAIL RED
+    // against current code (~0.177 rad > 0.05 rad).
+    expect(newBase.angleTo(head.quaternion)).toBeLessThanOrEqual(MAX_GAZE_ANGLE_RAD + 1e-6);
+  });
+
+  it("Test B (aversion mode, proves CR-01 is camera-independent): applied delta from the NEW base stays within MAX_GAZE_ANGLE_RAD after a discontinuous ~8deg base-pose jump", () => {
+    const { head } = makeHeadWithParent();
+    const adapter = makeStubAdapter(head);
+    const state = createGazeState();
+    const identity = new THREE.Quaternion();
+
+    // Converge fully from a FIXED base pose in aversion mode ("thinking",
+    // camera=null) — isolates the smoothedTarget-drift mechanism from any
+    // camera-mode world-target math (12-08 is unrelated to this bug).
+    runUntilConverged(state, head, identity, adapter, null, "thinking");
+
+    const newBase = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.14);
+    head.quaternion.copy(newBase);
+
+    stepGaze(state, adapter, null, "thinking", FRAME_DT);
+
+    expect(newBase.angleTo(head.quaternion)).toBeLessThanOrEqual(MAX_GAZE_ANGLE_RAD + 1e-6);
+  });
+});

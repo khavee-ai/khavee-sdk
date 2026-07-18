@@ -1,10 +1,12 @@
 # Phase 12 Plan 06: Verification
 
+**Status: GAPS_FOUND** — objective gates all PASS; human verification surfaced 2 open gaps (GAZE-01, GAZE-02) out of 4 requirements. See Part 2 for full detail.
+
 Phase 12 (Gaze & Gesture) verification against its four requirements: GAZE-01, GAZE-02, GEST-01, GEST-02.
 
 This file has two parts:
 1. **Objective code-level gates (G-1..G-9)** — executed and recorded below (Task 1).
-2. **Human per-state verdicts + requirement sign-off** — to be recorded after the Task 2 checkpoint resolves (not yet completed as of this writing).
+2. **Human per-state verdicts + requirement sign-off** — recorded below (Task 2), reporting 2 confirmed requirements and 2 open gaps.
 
 ---
 
@@ -258,13 +260,51 @@ Exit code: `0` (no output — clean)
 
 ## Part 2: Human Verdicts + Requirement Sign-off (Task 2)
 
-**Status: PENDING** — Task 2 (`checkpoint:human-verify`, gate="blocking") has not yet been executed. A human must run the dev app and verify per-state gaze (VRM + GLB) and nod/shake gesture behavior per the plan's `<how-to-verify>` steps before this section can be completed.
+**Status: GAPS_FOUND** — Task 2 (`checkpoint:human-verify`, gate="blocking") was executed live against the dev app on 2026-07-18. The human tested each item in the plan's `<how-to-verify>` checklist and reported a mixed verdict: 2 of 4 requirements confirmed, 2 have open gaps.
 
-This section will be filled in with:
-- Per-state gaze verdict (ready/listening/speaking soft gaze, thinking aversion, starting/stopped no-op) — VRM
-- Per-state gaze verdict — GLB (GAZE-02 symmetry)
-- Gesture verdict (immediate outside speaking, queued at loop boundary while speaking, never interrupts mid-clip) — GEST-01/02
-- Regression check (Phase 11 idle behavior unaffected)
-- Explicit sign-off table for GAZE-01, GAZE-02, GEST-01, GEST-02 (confirmed / gap recorded)
+### Per-Requirement Sign-off
 
-**Phase 12 is NOT yet fully confirmed pending this human checkpoint.**
+| Requirement | Verdict | Notes |
+|---|---|---|
+| GAZE-01 (VRM per-state gaze, `/openai-avatar-test`) | **FAIL** | Gaze snaps to target instead of transitioning smoothly |
+| GAZE-02 (GLB avatar symmetry) | **FAIL** | Same snapping issue, plus a GLB-only idle-animation spin regression |
+| GEST-01 (manual Nod/Shake + LLM `set_gesture`, immediate trigger outside speaking) | **PASS** | "approved" |
+| GEST-02 (gesture queued to next talk-clip loop boundary during speaking, never interrupts mid-clip) | **PASS** | "approved" |
+
+### Detailed Human-Reported Findings
+
+**GAZE-01 (VRM, per-state gaze in ready/listening/speaking/thinking) — FAIL**
+
+Human's exact report: "the gaze is snap. not smooth." The camera-relative gaze offset jumps/snaps directly to its target rotation rather than smoothly transitioning toward it. This points to a missing lerp/slerp/ease-toward-target step in `gaze.ts`'s `stepGaze` — the target rotation is very likely applied directly each frame instead of being interpolated from the current rotation toward the target over time.
+
+**GEST-01 — PASS**
+
+Human's exact report: "approved." Manual Nod/Shake buttons and LLM-triggered `set_gesture` both play the bone-delta pulse immediately when triggered outside of speaking.
+
+**GEST-02 — PASS**
+
+Human's exact report: "approved." A gesture triggered during speaking is correctly queued to the next talk-clip loop boundary and never interrupts a clip mid-play.
+
+**GAZE-02 (GLB avatar page, symmetry with VRM gaze behavior) — FAIL**
+
+Human's exact report: "only glb. the gaze is also snap. and in idle animation the model spin weird." Two distinct problems, both GLB-specific:
+- The same gaze snapping/non-smooth-transition issue reported for GAZE-01 is confirmed present on the GLB avatar too (shared root cause, see Gap 1 below).
+- A NEW regression, GLB-only: during idle animation, the model spins in a visually wrong/unexpected way. This was NOT reported on the VRM avatar — it is specific to the GLB avatar/skeleton. Possibly related to a head-bone axis/orientation or rotation-composition difference between the GLB and VRM rigs. (12-02's SUMMARY notes the empirical head-bone-forward-axis spike tested `male.vrm` and `happy.glb` and found both measure -Z local forward at rest — but a live rotation-composition bug interacting with idle animation could still surface differently across skeleton/rig structures even when the static axis measurement matched.)
+
+**Regression check (Phase 11 idle: breathing/sway/blink, no fighting/jitter/T-pose with gaze+gesture) — PASS**
+
+Human's exact report: "still normal." This confirms the VRM avatar's Phase 11 idle regression check specifically, per the plan's step 5 instruction. The GLB idle-spin issue reported under GAZE-02 above is a separate, new finding — not part of this Phase-11-regression check, and not reproduced on VRM.
+
+### Gaps
+
+**Gap 1 — Gaze snapping (affects GAZE-01 + GAZE-02, both VRM and GLB)**
+
+The camera-relative gaze offset computed in `packages/react/src/animation/gaze.ts` jumps/snaps directly to its target rotation each frame rather than smoothly interpolating toward it over time. Needs a lerp/slerp/damping factor analogous to the smoothing already used by other procedural systems in this codebase (e.g. `breathing.ts`/`sway.ts`), so the head/neck offset eases toward the target instead of snapping. Confirmed present on both the VRM (`/openai-avatar-test`) and GLB avatar pages — same underlying cause, not two separate bugs.
+
+**Gap 2 — GLB-only idle animation spin regression (affects GAZE-02)**
+
+On the GLB avatar specifically, the model spins in an unexpected/wrong way during idle animation. Not reproduced on the VRM avatar under the same test conditions. Root cause unknown at this time — flagged for investigation in a gap-closure round. Candidate hypothesis: a bone-rotation composition difference between the GLB and VRM skeletons (rig structure, bone hierarchy, or additive-composition ordering) interacting with the new gaze step, even though the two models' static head-bone-forward-axis measurements matched in 12-02.
+
+### Overall Verdict
+
+**Phase 12 is NOT fully confirmed.** GEST-01 and GEST-02 are confirmed by the human. GAZE-01 and GAZE-02 have open gaps (Gap 1, gaze snapping; Gap 2, GLB idle-spin regression, GAZE-02 only) that require a gap-closure round before Phase 12 can be closed.

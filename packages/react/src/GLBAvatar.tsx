@@ -9,6 +9,7 @@ import type { AvatarFormatAdapter } from "./animation/types";
 import {
   applyMeshRenderFlags,
   applyRendererDefaults,
+  applySmoothShading,
   AvatarLightRig,
   resolveAnisotropy,
 } from "./utils/renderQuality";
@@ -29,6 +30,8 @@ interface GLBAvatarProps {
   toneMapping?: THREE.ToneMapping;
   /** Mount a scoped ambient+directional light rig inside the avatar group. Default: true */
   autoLighting?: boolean;
+  /** Weld coincident vertices + recompute normals for smooth (non-faceted) shading. Mutates geometry — opt-in, NOT forced by default (some assets are deliberately low-poly). Default: false */
+  smoothShading?: boolean;
 }
 
 /**
@@ -51,6 +54,7 @@ interface GLBAvatarProps {
  * @param anisotropy - Texture anisotropy for material maps. Default: resolved against hardware max (8)
  * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.ACESFilmicToneMapping
  * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
+ * @param smoothShading - Weld coincident vertices + recompute normals for smooth shading. Opt-in, mutates geometry. Default: false
  *
  * @example
  * // Basic usage
@@ -118,6 +122,7 @@ export function GLBAvatar({
   anisotropy,
   toneMapping,
   autoLighting = true,
+  smoothShading = false,
   ...props
 }: GLBAvatarProps) {
   const { currentAnimation, chatStatus, setAvailableAnimations, currentVolume, gestureHint, setGestureHint } =
@@ -157,7 +162,15 @@ export function GLBAvatar({
       receiveShadow,
       anisotropy: resolveAnisotropy(gl, anisotropy),
     });
-  }, [gltf.scene, gl, castShadow, receiveShadow, anisotropy]);
+
+    // Opt-in only — mutates geometry (welds seam vertices + recomputes
+    // normals), unlike the always-on flags above. See applySmoothShading's
+    // doc comment for why this can't be a forced default. Safe to run after
+    // useDreiAnimations binds the mixer above — skinning attributes
+    // (skinIndex/skinWeight) are generic BufferAttributes mergeVertices
+    // carries over, and the mixer animates bones, not geometry directly.
+    if (smoothShading) applySmoothShading(gltf.scene);
+  }, [gltf.scene, gl, castShadow, receiveShadow, anisotropy, smoothShading]);
 
   // Store available animations in context
   useEffect(() => {

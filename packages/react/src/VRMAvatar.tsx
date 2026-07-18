@@ -10,6 +10,7 @@ import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
 import {
   applyMeshRenderFlags,
   applyRendererDefaults,
+  applySmoothShading,
   AvatarLightRig,
   resolveAnisotropy,
 } from "./utils/renderQuality";
@@ -134,6 +135,8 @@ interface VRMAvatarProps {
   toneMapping?: THREE.ToneMapping;
   /** Mount a scoped ambient+directional light rig inside the avatar group. Default: true */
   autoLighting?: boolean;
+  /** Weld coincident vertices + recompute normals for smooth (non-faceted) shading. Mutates geometry — opt-in, NOT forced by default (some assets are deliberately low-poly). Default: false */
+  smoothShading?: boolean;
 }
 
 /**
@@ -240,6 +243,7 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param anisotropy - Texture anisotropy for material maps. Default: resolved against hardware max (8)
  * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.ACESFilmicToneMapping
  * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
+ * @param smoothShading - Weld coincident vertices + recompute normals for smooth shading. Opt-in, mutates geometry. Default: false
  *
  * @example
  * // Basic usage
@@ -328,6 +332,7 @@ export function VRMAvatar({
   anisotropy,
   toneMapping,
   autoLighting = true,
+  smoothShading = false,
   ...props
 }: VRMAvatarProps) {
   const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume, gestureHint, setGestureHint } =
@@ -491,7 +496,12 @@ export function VRMAvatar({
       receiveShadow,
       anisotropy: resolveAnisotropy(gl, anisotropy),
     });
-  }, [scene, currentVrm, setVrm, gl, castShadow, receiveShadow, anisotropy]);
+
+    // Opt-in only — mutates geometry (welds seam vertices + recomputes
+    // normals), unlike the always-on flags above. See applySmoothShading's
+    // doc comment for why this can't be a forced default.
+    if (smoothShading) applySmoothShading(scene);
+  }, [scene, currentVrm, setVrm, gl, castShadow, receiveShadow, anisotropy, smoothShading]);
 
   // Shared animation module (ANIM-01): one adapter + controller drives all
   // chatStatus-triggered crossfading and blink for this avatar, replacing

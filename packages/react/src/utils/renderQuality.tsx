@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 /**
  * renderQuality - Shared helpers that give avatar components sane,
@@ -123,7 +124,76 @@ export function AvatarLightRig() {
   return (
     <>
       <ambientLight intensity={0.6} />
-      <directionalLight castShadow position={[2, 4, 3]} intensity={1.2} />
+      {/* Shadow-map tuning below is REQUIRED, not cosmetic: three.js's
+          DirectionalLight defaults (512x512 map, -5..5 ortho frustum, zero
+          bias) produce visible shadow-acne moire on curved/folded avatar
+          surfaces (clothing folds, rounded heads) — self-shadowing
+          rippling that reads as a texture/material bug but is purely a
+          shadow-map resolution/bias problem. A tight frustum sized to
+          person-scale + normalBias (avoids peter-panning better than a
+          plain bias for curved geometry) fixes it. */}
+      <directionalLight
+        castShadow
+        position={[2, 4, 3]}
+        intensity={1.2}
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-near={0.1}
+        shadow-camera-far={10}
+        shadow-camera-left={-2}
+        shadow-camera-right={2}
+        shadow-camera-top={2}
+        shadow-camera-bottom={-2}
+        shadow-normalBias={0.02}
+        // Blurs shadow edges — only takes effect under PCFSoftShadowMap,
+        // which R3F's Canvas `shadows` boolean prop already selects by
+        // default. No-op (harmless) under a hard shadow map type.
+        shadow-radius={4}
+      />
     </>
   );
+}
+
+/**
+ * applySmoothShading - Recompute vertex normals with coincident-vertex
+ * welding so adjacent faces blend instead of reading as hard facets.
+ *
+ * OPT-IN ONLY (never forced by default): unlike shadow/anisotropy/tone-
+ * mapping defaults, this mutates GEOMETRY, not just render state — some
+ * avatar assets are deliberately low-poly/faceted (a style choice), and
+ * welding+renormalizing would silently change their intended look. Wire
+ * this behind an explicit `smoothShading?: boolean` prop (default false)
+ * on the avatar component, not applied automatically.
+ *
+ * Mechanism: `mergeVertices` (three's BufferGeometryUtils) welds
+ * geometrically-coincident vertices that were duplicated at UV/normal
+ * seams (the usual reason `computeVertexNormals()` alone doesn't smooth
+ * glTF-exported meshes — seam vertices aren't shared, so per-vertex normal
+ * averaging never blends across them). After welding, `computeVertexNormals()`
+ * recomputes normals as the average of each vertex's now-shared adjacent
+ * faces, producing smooth (Gouraud/Phong-shaded) surfaces.
+ *
+ * @param root - Root object to traverse (e.g. a loaded VRM/GLB scene).
+ * @param tolerance - Distance below which two vertices are considered
+ *   coincident and welded together. Default 1e-4 (mergeVertices' own
+ *   default) — tight enough to only weld true seam duplicates, not
+ *   intentionally separate geometry.
+ */
+export function applySmoothShading(
+  root: THREE.Object3D,
+  tolerance = 1e-4,
+): void {
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    if (!(obj.geometry instanceof THREE.BufferGeometry)) return;
+
+    const merged = mergeVertices(obj.geometry, tolerance);
+    merged.computeVertexNormals();
+    // mergeVertices returns a geometry with no bounding volumes computed —
+    // required for correct frustum culling (VRMAvatar disables frustumCulled
+    // outright, but GLBAvatar does not, so a stale/null bounding sphere here
+    // could make the mesh vanish at the wrong camera angle).
+    merged.computeBoundingSphere();
+    merged.computeBoundingBox();
+    obj.geometry = merged;
+  });
 }

@@ -409,7 +409,7 @@ Plans:
   3. The LLM emits a `nod`/`shake`/`none` gesture hint as part of its normal tool-calling response, with no separate classification call and no keyword/regex matching in the pipeline
   4. A triggered gesture plays as a procedural bone-delta overlay (no new animation clip is loaded) and only begins at the ambient talk cycle's next natural loop boundary — it never interrupts a clip mid-play
 
-**Plans**: 6 plans
+**Plans**: 9 plans (6 original + 3 gap-closure)
 Plans:
 **Wave 1** *(three independent surfaces — core tool, gaze module, loop-boundary+gesture module — zero file overlap, fully parallel)*
 
@@ -428,6 +428,18 @@ Plans:
 **Wave 4** *(blocked on 12-05 — objective gates + blocking human-verify)*
 
 - [x] 12-06-PLAN.md — objective code-level gates + human per-state gaze (VRM+GLB) + nod/shake gesture verification (GAZE-01/02, GEST-01/02)
+
+**Wave 5** *(gap closure — 12-06 human-verify found GAZE-01/GAZE-02 FAIL: gaze snaps + GLB idle spin; GEST-01/02 already PASS)*
+
+- [ ] 12-07-PLAN.md — Gap 1: persistent frame-rate-independent gaze smoothing in gaze.ts (no snap, no snap-to-base on mode switch) (GAZE-01, GAZE-02)
+
+**Wave 6** *(blocked on 12-07 — shares gaze.ts)*
+
+- [ ] 12-08-PLAN.md — Gap 2: diagnose + fix GLB-only idle-spin (group-rotation-agnostic gaze target) (GAZE-02)
+
+**Wave 7** *(blocked on 12-07/12-08 — blocking human re-verify)*
+
+- [ ] 12-09-PLAN.md — human re-verify smooth gaze (VRM, all states) + smooth gaze & no idle spin (GLB); GAZE-01/GAZE-02 sign-off (GAZE-01, GAZE-02)
 
 ### Phase 13: Public API, Performance Tiers & Verification
 

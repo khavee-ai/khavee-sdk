@@ -435,7 +435,7 @@ Plans:
 
 **Wave 6** *(blocked on 12-07 — shares gaze.ts)*
 
-- [ ] 12-08-PLAN.md — Gap 2: diagnose + fix GLB-only idle-spin (group-rotation-agnostic gaze target) (GAZE-02)
+- [x] 12-08-PLAN.md — Gap 2: diagnose + fix GLB-only idle-spin (group-rotation-agnostic gaze target) (GAZE-02)
 
 **Wave 7** *(blocked on 12-07/12-08 — blocking human re-verify)*
 
@@ -476,5 +476,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
 | 11. Idle, Transition & Talking States | 18/18 | Complete   | 2026-07-17 |
-| 12. Gaze & Gesture | 7/9 | In Progress|  |
+| 12. Gaze & Gesture | 8/9 | In Progress|  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

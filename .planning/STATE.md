@@ -4,8 +4,8 @@ milestone: v2.2
 milestone_name: Natural Avatar Animation
 status: executing
 stopped_at: 12-06 verification complete with gaps recorded -- gap-closure round needed for GAZE-01/GAZE-02 before Phase 12 can close
-last_updated: "2026-07-18T10:14:59.466Z"
-last_activity: 2026-07-18 -- Phase 12 planning complete
+last_updated: "2026-07-18T10:32:22.570Z"
+last_activity: 2026-07-18 -- Phase 12 execution started
 progress:
   total_phases: 13
   completed_phases: 10
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 
 ## Current Position
 
-Phase: 12 (gaze-gesture) — VERIFICATION COMPLETE, GAPS FOUND
-Plan: 6 of 6 (all six plans on disk have SUMMARY.md; 12-06 done, gaps documented — phase not yet closed)
-Status: Ready to execute
-Last activity: 2026-07-18 -- Phase 12 planning complete
+Phase: 12 (gaze-gesture) — EXECUTING
+Plan: 1 of 9
+Status: Executing Phase 12
+Last activity: 2026-07-18 -- Phase 12 execution started
 
 Plan 12-06 result: Objective code-level gates G-1..G-9 all PASS (no live-bone lookAt, additive-only composition, starting/stopped no-op, detectLoopBoundary reused, toolGesture exported, gaze/gesture internal-only, no per-frame allocation, both test suites green + tsc clean). Live human verification confirmed GEST-01 and GEST-02 ("approved" on both). GAZE-01 and GAZE-02 FAILED: gaze snaps directly to its target instead of smoothly transitioning (Gap 1, affects both VRM and GLB — likely a missing lerp/slerp/damping step in `gaze.ts`'s `stepGaze`), and the GLB avatar additionally shows a new, GLB-only idle-animation spin regression (Gap 2, root cause unknown, not reproduced on VRM). Phase 11's idle regression check (breathing/sway/blink) read normally on VRM — no Phase 11 regression. Full detail in `.planning/phases/12-gaze-gesture/12-06-VERIFICATION.md` and `12-06-SUMMARY.md`.
 

@@ -431,7 +431,7 @@ Plans:
 
 **Wave 5** *(gap closure — 12-06 human-verify found GAZE-01/GAZE-02 FAIL: gaze snaps + GLB idle spin; GEST-01/02 already PASS)*
 
-- [ ] 12-07-PLAN.md — Gap 1: persistent frame-rate-independent gaze smoothing in gaze.ts (no snap, no snap-to-base on mode switch) (GAZE-01, GAZE-02)
+- [x] 12-07-PLAN.md — Gap 1: persistent frame-rate-independent gaze smoothing in gaze.ts (no snap, no snap-to-base on mode switch) (GAZE-01, GAZE-02)
 
 **Wave 6** *(blocked on 12-07 — shares gaze.ts)*
 
@@ -476,5 +476,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Block Studio — Visual Config, Live Preview, Chat & Lip-Sync | 5/6 | In Progress|  |
 | 10. Shared Animation Architecture & Crossfade Engine | 4/4 | Complete   | 2026-07-12 |
 | 11. Idle, Transition & Talking States | 18/18 | Complete   | 2026-07-17 |
-| 12. Gaze & Gesture | 6/6 | Complete   | 2026-07-18 |
+| 12. Gaze & Gesture | 7/9 | In Progress|  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |

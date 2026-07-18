@@ -6,6 +6,12 @@ import * as THREE from "three";
 import { useKhavee } from "./KhaveeProvider";
 import { useAnimationController } from "./animation/AnimationStateEngine";
 import type { AvatarFormatAdapter } from "./animation/types";
+import {
+  applyMeshRenderFlags,
+  applyRendererDefaults,
+  AvatarLightRig,
+  resolveAnisotropy,
+} from "./utils/renderQuality";
 
 interface GLBAvatarProps {
   src: string; // URL or path to the GLB/GLTF model
@@ -13,6 +19,16 @@ interface GLBAvatarProps {
   rotation?: [number, number, number];
   scale?: [number, number, number];
   autoPlayAnimation?: string | number; // Animation name or index to auto-play
+  /** Force `castShadow` on every avatar mesh at load time. Default: true */
+  castShadow?: boolean;
+  /** Force `receiveShadow` on every avatar mesh at load time. Default: true */
+  receiveShadow?: boolean;
+  /** Texture anisotropy for material maps, clamped to hardware max. Default: 8 (resolved) */
+  anisotropy?: number;
+  /** Renderer tone mapping mode, applied Canvas-wide on mount. Default: THREE.ACESFilmicToneMapping */
+  toneMapping?: THREE.ToneMapping;
+  /** Mount a scoped ambient+directional light rig inside the avatar group. Default: true */
+  autoLighting?: boolean;
 }
 
 /**
@@ -30,6 +46,11 @@ interface GLBAvatarProps {
  * @param rotation - Rotation in radians [x, y, z]. Default: [0, 0, 0]
  * @param scale - Scale [x, y, z]. Default: [1, 1, 1]
  * @param autoPlayAnimation - Animation name or index to auto-play. Default: first animation (0)
+ * @param castShadow - Force castShadow on every avatar mesh. Default: true
+ * @param receiveShadow - Force receiveShadow on every avatar mesh. Default: true
+ * @param anisotropy - Texture anisotropy for material maps. Default: resolved against hardware max (8)
+ * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.ACESFilmicToneMapping
+ * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
  *
  * @example
  * // Basic usage
@@ -92,6 +113,11 @@ export function GLBAvatar({
   rotation = [0, 0, 0],
   scale = [1, 1, 1],
   autoPlayAnimation = 0,
+  castShadow = true,
+  receiveShadow = true,
+  anisotropy,
+  toneMapping,
+  autoLighting = true,
   ...props
 }: GLBAvatarProps) {
   const { currentAnimation, chatStatus, setAvailableAnimations, currentVolume, gestureHint, setGestureHint } =
@@ -101,12 +127,37 @@ export function GLBAvatar({
   // across both avatar components so gaze/gesture behave identically
   // (GAZE-02).
   const camera = useThree((state) => state.camera);
+  const gl = useThree((state) => state.gl);
   const groupRef = useRef<THREE.Group>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
 
   // Load GLB model
   const gltf = useGLTF(src) as any;
   const { mixer, actions, names } = useDreiAnimations(gltf.animations, groupRef);
+
+  // Force renderer defaults (tone mapping + output color space) once on
+  // mount. NOTE: this mutates the Canvas-shared `gl` (WebGLRenderer)
+  // instance, not just this avatar — see the detailed explanation in
+  // utils/renderQuality.tsx (applyRendererDefaults).
+  useEffect(() => {
+    applyRendererDefaults(gl, {
+      toneMapping: toneMapping ?? THREE.ACESFilmicToneMapping,
+      colorSpace: THREE.SRGBColorSpace,
+    });
+  }, [gl, toneMapping]);
+
+  // Force shadow-casting/receiving + material map anisotropy on every mesh
+  // once the GLB scene is available — today no avatar mesh sets these
+  // anywhere, so a consuming page's <Canvas shadows> is otherwise a dead
+  // no-op.
+  useEffect(() => {
+    if (!gltf.scene) return;
+    applyMeshRenderFlags(gltf.scene, {
+      castShadow,
+      receiveShadow,
+      anisotropy: resolveAnisotropy(gl, anisotropy),
+    });
+  }, [gltf.scene, gl, castShadow, receiveShadow, anisotropy]);
 
   // Store available animations in context
   useEffect(() => {
@@ -190,6 +241,7 @@ export function GLBAvatar({
 
   return (
     <group ref={groupRef} position={position} rotation={rotation} scale={scale} {...props}>
+      {autoLighting && <AvatarLightRig />}
       <primitive object={gltf.scene} />
     </group>
   );

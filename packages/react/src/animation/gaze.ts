@@ -54,10 +54,20 @@
  *      `angleTo()`+`copy().slerp()` idiom `AnimationStateEngine.ts` already
  *      uses for its PERF-01 spine clamp (two independent scratches, never
  *      slerping directly on the live bone).
- *   4. Ease the (already-clamped) target in from the CURRENT bone
- *      orientation by a per-mode ramp fraction (`GazeState.modeElapsed`,
- *      reset whenever the active gaze mode changes) so gaze fades in over
- *      `RAMP_SECONDS` instead of snapping the instant `chatStatus` changes.
+ *   4. Advance a PERSISTED smoothed-target quaternion (`GazeState.
+ *      smoothedTarget`) toward the clamped target via continuous,
+ *      frame-rate-independent exponential smoothing (`1 - Math.exp(-delta /
+ *      GAZE_SMOOTH_TIME_CONSTANT)`), carried across every `stepGaze` call —
+ *      NOT a one-shot fade-in fraction recomputed from the base pose each
+ *      frame (that was Gap 1 from 12-06-VERIFICATION.md: the old
+ *      `modeElapsed`-based ramp landed exactly on the clamped target every
+ *      frame once "ramped", because `_scratchCurrent` is re-captured from
+ *      the gaze-free base pose every frame — zero lag, reads as a snap).
+ *      The smoothed target is only re-seeded to the current base pose on a
+ *      FRESH entry from "none" (`starting`/`stopped` -> a live mode); a
+ *      switch between two already-live modes (camera<->aversion) eases
+ *      onward from wherever the smoothed target already is, so the head
+ *      never snaps back through the neutral base first.
  *   5. Derive the final LOCAL delta (`current^-1 * easedTarget`) and apply
  *      it additively via `head.quaternion.multiply(delta)` — PERF-01,
  *      never `.set()`.
@@ -66,7 +76,8 @@
  * is simply the current base rotated by a FIXED constant offset
  * (`AVERSION_OFFSET`), so there is no camera dependency and no clamp is
  * needed (the offset is bounded by construction). It still runs through
- * the same ramp/ease/diff/multiply steps 4-5 for a consistent fade-in feel.
+ * the same smoothing/diff/multiply steps 4-5 for a consistent, continuous
+ * easing feel.
  *
  * `starting`/`stopped` (Pitfall 5): a FULL no-op early return, branching
  * directly on `chatStatus` — NOT a damped/zero-amplitude gaze routed
@@ -98,7 +109,7 @@ const _scratchWorldTarget = new THREE.Quaternion(); // absolute WORLD target qua
 const _scratchParentWorldQuat = new THREE.Quaternion(); // bone parent's world quaternion, for local-space conversion
 const _scratchLocalTarget = new THREE.Quaternion(); // absolute target converted into the bone's parent-local space
 const _scratchClampedTarget = new THREE.Quaternion(); // _scratchLocalTarget, clamped to MAX_GAZE_ANGLE_RAD from current
-const _scratchEasedTarget = new THREE.Quaternion(); // _scratchClampedTarget, eased in from current by the ramp fraction
+const _scratchEasedTarget = new THREE.Quaternion(); // snapshot of state.smoothedTarget used to derive this frame's delta
 const _scratchDelta = new THREE.Quaternion(); // final LOCAL delta actually applied via multiply()
 const _scratchHeadWorldPos = new THREE.Vector3();
 const _scratchCameraWorldPos = new THREE.Vector3();
@@ -127,29 +138,50 @@ const AVERSION_OFFSET = new THREE.Quaternion().setFromEuler(
   new THREE.Euler(AVERSION_PITCH_RAD, AVERSION_YAW_RAD, 0, "XYZ"),
 );
 
-// Ramp-in duration (seconds) for both gaze modes — short enough to feel
-// responsive to a chatStatus change, long enough not to snap. Extrapolated
-// from blink's ~150ms pulse envelope as the closest existing "triggered,
-// bounded-duration" precedent (Assumption A1).
-export const RAMP_SECONDS = 0.3;
+// Exponential-smoothing time constant (seconds) for the PERSISTED gaze
+// target (Gap 1 fix, 12-06-VERIFICATION.md) — how quickly the applied gaze
+// catches up to a moving/changing target: smoothT = 1 - exp(-delta / this),
+// frame-rate independent (same elapsed time converges to the same result
+// whether advanced in one big step or several small ones). Extrapolated
+// from the old one-shot RAMP_SECONDS=0.3s fade-in and
+// `AnimationStateEngine.ts`'s SETTLE_RAMP_SECONDS=1.2s settle-ramp
+// precedent — short enough to read as responsive, long enough to read as
+// smooth rather than snap (Assumption A1).
+export const GAZE_SMOOTH_TIME_CONSTANT = 0.18;
 
 /** Which gaze behavior is currently active, per GAZE-01's per-state branch. */
 export type GazeMode = "camera" | "aversion" | "none";
 
-/** Mutable ramp/mode-tracking state for one gaze instance. */
+/** Mutable smoothing/mode-tracking state for one gaze instance. */
 export interface GazeState {
-  /** Seconds elapsed since `activeMode` last changed — drives the ramp-in
-   * easing fraction so gaze fades in smoothly rather than snapping the
-   * instant `chatStatus` changes. */
-  modeElapsed: number;
   /** The gaze mode observed on the previous `stepGaze` call, used to detect
-   * a mode change and reset `modeElapsed` back to 0. */
+   * a fresh entry from "none" (re-seed `smoothedTarget` from the base pose)
+   * versus a switch between two already-live modes (ease onward from the
+   * current `smoothedTarget`, no re-seed). */
   activeMode: GazeMode;
+  /** Persisted smoothed ABSOLUTE LOCAL target orientation, advanced toward
+   * each frame's clamped target via continuous exponential slerp. This IS
+   * the state that turns the old one-shot fade-in into genuine
+   * frame-over-frame damping — carrying it across calls (instead of
+   * recomputing purely from the current base pose every frame) is what
+   * makes the applied gaze ease continuously rather than snap. */
+  smoothedTarget: THREE.Quaternion;
+  /** Whether `smoothedTarget` has been seeded from a live base orientation
+   * yet. Reset to `false` whenever gaze returns to "none"
+   * (`starting`/`stopped`) so a later re-entry re-seeds from the CURRENT
+   * base pose rather than easing in from a stale orientation left over
+   * from a much earlier session. */
+  smoothedInitialized: boolean;
 }
 
-/** Creates a fresh gaze state with no active mode and a zeroed ramp. */
+/** Creates a fresh gaze state with no active mode and an unseeded,
+ * identity-initialized smoothed target. */
 export function createGazeState(): GazeState {
-  return { modeElapsed: 0, activeMode: "none" };
+  return {
+    activeMode: "none",
+    smoothedTarget: new THREE.Quaternion(),
+    smoothedInitialized: false,
+  };
 }
 
 function resolveMode(chatStatus: ChatStatus): GazeMode {
@@ -169,7 +201,7 @@ function resolveMode(chatStatus: ChatStatus): GazeMode {
  * `starting`/`stopped` (Pitfall 5) or when camera mode is active but no
  * `camera` was supplied (defensive — cannot compute a target without one).
  *
- * @param state - Mutable ramp/mode state from `createGazeState()`.
+ * @param state - Mutable smoothing/mode state from `createGazeState()`.
  * @param adapter - Format adapter used to resolve the head bone by role
  *   (`getHumanoidBoneNode("head")`) so this works identically on VRM/GLB
  *   (GAZE-02).
@@ -196,33 +228,45 @@ export function stepGaze(
   // pass through any shared proceduralScale/settleScale pipeline.
   if (mode === "none") {
     state.activeMode = "none";
-    state.modeElapsed = 0;
+    // Un-seed the smoothed target so a later re-entry into a live mode
+    // re-seeds from the CURRENT base pose rather than easing in from a
+    // stale orientation left over from a much earlier session. The
+    // quaternion value itself is left as-is (harmless, about to be
+    // overwritten by the next seed) — only the flag is reset here.
+    state.smoothedInitialized = false;
     return;
   }
 
   // Camera mode with no camera supplied: nothing to compute a target
-  // against this frame — defensive no-op rather than throwing. Ramp state
-  // is left untouched so a transient missing-camera frame doesn't reset
-  // the ease-in the moment a camera does become available.
+  // against this frame — defensive no-op rather than throwing. Smoothing
+  // state is left untouched so a transient missing-camera frame doesn't
+  // reset the ease-in the moment a camera does become available.
   if (mode === "camera" && !camera) {
     return;
   }
 
-  if (state.activeMode !== mode) {
-    state.activeMode = mode;
-    state.modeElapsed = 0;
-  }
-  state.modeElapsed += delta;
-  const strength = Math.min(1, state.modeElapsed / RAMP_SECONDS);
+  // A fresh entry into a live mode from "none" (or the very first live
+  // frame this GazeState instance has ever seen) re-seeds the smoothed
+  // target from the base pose below. A switch between two already-live
+  // modes (camera<->aversion) does NOT re-seed — the smoothed target
+  // continues easing onward from wherever it already is (Gap 1 fix: no
+  // snap back through the neutral base on a mode switch).
+  const enteringFromNone = state.activeMode === "none";
+  state.activeMode = mode;
 
   // Capture the bone's pre-gaze LOCAL orientation BEFORE any gaze write —
   // this is the base the mixer/breathing/sway already wrote this frame.
   _scratchCurrent.copy(head.quaternion);
 
+  if (!state.smoothedInitialized || enteringFromNone) {
+    state.smoothedTarget.copy(_scratchCurrent);
+    state.smoothedInitialized = true;
+  }
+
   if (mode === "aversion") {
     // Pattern 2: fixed offset, no camera math, no clamp needed (bounded by
-    // construction). Still eased via the shared ramp/ease/diff/multiply
-    // steps below for a consistent fade-in feel.
+    // construction). Still smoothed via the shared smoothing/diff/multiply
+    // steps below for a consistent, continuous easing feel.
     _scratchLocalTarget.copy(_scratchCurrent).multiply(AVERSION_OFFSET);
   } else {
     // mode === "camera" (D-04/D-05) — Pattern 3, the phase's one genuinely
@@ -265,9 +309,24 @@ export function stepGaze(
     _scratchClampedTarget.copy(_scratchLocalTarget);
   }
 
-  // Ease the (already-clamped) target in from the current base by the
-  // ramp fraction, so gaze fades in over RAMP_SECONDS rather than snapping.
-  _scratchEasedTarget.copy(_scratchCurrent).slerp(_scratchClampedTarget, strength);
+  // Frame-rate-independent exponential smoothing factor: how far to
+  // advance the persisted smoothed target toward THIS frame's clamped
+  // target. Clamped to [0,1] defensively (Math.exp(-delta/tc) is already
+  // in (0,1] for delta>=0, but guards against a pathological negative or
+  // huge delta from a stalled/resumed tab).
+  const smoothT = Math.min(1, Math.max(0, 1 - Math.exp(-delta / GAZE_SMOOTH_TIME_CONSTANT)));
+
+  // Advance the PERSISTED smoothed target toward the clamped target IN
+  // PLACE — this is GazeState.smoothedTarget itself, not a throwaway
+  // scratch, so the next stepGaze call continues easing from here instead
+  // of recomputing from a freshly-captured base every frame. This
+  // persistence (rather than the old per-frame `modeElapsed`-driven
+  // recompute) is what turns the fade-in into continuous, frame-over-frame
+  // damping — closing Gap 1 (gaze snapping to target instead of easing).
+  state.smoothedTarget.slerp(_scratchClampedTarget, smoothT);
+
+  // Use the persisted smoothed target as this frame's eased target.
+  _scratchEasedTarget.copy(state.smoothedTarget);
 
   // Final LOCAL delta: current^-1 * easedTarget, so that
   // current.multiply(delta) === easedTarget.

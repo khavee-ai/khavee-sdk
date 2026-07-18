@@ -11,7 +11,7 @@ provides:
   - "Final-delta re-clamp in gaze.ts (CR-01 fix): the applied head-bone gaze delta is now provably bounded by MAX_GAZE_ANGLE_RAD even when the mixer-driven base pose changes discontinuously between two consecutive stepGaze calls"
   - "Two RED-first regression tests (camera mode + aversion mode) locking the CR-01 invariant in against future regression"
   - "Empirical, real-asset diagnosis of whether CR-01 applies to the live GLB idle-spin symptom, with the IN-02 fallback pre-scoped by concrete measurement"
-affects: [12-11 (pending human-verify outcome)]
+affects: [12-11 (deferred/low-priority — not spawned yet)]
 
 tech-stack:
   added: []
@@ -36,18 +36,18 @@ key-decisions:
 requirements-completed: []
 requirements-pending: [GAZE-02]
 
-duration: TBD (in progress — Task 3 is a blocking human-verify checkpoint)
-completed: null
+duration: ~90min
+completed: 2026-07-19
 ---
 
 # Phase 12 Plan 10: Gaze Final-Delta Re-Clamp (CR-01) + Empirical GLB Idle-Spin Applicability Diagnosis Summary
 
-**Landed a correct invariant fix (final-delta re-clamp bounding the applied gaze delta under a discontinuous base-pose jump, RED-first TDD) in gaze.ts, then empirically determined via a real-asset headless diagnostic that this fix is NOT the cause of the still-open GLB idle-spin symptom — gaze is provably inactive on the page where the spin is observed, and the actual discontinuity lives in happy.glb's own idle-clip loop seam, independent of gaze.ts.**
+**Landed a correct invariant fix (final-delta re-clamp bounding the applied gaze delta under a discontinuous base-pose jump, RED-first TDD) in gaze.ts, then empirically determined via a real-asset headless diagnostic that this fix is NOT the cause of the still-open GLB idle-spin symptom — gaze is provably inactive on the page where the spin is observed, and the actual discontinuity lives in happy.glb's own idle-clip loop seam, independent of gaze.ts. Task 3 (blocking human live-verify) was DEFERRED by explicit user decision — GAZE-02 remains open/unresolved, marked low-priority.**
 
 ## Performance
 
 - **Started:** 2026-07-18
-- **Tasks:** 2/3 completed (Task 3 is a BLOCKING human-verify checkpoint — this plan is paused there, not finished)
+- **Tasks:** 2/3 completed, 1/3 deferred (Task 3 — blocking human-verify — was explicitly deprioritized by the user rather than run or failed)
 - **Files modified (committed):** 2 (`packages/react/src/animation/gaze.ts`, `packages/react/src/animation/gaze.test.ts`)
 - **Files created then deleted (throwaway, not committed):** 1 (`packages/react/scripts/tmp-diagnose-glb-idle-headpose.mjs`)
 
@@ -108,13 +108,17 @@ Gaze is a no-op in the observed state (Q2 = false), so Task 1's fix — while a 
 
 No committed source was touched by Task 2 (measurement-only, per the plan's explicit scope).
 
-## Task 3: BLOCKING Human Verification — NOT YET RUN
+## Task 3: BLOCKING Human Verification — DEFERRED (not approved, not confirmed-failing)
 
-**Status: PAUSED at checkpoint.** Per the plan's `gap_closure: true` / `autonomous: false` frontmatter and this checkpoint's `gate="blocking"`, the executor STOPS here and does not attempt to run the dev server or self-approve. A human must verify live against `/glb-avatar-test` (happy.glb, "State 1 Idle (loop)") whether:
-1. The idle spin/twist is now gone (pass/fail gate for GAZE-02), and
-2. Gaze easing on GLB is not regressed (12-07/12-09 PASS must hold).
+**Status: DEFERRED — human declined live verification, marked unresolved/low-priority/not urgent.**
 
-Given this plan's own Task 2 verdict ("CR-01 NOT SUFFICIENT / FALLBACK PRIMARY"), the expected outcome per the plan's own cross-check instruction is that **the spin will likely still be present** — that is not a failure of this plan's work, it is the expected, pre-scoped result given gaze.ts was never the cause in this specific state. If the human confirms the spin persists, the plan's `<resume-signal>` for "gap remains" applies verbatim: a 12-11 gap-closure round should investigate the idle-clip loop-seam / breathing/sway fallback surface (per this plan's Q1/Q3 measurements pointing specifically at the clip's own loop seam), NOT re-diagnose gaze.ts.
+The human was presented with the Task 3 checkpoint (run `pnpm dev`, verify `/glb-avatar-test`'s idle spin and gaze-easing live) and explicitly declined to perform the live visual verification at this time. Their verbatim response: *"not approved. but is it using glb's idle animation? if its true. mark as unresolve and ignore it for now. cause it is now [not] that urgent."*
+
+They confirmed understanding of, and did not contest, this plan's own Task 2 root-cause hypothesis: **IF the spin is present, it originates from happy.glb's own idle-clip loop-seam discontinuity (measured ~0.202 rad / ~11.6 degrees at the wrap boundary)** — NOT from gaze.ts (proven inactive on `/glb-avatar-test`, `chatStatus` permanently `"stopped"`) and NOT from breathing.ts/sway.ts (measured negligible, ~0.00586 rad / ~0.34 degrees).
+
+This is neither "approved" (PASS) nor an actively-confirmed "gap remains" (which would immediately warrant spawning a 12-11 gap-closure round) — it is an explicit, user-directed deferral. **GAZE-02 remains OPEN, not signed off PASS.** No 12-11 round is being scoped or spawned right now; a future low-priority round should investigate `happy.glb`'s idle-clip loop continuity (per this plan's Q1/Q3 measurements) if/when GAZE-02 becomes a priority again.
+
+Task 1's CR-01 fix and Task 2's diagnosis stand as completed, real work regardless of this deferral — the fix closes a genuine, reproducible invariant bug for any consumer exercising gaze-active chatStatus values on GLB, and the diagnosis correctly pre-scopes the actual candidate cause for whenever this is revisited.
 
 ## Files Created/Modified
 
@@ -127,7 +131,13 @@ See `key-decisions` in frontmatter above.
 
 ## Deviations from Plan
 
-None — the plan's own two-untested-assumptions framing anticipated exactly this outcome (CR-01 landing correctly but potentially not being the live cause), and Task 2's action explicitly required concluding with one of the two named verdicts. No Rule 1-4 deviations were needed; the throwaway diagnostic script and its deletion followed the plan's explicit instructions verbatim.
+**1. [User-directed] Task 3's checkpoint outcome is "deferred," a third outcome not explicitly named by the plan's own `<resume-signal>` (which only defines "approved" or "gap remains")**
+- **Found during:** Task 3 checkpoint presentation
+- **Issue:** The plan's `<resume-signal>` anticipated exactly two outcomes — "approved" (signs off GAZE-02 PASS, closes Phase 12) or "gap remains" (immediately scopes a 12-11 round). The human instead explicitly declined to perform the live verification at all, and asked for the gap to be marked unresolved/low-priority/not urgent rather than actively pursued.
+- **Resolution:** Recorded as a deferred/open requirement (GAZE-02 stays open, not PASS) with no 12-11 round spawned. This is a user-directed scope decision, not an executor deviation under Rules 1-4 — no code was changed as a result, only this SUMMARY's disposition of the checkpoint outcome.
+- **Files modified:** `.planning/phases/12-gaze-gesture/12-10-SUMMARY.md` only.
+
+Otherwise: none — the plan's own two-untested-assumptions framing anticipated exactly this technical outcome (CR-01 landing correctly but potentially not being the live cause), and Task 2's action explicitly required concluding with one of the two named verdicts. No Rule 1-4 code deviations were needed; the throwaway diagnostic script and its deletion followed the plan's explicit instructions verbatim.
 
 ## Known Stubs
 
@@ -145,12 +155,12 @@ None — this plan touches only internal, non-exported quaternion math (gaze.ts/
 ## Next Phase Readiness
 
 - Task 1's CR-01 fix is a real, committed, permanent invariant fix — any future consumer that exercises gaze-active chatStatus values (`ready`/`listening`/`speaking`/`thinking`) on GLB now has the bounded-delta guarantee even under a discontinuous mixer/clip-switch base-pose jump, closing a genuine correctness gap regardless of this specific page's outcome.
-- **This plan does NOT close GAZE-02 or Phase 12.** Task 3 (blocking human-verify) has not run. The orchestrator must spawn a continuation agent to present the Task 3 checkpoint to the human and handle the resume flow (either sign off GAZE-02 as PASS, unexpected given Task 2's verdict, or record "gap remains" and scope a 12-11 round per this SUMMARY's fallback guidance).
-- If 12-11 is needed, it should start from this plan's Q1/Q3 measurements: investigate `happy.glb`'s "State 1 Idle (loop)" clip's own authored loop-seam keyframes (the ~11.6-degree head-bone jump at the wrap boundary), not gaze.ts (inactive in this state) or breathing.ts/sway.ts (too small, ~0.34 degrees).
+- **This plan does NOT close GAZE-02 or Phase 12.** Task 3 (blocking human-verify) was explicitly DEFERRED by the user — not approved, not confirmed-failing. GAZE-02 remains an OPEN, low-priority, unresolved requirement; Phase 12 cannot close until it is explicitly signed off in a future round.
+- No 12-11 round is being scoped or spawned by this plan. **If/when GAZE-02 is revisited**, start from this plan's Q1/Q3 measurements: investigate `happy.glb`'s "State 1 Idle (loop)" clip's own authored loop-seam keyframes (the ~11.6-degree head-bone jump at the wrap boundary), not gaze.ts (inactive in this state) or breathing.ts/sway.ts (too small, ~0.34 degrees).
 
 ---
 *Phase: 12-gaze-gesture*
-*Status: Task 1-2 complete, Task 3 (blocking human-verify) pending*
+*Status: Task 1-2 complete and committed. Task 3 (blocking human-verify) DEFERRED by explicit user decision — GAZE-02 remains open/unresolved, low priority, not urgent.*
 
 ## Self-Check: PASSED
 

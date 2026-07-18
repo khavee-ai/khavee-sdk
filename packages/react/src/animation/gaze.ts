@@ -42,32 +42,64 @@
  *   1. Capture the bone's pre-gaze LOCAL orientation into a scratch
  *      (`_scratchCurrent`) — this is the base the mixer/other procedural
  *      systems already wrote this frame.
- *   2. Compute the camera direction in WORLD space, build the absolute
- *      WORLD target quaternion via `setFromUnitVectors(HEAD_FORWARD_AXIS,
- *      direction)`, then convert it into the bone's PARENT-LOCAL space via
- *      `parentWorldQuat^-1 * worldTarget` (Pitfall 4 — never assume a
- *      bone's local space equals world space) — written to
- *      `_scratchLocalTarget`, a scratch-only value, never applied to the
- *      live bone directly.
+ *   2. Compute the camera direction in WORLD space. GROUP-ROTATION-AGNOSTIC
+ *      TARGET (12-08 gap closure, Gap 2 root cause): read the head's ACTUAL
+ *      current WORLD quaternion (`head.getWorldQuaternion`) and rotate
+ *      `HEAD_FORWARD_AXIS` by it to get the head's actual current world
+ *      forward — this is NOT the same as treating `HEAD_FORWARD_AXIS`
+ *      directly as a world axis (that was the bug: Task 1's empirical spike
+ *      measured the OLD code's raw pre-clamp target angle at ~134 degrees
+ *      for male.vrm and ~168 degrees for happy.glb against their own demo
+ *      pages' real camera positions — both large, refuting the original
+ *      leading hypothesis that VRM's angle was already small; see
+ *      12-08-SUMMARY.md for the full measurement). Build the MINIMAL world
+ *      rotation from the head's actual current world forward to the camera
+ *      direction via `setFromUnitVectors(currentWorldForward, direction)`,
+ *      compose it ONTO the head's current world quaternion (not a fresh
+ *      absolute assumption) to get the absolute WORLD target, then convert
+ *      it into the bone's PARENT-LOCAL space via `parentWorldQuat^-1 *
+ *      worldTarget` (Pitfall 4 — never assume a bone's local space equals
+ *      world space) — written to `_scratchLocalTarget`, a scratch-only
+ *      value, never applied to the live bone directly. This makes the raw
+ *      target angle the TRUE minimal head-to-camera rotation regardless of
+ *      how the consuming app orients the avatar's outer group (GAZE-02
+ *      bone-level symmetry).
  *   3. Diff `_scratchLocalTarget` against `_scratchCurrent`, clamp the
  *      resulting angle to `MAX_GAZE_ANGLE_RAD` using the SAME
  *      `angleTo()`+`copy().slerp()` idiom `AnimationStateEngine.ts` already
  *      uses for its PERF-01 spine clamp (two independent scratches, never
- *      slerping directly on the live bone).
+ *      slerping directly on the live bone). FRONTAL-RANGE RELAXATION
+ *      (12-08 gap closure, Gap 2): even with the group-rotation-agnostic
+ *      fix above, the head's actual current facing can genuinely be more
+ *      "behind" than "in front of" the camera for a particular avatar
+ *      mount (real geometric fact, not a math bug — measured ~168 degrees
+ *      for happy.glb's default mount). When the raw angle between the
+ *      head's actual current world forward and the camera direction
+ *      exceeds `GAZE_FRONTAL_RANGE_RAD` (a quarter-turn), the clamped
+ *      target is eased back toward the pre-gaze base (no offset) instead
+ *      of persistently pushing to `MAX_GAZE_ANGLE_RAD` toward an
+ *      effectively-unreachable target — see `computeFrontalContribution`.
+ *      This also structurally damps the `setFromUnitVectors`
+ *      near-antiparallel axis-instability Task 1 measured (a reproducible
+ *      ~127-167 degree rotation-axis swing under a tiny simulated
+ *      breathing/sway-scale jostle to an ancestor bone), since the
+ *      contribution shrinks toward zero exactly where that instability is
+ *      worst.
  *   4. Advance a PERSISTED smoothed-target quaternion (`GazeState.
- *      smoothedTarget`) toward the clamped target via continuous,
- *      frame-rate-independent exponential smoothing (`1 - Math.exp(-delta /
- *      GAZE_SMOOTH_TIME_CONSTANT)`), carried across every `stepGaze` call —
- *      NOT a one-shot fade-in fraction recomputed from the base pose each
- *      frame (that was Gap 1 from 12-06-VERIFICATION.md: the old
- *      `modeElapsed`-based ramp landed exactly on the clamped target every
- *      frame once "ramped", because `_scratchCurrent` is re-captured from
- *      the gaze-free base pose every frame — zero lag, reads as a snap).
- *      The smoothed target is only re-seeded to the current base pose on a
- *      FRESH entry from "none" (`starting`/`stopped` -> a live mode); a
- *      switch between two already-live modes (camera<->aversion) eases
- *      onward from wherever the smoothed target already is, so the head
- *      never snaps back through the neutral base first.
+ *      smoothedTarget`) toward the clamped (and, if applicable, relaxed)
+ *      target via continuous, frame-rate-independent exponential smoothing
+ *      (`1 - Math.exp(-delta / GAZE_SMOOTH_TIME_CONSTANT)`), carried across
+ *      every `stepGaze` call — NOT a one-shot fade-in fraction recomputed
+ *      from the base pose each frame (that was Gap 1 from
+ *      12-06-VERIFICATION.md: the old `modeElapsed`-based ramp landed
+ *      exactly on the clamped target every frame once "ramped", because
+ *      `_scratchCurrent` is re-captured from the gaze-free base pose every
+ *      frame — zero lag, reads as a snap). The smoothed target is only
+ *      re-seeded to the current base pose on a FRESH entry from "none"
+ *      (`starting`/`stopped` -> a live mode); a switch between two
+ *      already-live modes (camera<->aversion) eases onward from wherever
+ *      the smoothed target already is, so the head never snaps back
+ *      through the neutral base first.
  *   5. Derive the final LOCAL delta (`current^-1 * easedTarget`) and apply
  *      it additively via `head.quaternion.multiply(delta)` — PERF-01,
  *      never `.set()`.
@@ -105,15 +137,18 @@ import type { AvatarFormatAdapter } from "./types";
 // narrow purpose so intermediate values from one step never leak into the
 // next call within the same frame.
 const _scratchCurrent = new THREE.Quaternion(); // bone's pre-gaze LOCAL orientation this frame
+const _scratchHeadWorldQuat = new THREE.Quaternion(); // head's ACTUAL current WORLD orientation (12-08 gap closure — camera mode only)
 const _scratchWorldTarget = new THREE.Quaternion(); // absolute WORLD target quaternion (camera mode only)
 const _scratchParentWorldQuat = new THREE.Quaternion(); // bone parent's world quaternion, for local-space conversion
 const _scratchLocalTarget = new THREE.Quaternion(); // absolute target converted into the bone's parent-local space
 const _scratchClampedTarget = new THREE.Quaternion(); // _scratchLocalTarget, clamped to MAX_GAZE_ANGLE_RAD from current
+const _scratchRelaxedTarget = new THREE.Quaternion(); // 12-08 gap closure: _scratchClampedTarget eased toward "no offset" when camera is outside the frontal range
 const _scratchEasedTarget = new THREE.Quaternion(); // snapshot of state.smoothedTarget used to derive this frame's delta
 const _scratchDelta = new THREE.Quaternion(); // final LOCAL delta actually applied via multiply()
 const _scratchHeadWorldPos = new THREE.Vector3();
 const _scratchCameraWorldPos = new THREE.Vector3();
 const _scratchDirection = new THREE.Vector3();
+const _scratchCurrentWorldForward = new THREE.Vector3(); // head's actual current world-space forward (12-08 gap closure — camera mode only)
 
 // Empirically measured (Task 1 spike, see file header) — both bundled test
 // rigs' head bones treat local -Z as "forward" in their bind pose.
@@ -126,6 +161,45 @@ const HEAD_FORWARD_AXIS = new THREE.Vector3(0, 0, -1);
 // deliberate offset rather than an oscillating one, but still well short of
 // a visible head-turn.
 export const MAX_GAZE_ANGLE_RAD = 0.05;
+
+// 12-08 gap closure (Gap 2 — GLB-only idle-spin regression): the "frontal
+// range" boundary (radians) beyond which camera-mode gaze RELAXES its
+// contribution toward zero instead of persistently pushing to
+// MAX_GAZE_ANGLE_RAD. Task 1's empirical measurement (see this file's header
+// "GROUP-ROTATION-AGNOSTIC..." note) found that even after fixing the
+// world-target math to be based on the head's own actual current world
+// forward (rather than an assumed world -Z), the raw angle between that
+// actual current forward and the camera direction can still be large for an
+// avatar mounted with a group rotation that leaves its head genuinely
+// facing away from a front-positioned camera (measured ~168 degrees for
+// happy.glb's default [0,0,0] group rotation against its own demo page's
+// camera position) — this is a real geometric fact about that mount, not a
+// residual math bug. Discretion value (Assumption A1): a quarter-turn
+// (Math.PI/2, 90 degrees) is chosen as the boundary of "genuinely in front"
+// versus "more behind than in front" from the head's own point of view;
+// within this range the existing MAX_GAZE_ANGLE_RAD clamp behavior is
+// unchanged, beyond it the contribution falls off linearly to a full no-op
+// at the exact 180-degree opposite (see `computeFrontalContribution`). This
+// also structurally damps the `setFromUnitVectors` near-antiparallel axis
+// instability Task 1 measured (a real, reproducible ~127-167 degree
+// rotation-axis swing under a tiny simulated breathing/sway-scale jostle),
+// since the relaxed contribution shrinks toward zero exactly where that
+// instability is worst (approaching the true antiparallel singularity at
+// pi radians).
+const GAZE_FRONTAL_RANGE_RAD = Math.PI / 2;
+
+/**
+ * Scales camera-mode gaze's contribution down from 1 (full, unchanged
+ * clamp behavior) to 0 (full no-op — relax to no gaze offset) as `rawAngle`
+ * (the angle between the head's actual current world forward and the
+ * camera direction) moves from `GAZE_FRONTAL_RANGE_RAD` out to `Math.PI`
+ * (the head's exact 180-degree opposite). 12-08 gap closure (Gap 2).
+ */
+function computeFrontalContribution(rawAngle: number): number {
+  if (rawAngle <= GAZE_FRONTAL_RANGE_RAD) return 1;
+  const t = (rawAngle - GAZE_FRONTAL_RANGE_RAD) / (Math.PI - GAZE_FRONTAL_RANGE_RAD);
+  return Math.min(1, Math.max(0, 1 - t));
+}
 
 // Fixed thinking-aversion offset: a small yaw (look slightly to one side)
 // plus a slight downward pitch ("looking away/down while thinking"), no
@@ -275,12 +349,32 @@ export function stepGaze(
     camera!.getWorldPosition(_scratchCameraWorldPos);
     _scratchDirection.subVectors(_scratchCameraWorldPos, _scratchHeadWorldPos).normalize();
 
-    // Absolute WORLD target quaternion — scratch-only, never written to
-    // the live bone (Pitfall 1: this is exactly the value a naive call to
-    // Object3D's orient-toward-target method on `head` directly would
-    // compute and then overwrite the bone with; here it is only ever
-    // diffed and clamped, never written straight to the bone).
-    _scratchWorldTarget.setFromUnitVectors(HEAD_FORWARD_AXIS, _scratchDirection);
+    // 12-08 gap closure (Gap 2 root cause): the head's ACTUAL current world
+    // forward — NOT the fixed HEAD_FORWARD_AXIS treated directly as a world
+    // axis (that was the bug: Task 1's empirical measurement found the raw
+    // pre-clamp target angle was large for BOTH bundled avatars, ~134
+    // degrees for male.vrm and ~168 degrees for happy.glb against their own
+    // demo pages' real camera positions — refuting the leading hypothesis
+    // that VRM's angle was already small; see file header for the full
+    // diagnosis). HEAD_FORWARD_AXIS is only the head's LOCAL bind-pose
+    // forward convention (12-02 spike) — it must be rotated by the head's
+    // actual current WORLD quaternion (parent-chain rotation composed with
+    // the head's own current local rotation) to get the true current world
+    // forward, group-rotation-agnostic by construction.
+    head.getWorldQuaternion(_scratchHeadWorldQuat);
+    _scratchCurrentWorldForward.copy(HEAD_FORWARD_AXIS).applyQuaternion(_scratchHeadWorldQuat);
+
+    // Minimal WORLD rotation from the head's actual current world forward
+    // to the camera direction, composed ONTO the head's current world
+    // quaternion (not a fresh absolute assumption) to get the absolute
+    // WORLD target — scratch-only, never written to the live bone
+    // (Pitfall 1: this is exactly the value a naive call to Object3D's
+    // orient-toward-target method on `head` directly would compute and
+    // then overwrite the bone with; here it is only ever diffed and
+    // clamped, never written straight to the bone).
+    _scratchWorldTarget
+      .setFromUnitVectors(_scratchCurrentWorldForward, _scratchDirection)
+      .multiply(_scratchHeadWorldQuat);
 
     // Convert the absolute WORLD target into the bone's PARENT-LOCAL space
     // (Pitfall 4 — never assume a bone's local space equals world space):
@@ -307,6 +401,27 @@ export function stepGaze(
     _scratchClampedTarget.copy(_scratchCurrent).slerp(_scratchLocalTarget, t);
   } else {
     _scratchClampedTarget.copy(_scratchLocalTarget);
+  }
+
+  // 12-08 gap closure (Gap 2): when camera mode's raw target is outside the
+  // "frontal range" (the camera is more behind the head's own actual
+  // current facing than in front of it — a real geometric possibility for
+  // an avatar mounted with a group rotation that leaves its head facing
+  // away from a front-positioned camera, per Task 1's measurement), relax
+  // the clamped target back toward the pre-gaze base (no offset) rather
+  // than persistently pushing to MAX_GAZE_ANGLE_RAD toward an
+  // effectively-unreachable target. `thinking` aversion has no camera
+  // dependency (Pattern 2) and is unaffected. This also structurally damps
+  // the `setFromUnitVectors` near-antiparallel axis instability Task 1
+  // measured, since the contribution shrinks to zero exactly where that
+  // instability is worst.
+  if (mode === "camera") {
+    const rawFrontalAngle = _scratchCurrentWorldForward.angleTo(_scratchDirection);
+    const frontalContribution = computeFrontalContribution(rawFrontalAngle);
+    if (frontalContribution < 1) {
+      _scratchRelaxedTarget.copy(_scratchCurrent).slerp(_scratchClampedTarget, frontalContribution);
+      _scratchClampedTarget.copy(_scratchRelaxedTarget);
+    }
   }
 
   // Frame-rate-independent exponential smoothing factor: how far to

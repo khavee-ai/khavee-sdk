@@ -1,5 +1,7 @@
+import type { ReactElement } from "react";
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { Bloom, EffectComposer, SMAA } from "@react-three/postprocessing";
 
 /**
  * renderQuality - Shared helpers that give avatar components sane,
@@ -205,4 +207,98 @@ export function applySmoothShading(
     merged.computeBoundingBox();
     obj.geometry = merged;
   });
+}
+
+/** Options for {@link ShadowFloor}. */
+export interface ShadowFloorProps {
+  /** Half-width/half-depth of the square floor plane (full size = `size * 2`). Default: 10 */
+  size?: number;
+  /** Y position of the floor plane. Default: 0 */
+  y?: number;
+  /** Shadow darkness where the floor is shadowed, 0 (invisible) to 1 (fully black). Default: 0.35 */
+  opacity?: number;
+}
+
+/**
+ * ShadowFloor - A ground plane that only receives shadows (invisible where
+ * unshadowed) — the simplest way to actually SEE `castShadow` working.
+ * Shadows need a receiver; without one, a correctly shadow-casting mesh
+ * still renders with no visible shadow anywhere.
+ *
+ * Not auto-mounted by `AvatarLightRig` (unlike the light rig itself): a
+ * floor plane is a scene-composition choice (position, size, whether the
+ * avatar even has "ground" in its scene), not a pure render-quality
+ * default — same reasoning as why post-processing isn't auto-injected.
+ * Opt in by rendering it yourself, once per scene, at the avatar's feet.
+ */
+export function ShadowFloor({ size = 10, y = 0, opacity = 0.35 }: ShadowFloorProps) {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]} receiveShadow>
+      <planeGeometry args={[size * 2, size * 2]} />
+      <shadowMaterial opacity={opacity} />
+    </mesh>
+  );
+}
+
+/** Options for {@link AvatarPostFX}. */
+export interface AvatarPostFXProps {
+  /** Enable the bloom glow on bright highlights. Default: true */
+  bloom?: boolean;
+  /** Bloom glow strength. Default: 0.5 */
+  bloomIntensity?: number;
+  /**
+   * Luminance floor (0-1) above which a pixel starts blooming. This is
+   * measured AFTER tone mapping (see `applyRendererDefaults` — ACES
+   * compresses highlights hard), so ordinary specular/rim highlights
+   * rarely reach anywhere near 1.0. Lower = more surfaces glow.
+   * Default: 0.3
+   */
+  bloomThreshold?: number;
+  /** Softness of the threshold cutoff (0 = hard edge, higher = gradual falloff). Default: 1 */
+  bloomSmoothing?: number;
+  /** Enable subpixel morphological anti-aliasing (on top of the Canvas's own MSAA). Default: true */
+  smaa?: boolean;
+}
+
+/**
+ * AvatarPostFX - Opt-in Bloom + SMAA post-processing pipeline.
+ *
+ * NOT auto-mounted by VRMAvatar/GLBAvatar (unlike AvatarLightRig): an
+ * `EffectComposer` takes over its ENTIRE Canvas's render pipeline, so it
+ * must be mounted exactly ONCE per Canvas, as a sibling of the avatar(s) —
+ * not once per avatar. Two avatars sharing a Canvas should still only
+ * render one `<AvatarPostFX />`. Requires `@react-three/postprocessing`
+ * (a peer of this package — install it in your app if not already present).
+ *
+ * Renders nothing if both `bloom` and `smaa` are disabled.
+ */
+export function AvatarPostFX({
+  bloom = true,
+  bloomIntensity = 0.5,
+  bloomThreshold = 0.3,
+  bloomSmoothing = 1,
+  smaa = true,
+}: AvatarPostFXProps) {
+  if (!bloom && !smaa) return null;
+
+  // EffectComposer's `children` type is `JSX.Element | JSX.Element[]` (no
+  // boolean/null allowed), so conditionally-included effects must be built
+  // as a filtered array rather than `{cond && <Effect />}` inline JSX.
+  const effects: ReactElement[] = [];
+  if (bloom) {
+    effects.push(
+      <Bloom
+        key="bloom"
+        mipmapBlur
+        intensity={bloomIntensity}
+        luminanceThreshold={bloomThreshold}
+        luminanceSmoothing={bloomSmoothing}
+      />,
+    );
+  }
+  if (smaa) {
+    effects.push(<SMAA key="smaa" />);
+  }
+
+  return <EffectComposer>{effects}</EffectComposer>;
 }

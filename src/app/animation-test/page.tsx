@@ -17,13 +17,14 @@
 import { Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { Bloom, EffectComposer, SMAA } from '@react-three/postprocessing';
 import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
 import { toolGesture } from '@khaveeai/core';
 import {
   KhaveeProvider,
   VRMAvatar,
   GLBAvatar,
+  AvatarPostFX,
+  ShadowFloor,
   useRealtime,
   useKhavee,
   type AnimationConfig,
@@ -55,36 +56,6 @@ const VRM_ANIMATIONS: AnimationConfig = {
   // goodbye: '/models/animations/sad.fbx', // stopped (/stop|bye|goodbye|outro/i)
 };
 
-// Post-processing pipeline (Bloom + SMAA) — app-level, same as
-// OrbitControls/Canvas below: EffectComposer replaces the default render
-// pipeline for its whole Canvas, so it can't be auto-injected by the SDK's
-// avatar component the way AvatarLightRig is (two avatars sharing one
-// Canvas would each try to own the composer). @react-three/postprocessing
-// is already a project dependency (see src/app/components/Experience.tsx).
-// luminanceThreshold kept high so bloom only catches genuinely bright
-// specular/rim highlights, not the whole lit surface — subtle glow, not a
-// wash. No DepthOfField/background-blur per explicit scope.
-function PostFX() {
-  return (
-    <EffectComposer>
-      <Bloom mipmapBlur intensity={0.4} luminanceThreshold={0.8} luminanceSmoothing={0.2} />
-      <SMAA />
-    </EffectComposer>
-  );
-}
-
-// Shared shadow-receiving floor — the only way to actually SEE castShadow
-// working (a shadow needs a lit receiver plane under the avatar). Not part
-// of the SDK — a demo-page concern, same as OrbitControls/Canvas below.
-function ShadowFloor() {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-      <planeGeometry args={[20, 20]} />
-      <shadowMaterial opacity={0.35} />
-    </mesh>
-  );
-}
-
 function VRMScene() {
   return (
     <>
@@ -93,11 +64,11 @@ function VRMScene() {
           the new renderQuality.tsx helper. castShadow/receiveShadow/
           anisotropy/toneMapping all default on too — zero extra props. */}
       <Suspense fallback={null}>
-        <VRMAvatar src="models/male/nongkhavee_male_01.vrm" animations={VRM_ANIMATIONS} enableBlinking smoothShading />
+        <VRMAvatar src="models/female/nongkhavee_female_08.vrm" animations={VRM_ANIMATIONS} enableBlinking  />
       </Suspense>
       <ShadowFloor />
       <OrbitControls target={[0, 1, 0]} />
-      <PostFX />
+      <AvatarPostFX bloomIntensity={1} bloomThreshold={0.2} bloomSmoothing={1} />
     </>
   );
 }
@@ -110,11 +81,11 @@ function GLBScene() {
       <Suspense fallback={null}>
         {/* happy.glb's embedded clips are matched by resolveBaseClip's
             naming-convention patterns — no explicit `animations` prop needed. */}
-        <GLBAvatar src="/models/happy.glb" />
+        <GLBAvatar src="/models/happy.glb"  />
       </Suspense>
       <ShadowFloor />
       <OrbitControls target={[0, 1, 0]} />
-      <PostFX />
+      <AvatarPostFX bloomIntensity={0.6} bloomThreshold={0.3} bloomSmoothing={1} />
     </>
   );
 }
@@ -180,7 +151,7 @@ function AnimationTestPage() {
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className="w-1/2 h-full border-r border-gray-200 bg-purple-800 relative">
+        <div className="w-full h-full border-r border-gray-200 bg-purple-800 relative">
           <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-black/60 text-white text-xs rounded font-mono">
             VRM — male.vrm
           </div>
@@ -188,14 +159,14 @@ function AnimationTestPage() {
             <VRMScene />
           </Canvas>
         </div>
-        <div className="w-1/2 h-full relative "  style={{ background: '#3353FF' }}>
+        {/* <div className="w-1/2 h-full relative "  style={{ background: '#3353FF' }}>
           <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-black/60 text-white text-xs rounded font-mono">
             GLB — happy.glb
           </div>
           <Canvas camera={{ position: [0, 1, 3], fov: 50 }} shadows>
             <GLBScene />
           </Canvas>
-        </div>
+        </div> */}
       </div>
     </div>
   );

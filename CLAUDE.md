@@ -242,6 +242,20 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT â
 No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
 <!-- GSD:skills-end -->
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (khavee-ai/khavee-sdk), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical labels (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
 <!-- GSD:workflow-start source:GSD defaults -->
 ## GSD Workflow Enforcement
 

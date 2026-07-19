@@ -78,9 +78,9 @@ export default function VRMAvatarTestPage() {
     <KhaveeProvider>
       <div style={{ width: "100%", height: "100vh", position: "relative", background: "#3353FF" }}>
         <AnimationButtons />
-        <Canvas camera={{ position: [0, 1.5, 3], fov: 50 }}>
-          <ambientLight intensity={1} />
-          <directionalLight position={[10, 10, 5]} intensity={2.5} />
+        <Canvas camera={{ position: [0, 1.5, 3], fov: 50 }} shadows>
+          {/* No manual lights — VRMAvatar's autoLighting (default true)
+              mounts its own AvatarLightRig (renderQuality.tsx). */}
           <VRMAvatar src="/models/male.vrm" animations={VRM_TEST_ANIMATIONS} enableBlinking />
           <OrbitControls target={[0, 1, 0]} />
         </Canvas>

@@ -33,18 +33,16 @@ const openaiProvider = new OpenAIRealtimeProvider({
 // "talking" matches resolveBaseClip's /talk|gesture|speak/i check, so it
 // plays automatically whenever chatStatus becomes "speaking".
 const AVATAR_ANIMATIONS: AnimationConfig = {
-  idle: '/models/animations/Idle.fbx',
-  talking: '/models/animations/talking.fbx',
-  talking1: '/models/animations/talking1.fbx',
+  idle: '/models/animations/idle.fbx',
 };
 
 function Scene() {
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
+      {/* No manual lights — VRMAvatar's autoLighting (default true)
+          mounts its own AvatarLightRig (renderQuality.tsx). */}
       <Suspense fallback={null}>
-        <VRMAvatar src="/models/male.vrm" animations={AVATAR_ANIMATIONS} enableBlinking />
+        <VRMAvatar src="/models/female/blue-female.vrm" animations={AVATAR_ANIMATIONS} enableBlinking />
       </Suspense>
       <OrbitControls target={[0, 1, 0]} />
     </>

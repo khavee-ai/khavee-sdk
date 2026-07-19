@@ -29,8 +29,8 @@ const genericProvider = new GenericPipelineProvider({
 function Scene() {
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
+      {/* No manual lights — VRMAvatar's autoLighting (default true)
+          mounts its own AvatarLightRig (renderQuality.tsx). */}
       <Suspense fallback={null}>
         <VRMAvatar src="/models/male.vrm" />
       </Suspense>

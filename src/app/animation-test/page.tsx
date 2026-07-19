@@ -53,6 +53,7 @@ const VRM_ANIMATIONS: AnimationConfig = {
   talking2: '/models/animations/talk3.fbx', // TALK-01 variant cycling
   thinking: '/models/animations/thinking.fbx', // thinking (/think/i)
   welcome: '/models/animations/wave.fbx', // starting (/welcome|greet|hello|intro/i)
+  listening: '/models/animations/thinking2.fbx', // listening (/listen|hear/i)
   // goodbye: '/models/animations/sad.fbx', // stopped (/stop|bye|goodbye|outro/i)
 };
 
@@ -68,7 +69,7 @@ function VRMScene() {
       </Suspense>
       <ShadowFloor />
       <OrbitControls target={[0, 1, 0]} />
-      <AvatarPostFX bloomIntensity={0.5} bloomThreshold={0.2} bloomSmoothing={1} />
+      <AvatarPostFX bloomIntensity={0.5} bloomThreshold={0.2} bloomSmoothing={1.5} />
     </>
   );
 }
@@ -85,7 +86,7 @@ function GLBScene() {
       </Suspense>
       <ShadowFloor />
       <OrbitControls target={[0, 1, 0]} />
-      <AvatarPostFX bloomIntensity={0.6} bloomThreshold={0.3} bloomSmoothing={1} />
+      <AvatarPostFX bloomIntensity={0.2} bloomThreshold={1} bloomSmoothing={3} />
     </>
   );
 }
@@ -203,7 +204,7 @@ function AnimationTestPage() {
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className="w-full h-full border-r border-gray-200 bg-purple-800 relative">
+        <div className="w-full h-full border-r border-gray-200 bg-gray-800 relative">
           <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-black/60 text-white text-xs rounded font-mono">
             VRM — male.vrm
           </div>

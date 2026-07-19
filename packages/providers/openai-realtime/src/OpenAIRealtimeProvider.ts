@@ -514,7 +514,16 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     }
 
     this.dataChannel.send(JSON.stringify({ type: "response.create" }));
-    this.setChatStatus("ready");
+    // Do NOT setChatStatus("ready") here — the greeting response requested
+    // above hasn't started streaming yet. Setting "ready" prematurely
+    // produces a starting -> ready -> starting flap: this fires "ready",
+    // then the greeting's first token/audio event re-sets "starting"
+    // (hasHeardFirstGreeting is still false), retriggering the
+    // welcome/greet clip crossfade mid-flight. `isConnected` (not
+    // chatStatus) already reflects the WebRTC connection being live, so
+    // nothing depends on "ready" firing here. chatStatus correctly settles
+    // to "ready" later, in the `output_audio_buffer.stopped` handler, once
+    // the greeting has actually finished.
   }
 
   /**

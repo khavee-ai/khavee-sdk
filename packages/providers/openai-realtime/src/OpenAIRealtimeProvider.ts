@@ -337,10 +337,31 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   }
 
   /**
-   * Register a function/tool
+   * Register a function/tool.
+   *
+   * Wires the local `execute` callback into `toolExecutor` AND ensures the
+   * tool is present in `this.config.tools` — `buildProxySessionConfig()`
+   * (sent at connect) and `configureSession()` (sent over the data channel)
+   * both read tool declarations exclusively from `this.config.tools`.
+   * Registering only the executor without this meant the model was never
+   * told the tool exists and could never call it (confirmed live: a
+   * `registerFunction()`-only registration, e.g. `toolGesture` wired via a
+   * post-construction `useEffect` as both demo pages do, never appeared in
+   * the session's tool list — nod/shake silently never fired).
+   *
+   * Call before `connect()` — tools registered after the session is
+   * established are not retroactively re-sent.
    */
   registerFunction(tool: RealtimeTool): void {
     this.toolExecutor.register(tool.name, tool.execute);
+
+    if (!this.config.tools) {
+      this.config.tools = [];
+    }
+    const alreadyDeclared = this.config.tools.some((t) => t.name === tool.name);
+    if (!alreadyDeclared) {
+      this.config.tools.push(tool);
+    }
   }
 
   /**

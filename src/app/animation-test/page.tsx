@@ -64,11 +64,11 @@ function VRMScene() {
           the new renderQuality.tsx helper. castShadow/receiveShadow/
           anisotropy/toneMapping all default on too — zero extra props. */}
       <Suspense fallback={null}>
-        <VRMAvatar src="models/female/nongkhavee_female_08.vrm" animations={VRM_ANIMATIONS} enableBlinking  />
+        <VRMAvatar src="models/male/vroid.vrm" animations={VRM_ANIMATIONS} enableBlinking  />
       </Suspense>
       <ShadowFloor />
       <OrbitControls target={[0, 1, 0]} />
-      <AvatarPostFX bloomIntensity={1} bloomThreshold={0.2} bloomSmoothing={1} />
+      <AvatarPostFX bloomIntensity={0.5} bloomThreshold={0.2} bloomSmoothing={1} />
     </>
   );
 }
@@ -91,7 +91,7 @@ function GLBScene() {
 }
 
 function AnimationTestPage() {
-  const { connect, disconnect, isConnected, chatStatus } = useRealtime();
+  const { connect, disconnect, sendMessage, conversation, isConnected, chatStatus } = useRealtime();
   const { setGestureHint } = useKhavee();
 
   // GEST-01/02 wiring — same pattern as openai-avatar-test: register inside
@@ -147,6 +147,58 @@ function AnimationTestPage() {
           >
             Shake
           </button>
+        </div>
+
+        {/* Message box — same sendMessage/conversation pattern as
+            openai-avatar-test, kept compact since the 3D canvases below
+            take most of the screen. Text fallback for when mic/voice isn't
+            convenient to test with. */}
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-lg p-2 space-y-1">
+            {conversation.length === 0 ? (
+              <div className="text-xs text-gray-400 italic">No messages yet</div>
+            ) : (
+              conversation.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`text-sm px-2 py-1 rounded ${
+                    msg.role === 'user' ? 'bg-blue-100 ml-8' : 'bg-gray-100 mr-8'
+                  }`}
+                >
+                  <span className="font-semibold text-xs mr-1">
+                    {msg.role === 'user' ? 'You:' : 'AI:'}
+                  </span>
+                  {msg.text}
+                </div>
+              ))
+            )}
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
+              if (input.value.trim()) {
+                sendMessage(input.value.trim());
+                input.value = '';
+              }
+            }}
+            className="flex gap-2"
+          >
+            <input
+              type="text"
+              name="message"
+              placeholder="Type a message (fallback if mic isn't available)..."
+              className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-50"
+              disabled={!isConnected}
+            />
+            <button
+              type="submit"
+              disabled={!isConnected}
+              className="px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg disabled:opacity-50"
+            >
+              Send
+            </button>
+          </form>
         </div>
       </div>
 

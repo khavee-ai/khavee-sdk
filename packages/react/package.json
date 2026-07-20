@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/react",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "React components and hooks for VRM AI avatars",
   "keywords": [
     "react",

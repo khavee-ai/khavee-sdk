@@ -124,6 +124,11 @@ describe("beginCrossfade / stepCrossfade", () => {
       play: vi.fn().mockReturnThis(),
       stop: vi.fn().mockReturnThis(),
       setEffectiveWeight: vi.fn(),
+      getEffectiveWeight: () => 1,
+      // Never "already running" — these stubs model the ordinary,
+      // non-interrupted case (see the dedicated stateful-stub describe
+      // block below for the interrupted-crossfade weight-seeding tests).
+      isRunning: () => false,
       getClip: () => clip,
     } as unknown as THREE.AnimationAction;
   }
@@ -191,7 +196,96 @@ describe("beginCrossfade / stepCrossfade", () => {
       to: null,
       startTime: 0,
       duration: 0.3,
+      fromStartWeight: 0,
+      toStartWeight: 0,
     };
     expect(() => stepCrossfade(inactive)).not.toThrow();
+  });
+});
+
+describe("interrupted crossfade preserves total accumulated weight (T-pose/bind-pose snap fix)", () => {
+  // Debug session: .planning/debug/tpose-snap-speak-toggle.md. A stateful
+  // stub (unlike the vi.fn()-only stubs above) is required here because this
+  // test reads back setEffectiveWeight/isRunning state, not just call args --
+  // beginCrossfade's fix depends on inspecting toAction's ACTUAL current
+  // weight/running state before deciding where to seed the new ramp from.
+  function makeStatefulStubAction(clip: THREE.AnimationClip) {
+    let weight = 1;
+    let running = false;
+    const action = {
+      reset: vi.fn().mockReturnThis(),
+      enabled: false,
+      play: vi.fn(() => {
+        running = true;
+        return action;
+      }),
+      stop: vi.fn(() => {
+        running = false;
+        return action;
+      }),
+      setEffectiveWeight: vi.fn((w: number) => {
+        weight = w;
+      }),
+      getEffectiveWeight: () => weight,
+      isRunning: () => running,
+      getClip: () => clip,
+    };
+    return action as unknown as THREE.AnimationAction;
+  }
+
+  it("keeps total weight continuous when a second beginCrossfade interrupts the first before it settles (t<1)", () => {
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValue(0);
+
+    const scene = new THREE.Object3D();
+    const idleAction = makeStatefulStubAction(new THREE.AnimationClip("idle", -1, []));
+    const talkAction = makeStatefulStubAction(new THREE.AnimationClip("talking", -1, []));
+
+    // Steady state: idle fully settled at weight 1, no crossfade active --
+    // mirrors the real "idle playing" starting point before speaking begins.
+    idleAction.play();
+    idleAction.setEffectiveWeight(1);
+
+    // Enter speaking: idle -> talking (mirrors switchToClip's real
+    // beginCrossfade(currentActionRef.current, toAction, root, floor) call).
+    const blend1 = beginCrossfade(idleAction, talkAction, scene);
+
+    // Advance partway through the blend (t=0.3) -- NEITHER action has
+    // reached its target weight yet.
+    nowSpy.mockReturnValue(blend1.duration * 1000 * 0.3);
+    stepCrossfade(blend1);
+    const idleWeightMidBlend = idleAction.getEffectiveWeight();
+    const talkWeightMidBlend = talkAction.getEffectiveWeight();
+    expect(idleWeightMidBlend).toBeGreaterThan(0);
+    expect(talkWeightMidBlend).toBeGreaterThan(0);
+    expect(idleWeightMidBlend + talkWeightMidBlend).toBeCloseTo(1, 5);
+
+    // Interrupt: exit speaking before blend1 ever reaches t>=1 (a quick
+    // chatStatus toggle / short utterance). switchToClip's real call is
+    // beginCrossfade(currentActionRef.current, toAction, root, floor) --
+    // currentActionRef.current is talkAction (blend1's incoming leg), and
+    // toAction is idleAction again.
+    const blend2 = beginCrossfade(talkAction, idleAction, scene);
+
+    // Read weights EXACTLY as they stand the instant beginCrossfade
+    // returns -- i.e. before stepCrossfade(blend2) has ever run. This is
+    // precisely what VRMAvatar's next mixer.update() call renders if
+    // switchToClip fires between two useFrame ticks (mixer.update runs
+    // before controller.update/stepCrossfade every frame).
+    const idleWeightAfterInterrupt = idleAction.getEffectiveWeight();
+    const talkWeightAfterInterrupt = talkAction.getEffectiveWeight();
+    const totalAfterInterrupt = idleWeightAfterInterrupt + talkWeightAfterInterrupt;
+
+    // Total weight must be preserved across the interruption -- no cliff.
+    // Before the fix, beginCrossfade force-set idleAction (the new toAction)
+    // to a hardcoded 0 even though it was still contributing
+    // idleWeightMidBlend (~0.78) of real weight, dropping total weight to
+    // ~talkWeightMidBlend (~0.22) for this frame -- the T-pose/bind-pose
+    // flash (THREE's PropertyMixer fills the missing ~0.78 with the bind
+    // pose when accumulated weight is under 1).
+    expect(totalAfterInterrupt).toBeCloseTo(idleWeightMidBlend + talkWeightMidBlend, 5);
+    expect(blend2.duration).toBeGreaterThan(0);
+
+    nowSpy.mockRestore();
   });
 });

@@ -759,6 +759,47 @@ export function shouldTriggerClipSwitch(params: {
 }
 
 /**
+ * T-pose/bind-pose snap fix, part 2 (orphaned-action leg — see
+ * crossfade.ts's `beginCrossfade` doc comment for part 1, and
+ * .planning/debug/tpose-snap-speak-toggle.md for the full diagnosis). Pure
+ * decision: when a new `switchToClip(toAction)` call is about to interrupt
+ * an already-active `prevBlend` (i.e. start a fresh `beginCrossfade` before
+ * `prevBlend` reached `t>=1`), which action — if any — is about to become
+ * orphaned and should be explicitly `.stop()`-ed right now?
+ *
+ * Only `prevBlend.from` can be orphaned by an interruption: the new blend's
+ * `from` argument is always `currentActionRef.current`, which is
+ * `prevBlend.to` (the previous blend's incoming leg) — so `prevBlend.to` is
+ * always carried forward into the new blend and never orphaned.
+ * `prevBlend.from`, however, is referenced by NO BlendState going forward
+ * unless the new switch happens to target that exact same clip again (i.e.
+ * `toAction === prevBlend.from` — toggling back to the clip that was
+ * fading out). In every other case, `prevBlend.from` would otherwise keep
+ * whatever weight it last had via `setEffectiveWeight` (from `prevBlend`'s
+ * last `stepCrossfade` call) and keep contributing to the mixer forever —
+ * `stepCrossfade` only ever stops `blend.from` at natural completion
+ * (`t>=1`), which an interrupted blend never reaches. This matters most for
+ * 3+-deep interruption chains (e.g. idle -> talking -> talking1 ->
+ * [interrupted back to idle]), where plain "talking" (blend2's `from`) is
+ * the orphan — `beginCrossfade`'s own toStartWeight/fromStartWeight seeding
+ * (part 1 of this fix) only ever inspects the TWO actions directly involved
+ * in the NEW blend, so it cannot on its own account for a THIRD, no-longer-
+ * referenced action left over from an earlier interruption.
+ *
+ * Exported and pure so it is unit-testable without rendering a React
+ * component or scene, mirroring `shouldTriggerClipSwitch`'s own testability
+ * pattern — see `AnimationStateEngine.test.ts`.
+ */
+export function resolveOrphanedBlendAction(
+  prevBlend: BlendState,
+  toAction: THREE.AnimationAction,
+): THREE.AnimationAction | null {
+  if (!prevBlend.active || !prevBlend.from) return null;
+  if (prevBlend.from === toAction) return null;
+  return prevBlend.from;
+}
+
+/**
  * Drives one avatar's animation: on a resolved base-clip target change,
  * starts an eased, pose-gap-adaptive crossfade via `beginCrossfade`/
  * `stepCrossfade` (never a live-clock timer); on every `update(delta)` call,
@@ -845,6 +886,8 @@ export function useAnimationController(params: {
     to: null,
     startTime: 0,
     duration: 0,
+    fromStartWeight: 0,
+    toStartWeight: 0,
   });
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const currentClipNameRef = useRef<string | null>(null);
@@ -879,6 +922,11 @@ export function useAnimationController(params: {
 
     const root = getRoot();
     if (!root) return;
+
+    // T-pose/bind-pose snap fix, part 2 — see resolveOrphanedBlendAction's
+    // doc comment for the full mechanism (and crossfade.ts's beginCrossfade
+    // doc comment for part 1).
+    resolveOrphanedBlendAction(blendRef.current, toAction)?.stop();
 
     // TRANS-01/02: starting/stopped get a ~1.2s minimum-duration floor on
     // top of the 0.3-0.9s pose-gap-adaptive range, so the transition into/

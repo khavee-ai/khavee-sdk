@@ -86,6 +86,15 @@ export function poseGapToDuration(maxAngleRad: number, floorSeconds?: number): n
  * Tracks an in-progress crossfade between two AnimationActions. Mutated
  * in place by `stepCrossfade` every frame — never converted to React
  * state (see the codebase-wide `useRef`-for-per-frame-state convention).
+ *
+ * `fromStartWeight`/`toStartWeight` (T-pose/bind-pose snap fix — see
+ * .planning/debug/tpose-snap-speak-toggle.md): the ACTUAL effective weight
+ * each action had at the moment `beginCrossfade` was called, captured so
+ * `stepCrossfade` can ramp from where each action genuinely started rather
+ * than assuming `from` always starts at 1 and `to` always starts at 0. Both
+ * assumptions hold in the common case (a settled, non-interrupted switch),
+ * but break when this crossfade itself INTERRUPTS an already-in-progress
+ * one — see `beginCrossfade`'s doc comment for the full mechanism.
  */
 export interface BlendState {
   active: boolean;
@@ -93,10 +102,35 @@ export interface BlendState {
   to: THREE.AnimationAction | null;
   startTime: number;
   duration: number;
+  fromStartWeight: number;
+  toStartWeight: number;
 }
 
 /**
  * Starts a pose-gap-adaptive crossfade from `fromAction` to `toAction`.
+ *
+ * T-pose/bind-pose snap fix (.planning/debug/tpose-snap-speak-toggle.md):
+ * previously this function unconditionally forced `toAction`'s weight to a
+ * hardcoded `0`, and `stepCrossfade` assumed `fromAction` always started at
+ * weight `1`. Both assumptions hold for a settled, non-interrupted switch
+ * (the only case earlier tests exercised), but break the instant this
+ * crossfade itself INTERRUPTS an already-in-progress one — which callers
+ * like `AnimationStateEngine.ts`'s `switchToClip` do whenever a new target
+ * (chatStatus change, or a talk-cycle variant switch) arrives before the
+ * previous blend reached `t>=1`. In that case `toAction` is very often the
+ * PREVIOUS blend's `fromAction` (e.g. toggling speaking off snaps back to
+ * the idle clip that was still mid-fade-out) — an action already
+ * contributing real, non-zero weight to the mixer. Forcing it to `0` (while
+ * the interrupted `fromAction` keeps whatever partial weight it last had,
+ * since `beginCrossfade` never touches `from`'s weight) drops the mixer's
+ * TOTAL accumulated weight across both actions well under `1` for at least
+ * one rendered frame — VRMAvatar's `mixer.update()` runs before
+ * `controller.update()`/`stepCrossfade` each frame, so that under-weighted
+ * state is what actually renders. THREE's AnimationMixer fills any
+ * shortfall below full weight with the bind pose, producing the reported
+ * flash. Seeding each action's ramp from its OWN actual current weight
+ * (via `isRunning()`/`getEffectiveWeight()`) instead of a hardcoded
+ * endpoint preserves total-weight continuity across an interruption.
  *
  * @param fromAction - The currently-playing action, or null if none.
  * @param toAction - The action to blend into.
@@ -116,14 +150,22 @@ export function beginCrossfade(
   const maxAngle = computePoseGapAngle(scene, toAction.getClip());
   const duration = poseGapToDuration(maxAngle, floorSeconds);
 
+  // Capture BEFORE mutating anything below: `toAction`'s actual current
+  // weight if it's already running (mid a just-interrupted blend), else 0
+  // (the ordinary, non-interrupted case — unchanged from prior behavior).
+  // `fromAction`'s current weight is captured the same way so stepCrossfade
+  // can ramp it down from where it genuinely is, not an assumed 1.
+  const toStartWeight = toAction.isRunning() ? toAction.getEffectiveWeight() : 0;
+  const fromStartWeight = fromAction?.isRunning() ? fromAction.getEffectiveWeight() : fromAction ? 1 : 0;
+
   toAction.reset();
   // three.js's AnimationMixer only evaluates actions that are both
   // `enabled` and in the "playing" set — setEffectiveWeight alone does
   // NOT make an action contribute to the mixer's output. `.enabled = true`
-  // and `.play()` must happen before/around the initial weight-0 call, or
+  // and `.play()` must happen before/around the initial weight call, or
   // the target animation silently never appears.
   toAction.enabled = true;
-  toAction.setEffectiveWeight(0);
+  toAction.setEffectiveWeight(toStartWeight);
   toAction.play();
 
   return {
@@ -132,6 +174,8 @@ export function beginCrossfade(
     to: toAction,
     startTime: performance.now(),
     duration,
+    fromStartWeight,
+    toStartWeight,
   };
 }
 
@@ -139,14 +183,21 @@ export function beginCrossfade(
  * Advances an in-progress crossfade by one frame. Call every frame (e.g.
  * from `useFrame`, after `mixer.update(delta)`) while `blend.active` is
  * true. No-ops if the blend has no target action or is already inactive.
+ *
+ * Ramps each action from its captured `fromStartWeight`/`toStartWeight`
+ * (see `beginCrossfade`'s doc comment) toward its target endpoint (0 for
+ * `from`, 1 for `to`) — this reduces to the original `1 - eased`/`eased`
+ * formulas exactly when `fromStartWeight === 1` and `toStartWeight === 0`
+ * (the ordinary, non-interrupted case), and generalizes correctly when
+ * either action was already mid-ramp at interruption time.
  */
 export function stepCrossfade(blend: BlendState): void {
   if (!blend.active || !blend.to) return;
   const elapsed = (performance.now() - blend.startTime) / 1000;
   const t = Math.min(elapsed / blend.duration, 1);
   const eased = easeInOutCubic(t);
-  blend.from?.setEffectiveWeight(1 - eased);
-  blend.to.setEffectiveWeight(eased);
+  blend.from?.setEffectiveWeight(blend.fromStartWeight * (1 - eased));
+  blend.to.setEffectiveWeight(blend.toStartWeight + (1 - blend.toStartWeight) * eased);
   if (t >= 1) {
     blend.from?.stop();
     blend.active = false;

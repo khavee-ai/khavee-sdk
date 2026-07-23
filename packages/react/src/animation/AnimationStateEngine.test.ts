@@ -33,12 +33,13 @@ import {
   isBaseActionMeaningfullyDriving,
   shouldTriggerClipSwitch,
   shouldDisableProceduralForManualClip,
+  resolveOrphanedBlendAction,
   useAnimationController,
   type RestPoseAnchor,
 } from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
 import { createSwayState, stepSway } from "./sway";
-import { beginCrossfade, stepCrossfade, easeInOutCubic } from "./crossfade";
+import { beginCrossfade, stepCrossfade, easeInOutCubic, type BlendState } from "./crossfade";
 import type { AvatarFormatAdapter } from "./types";
 
 vi.mock("react", async (importOriginal) => {
@@ -419,6 +420,8 @@ describe("G2 fix — idle->talking crossfade still ramps smoothly over multiple 
       play: vi.fn().mockReturnThis(),
       stop: vi.fn().mockReturnThis(),
       setEffectiveWeight: vi.fn(),
+      getEffectiveWeight: () => 1,
+      isRunning: () => false,
       getClip: () => clip,
     } as unknown as THREE.AnimationAction;
   }
@@ -571,6 +574,8 @@ describe("G1 fix wired end-to-end through switchToClip (11-13)", () => {
       play: vi.fn().mockReturnThis(),
       stop: vi.fn().mockReturnThis(),
       setEffectiveWeight: vi.fn(),
+      getEffectiveWeight: () => 1,
+      isRunning: () => false,
       getClip: () => clip,
     } as unknown as THREE.AnimationAction;
   }
@@ -1036,5 +1041,128 @@ describe("useAnimationController — gaze/gesture integration (12-04)", () => {
     controller.update(1 / 30);
 
     expect(onGestureConsumed).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveOrphanedBlendAction (T-pose/bind-pose snap fix, part 2)", () => {
+  // Debug session: .planning/debug/tpose-snap-speak-toggle.md. See
+  // crossfade.ts's beginCrossfade doc comment for part 1 (weight-seeding),
+  // and this function's own doc comment (AnimationStateEngine.ts) for the
+  // full orphaned-action mechanism this covers.
+  function makeStubAction() {
+    return { stop: vi.fn() } as unknown as THREE.AnimationAction;
+  }
+
+  function makeBlend(overrides: Partial<BlendState>): BlendState {
+    return {
+      active: false,
+      from: null,
+      to: null,
+      startTime: 0,
+      duration: 0.3,
+      fromStartWeight: 0,
+      toStartWeight: 0,
+      ...overrides,
+    };
+  }
+
+  it("returns null when the previous blend is not active (already settled -- nothing to orphan)", () => {
+    const to = makeStubAction();
+    const blend = makeBlend({ active: false, from: makeStubAction() });
+    expect(resolveOrphanedBlendAction(blend, to)).toBeNull();
+  });
+
+  it("returns null when the previous blend has no from-action (true first-mount case)", () => {
+    const to = makeStubAction();
+    const blend = makeBlend({ active: true, from: null });
+    expect(resolveOrphanedBlendAction(blend, to)).toBeNull();
+  });
+
+  it("returns null when the new target IS the previous blend's from-action (toggling back to the fading-out clip -- beginCrossfade's own weight seeding handles this, not an orphan)", () => {
+    const idle = makeStubAction();
+    const blend = makeBlend({ active: true, from: idle });
+    expect(resolveOrphanedBlendAction(blend, idle)).toBeNull();
+  });
+
+  it("returns the previous blend's from-action when it is about to be orphaned by a switch to a THIRD, unrelated clip", () => {
+    const talking = makeStubAction();
+    const talking1 = makeStubAction();
+    const idle = makeStubAction();
+    // Mirrors: idle -> talking (settled) -> talking1 (interrupted mid-blend,
+    // blend2 = {from: talking, to: talking1}) -> idle (this switch).
+    const blend2 = makeBlend({ active: true, from: talking, to: talking1 });
+    expect(resolveOrphanedBlendAction(blend2, idle)).toBe(talking);
+  });
+});
+
+describe("3+-deep interruption chain: orphaned action is stopped, never left dangling at stale weight (T-pose/bind-pose snap fix)", () => {
+  // Mirrors switchToClip's real call sequence -- beginCrossfade, then (this
+  // fix) resolveOrphanedBlendAction(prevBlend, toAction)?.stop() -- across
+  // consecutive interrupted switches (idle -> talking -> talking1 -> idle),
+  // where the LAST switch interrupts a blend that itself interrupted an
+  // earlier one, matching a fast real-world talk-cycle-variant-switch-
+  // then-speaking-ends sequence (TALK-01 + this fix).
+  function makeStatefulStubAction(clip: THREE.AnimationClip) {
+    let weight = 1;
+    let running = false;
+    const action = {
+      reset: vi.fn().mockReturnThis(),
+      enabled: false,
+      play: vi.fn(() => {
+        running = true;
+        return action;
+      }),
+      stop: vi.fn(() => {
+        running = false;
+        return action;
+      }),
+      setEffectiveWeight: vi.fn((w: number) => {
+        weight = w;
+      }),
+      getEffectiveWeight: () => weight,
+      isRunning: () => running,
+      getClip: () => clip,
+    };
+    return action as unknown as THREE.AnimationAction;
+  }
+
+  it("stops the orphaned action instead of leaving it contributing stale weight forever", () => {
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValue(0);
+
+    const scene = new THREE.Object3D();
+    const idleAction = makeStatefulStubAction(new THREE.AnimationClip("idle", -1, []));
+    const talkAction = makeStatefulStubAction(new THREE.AnimationClip("talking", -1, []));
+    const talk1Action = makeStatefulStubAction(new THREE.AnimationClip("talking1", -1, []));
+
+    idleAction.play();
+    idleAction.setEffectiveWeight(1);
+
+    // Switch 1: idle -> talking, allowed to settle fully (no interruption).
+    const blend1 = beginCrossfade(idleAction, talkAction, scene);
+    nowSpy.mockReturnValue(blend1.duration * 1000 + 50);
+    stepCrossfade(blend1);
+    expect(idleAction.stop).toHaveBeenCalledTimes(1); // natural completion
+
+    // Switch 2 (talk-cycle variant switch): talking -> talking1.
+    const switch2Start = blend1.duration * 1000 + 50;
+    nowSpy.mockReturnValue(switch2Start);
+    resolveOrphanedBlendAction(blend1, talk1Action)?.stop(); // no-op: blend1 already settled
+    const blend2 = beginCrossfade(talkAction, talk1Action, scene);
+
+    // Advance blend2 PARTWAY -- it never reaches t>=1 before switch 3 below.
+    nowSpy.mockReturnValue(switch2Start + blend2.duration * 1000 * 0.3);
+    stepCrossfade(blend2);
+    expect(talkAction.stop).not.toHaveBeenCalled(); // blend2 still active; talking is its live `from`
+
+    // Switch 3: interrupted again, back to idle. Without this fix, "talking"
+    // (blend2's `from`) would be silently orphaned here -- referenced by no
+    // BlendState from this point on, left contributing whatever weight
+    // blend2's last stepCrossfade call set forever.
+    const orphan = resolveOrphanedBlendAction(blend2, idleAction);
+    expect(orphan).toBe(talkAction);
+    orphan?.stop();
+
+    expect(talkAction.stop).toHaveBeenCalledTimes(1);
   });
 });

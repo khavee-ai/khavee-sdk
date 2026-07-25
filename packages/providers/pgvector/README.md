@@ -121,6 +121,7 @@ All methods are async unless noted.
 | `listDocuments` | `listDocuments(limit?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorDocument[]>` | Returns the most recently inserted documents (`ORDER BY id DESC`), default `limit` 20. Pass `metadataFilter` (e.g. `{ userId: 'u1' }`) to scope results via a JSONB containment match. |
 | `search` | `search(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Alias for `searchDocuments` — satisfies the `VectorSearchProvider` interface. |
 | `searchDocuments` | `searchDocuments(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Embeds `query`, then returns the `topK` most similar documents with cosine similarity `>= threshold`, ordered by similarity descending. Optional `metadataFilter` restricts results via JSONB containment. |
+| `searchByEmbedding` | `searchByEmbedding(embedding: number[], topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Same similarity query as `searchDocuments`, but takes a pre-computed embedding vector instead of a query string — skips the OpenAI embedding API call entirely. `search()`/`searchDocuments()` are unchanged and still embed internally, so existing code needs no migration. |
 | `deleteDocument` | `deleteDocument(id: number): Promise<void>` | Deletes a document row by `id`. |
 | `destroy` | `destroy(): Promise<void>` | Closes the underlying `pg.Pool`. Call this when shutting down your app. |
 
@@ -161,11 +162,51 @@ interface VectorSearchProvider {
     threshold?: number,
     metadataFilter?: Record<string, unknown>
   ): Promise<PgVectorSearchResult[]>;
+
+  // Optional: reuse a pre-computed embedding across multiple searches
+  searchByEmbedding?(
+    embedding: number[],
+    topK?: number,
+    threshold?: number,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]>;
 }
 ```
 
 `PgVectorProvider` implements `VectorSearchProvider`, so it can be passed
 anywhere that interface is expected.
+
+## Reusing an embedding across multiple searches
+
+If you need to run several similarity searches against the same query text —
+e.g. a two-threshold fallback, or the same query checked against different
+metadata filters — embed once and reuse the vector with `searchByEmbedding`
+instead of calling `search`/`searchDocuments` repeatedly, which would
+re-embed the identical text on every call:
+
+```ts
+// Embed once
+const vec = await db.embed(userMessage);
+
+// First attempt at a stricter threshold
+let results = await db.searchByEmbedding(vec, 5, 0.3, { userId: "u1" });
+
+// Fall back to a looser threshold if nothing matched — no extra embedding call
+if (results.length === 0) {
+  results = await db.searchByEmbedding(vec, 5, 0.15, { userId: "u1" });
+}
+```
+
+`searchByEmbedding` validates the vector before querying the database and
+throws a plain `Error` (no DB round-trip) if:
+
+- the array is empty or not an array (`"searchByEmbedding requires a non-empty embedding array"`)
+- its length doesn't match `embeddingDimensions` (`"Embedding dimension mismatch: got N, expected M"`)
+- it contains a non-finite value, e.g. `NaN`/`Infinity` (`"Embedding contains non-finite values (NaN/Infinity)"`)
+
+`search()` and `searchDocuments()` are completely unchanged by this — they
+still embed the query text internally on every call, so existing code needs
+no migration.
 
 ## CSV import format
 

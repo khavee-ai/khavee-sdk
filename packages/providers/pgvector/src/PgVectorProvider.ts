@@ -283,8 +283,57 @@ export class PgVectorProvider implements VectorSearchProvider {
     metadataFilter?: Record<string, unknown>
   ): Promise<PgVectorSearchResult[]> {
     const embedding = await this.embed(query);
-    const vec = this.toVectorLiteral(embedding);
+    return this.runVectorQuery(this.toVectorLiteral(embedding), topK, threshold, metadataFilter);
+  }
 
+  /**
+   * Cosine-similarity search using a caller-supplied, pre-computed embedding.
+   * Runs the identical similarity query as `searchDocuments` but skips the
+   * OpenAI embedding API call entirely.
+   *
+   * Intended usage: embed once with `embed(text)`, then call this method
+   * repeatedly to avoid re-paying the embedding round-trip — e.g. a 0.3
+   * threshold attempt followed by a 0.15 retry, or the same vector checked
+   * against different metadata filters.
+   *
+   * @param embedding      Pre-computed embedding vector (must match
+   *                       `embeddingDimensions` and contain only finite numbers)
+   * @param topK           Max number of results (default: config.defaultTopK)
+   * @param threshold      Min cosine similarity 0–1 (default: config.defaultThreshold)
+   * @param metadataFilter Optional JSONB containment filter, e.g. { userId, projectId }
+   * @throws {Error} If the embedding is empty, non-finite, or the wrong dimension count
+   */
+  async searchByEmbedding(
+    embedding: number[],
+    topK: number = this.defaultTopK,
+    threshold: number = this.defaultThreshold,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]> {
+    if (!Array.isArray(embedding) || embedding.length === 0) {
+      throw new Error("searchByEmbedding requires a non-empty embedding array");
+    }
+    if (embedding.length !== this.embeddingDimensions) {
+      throw new Error(
+        `Embedding dimension mismatch: got ${embedding.length}, expected ${this.embeddingDimensions}`
+      );
+    }
+    if (!embedding.every((n) => Number.isFinite(n))) {
+      throw new Error("Embedding contains non-finite values (NaN/Infinity)");
+    }
+
+    return this.runVectorQuery(this.toVectorLiteral(embedding), topK, threshold, metadataFilter);
+  }
+
+  /**
+   * Single place the similarity SQL is built, so `searchDocuments` and
+   * `searchByEmbedding` can never drift apart.
+   */
+  private async runVectorQuery(
+    vec: string,
+    topK: number,
+    threshold: number,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]> {
     const hasFilter = metadataFilter && Object.keys(metadataFilter).length > 0;
 
     if (hasFilter) {

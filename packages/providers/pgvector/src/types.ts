@@ -91,4 +91,15 @@ export interface VectorSearchProvider {
     threshold?: number,
     metadataFilter?: Record<string, unknown>
   ): Promise<PgVectorSearchResult[]>;
+
+  /**
+   * Optional: run a similarity search against a pre-computed embedding,
+   * reusing it across multiple calls instead of re-embedding the same text.
+   */
+  searchByEmbedding?(
+    embedding: number[],
+    topK?: number,
+    threshold?: number,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]>;
 }

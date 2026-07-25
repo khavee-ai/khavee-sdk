@@ -38,7 +38,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "verify:search": "node scripts/verify-search-dedupe.cjs"
   },
   "dependencies": {
     "openai": "^4.0.0",

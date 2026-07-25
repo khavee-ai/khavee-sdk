@@ -170,38 +170,56 @@ export class PgVectorProvider implements VectorSearchProvider {
 
   /**
    * Minimal RFC-4180 compliant CSV parser (no external dependency).
-   * Handles quoted fields, escaped quotes (""), and CRLF/LF line endings.
+   * Handles quoted fields, escaped quotes (""), CRLF/LF line endings, and
+   * newlines embedded inside quoted fields.
+   *
+   * Quote state is tracked across the whole input in a single pass — a
+   * newline only ends a row when it occurs outside an open quote. Splitting
+   * on "\n" up front (the previous implementation) breaks on any quoted
+   * field containing a literal newline, shredding one logical row into one
+   * row per physical line.
    */
   parseCSV(csvText: string): Record<string, string>[] {
-    const lines = csvText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-    const nonEmpty = lines.filter((l) => l.trim() !== "");
-    if (nonEmpty.length < 2) return [];
+    const text = csvText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-    const parseRow = (line: string): string[] => {
-      const fields: string[] = [];
-      let current = "";
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (inQuotes) {
-          if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
-          else if (ch === '"') { inQuotes = false; }
-          else { current += ch; }
-        } else {
-          if (ch === '"') { inQuotes = true; }
-          else if (ch === ",") { fields.push(current.trim()); current = ""; }
-          else { current += ch; }
-        }
+    const rows: string[][] = [];
+    let fields: string[] = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+
+      if (inQuotes) {
+        if (ch === '"' && text[i + 1] === '"') { current += '"'; i++; }
+        else if (ch === '"') { inQuotes = false; }
+        else { current += ch; }
+        continue;
       }
-      fields.push(current.trim());
-      return fields;
-    };
 
-    const headers = parseRow(nonEmpty[0]);
-    return nonEmpty.slice(1).map((line) => {
-      const values = parseRow(line);
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ",") { fields.push(current.trim()); current = ""; }
+      else if (ch === "\n") {
+        fields.push(current.trim());
+        rows.push(fields);
+        fields = [];
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    if (current !== "" || fields.length > 0) {
+      fields.push(current.trim());
+      rows.push(fields);
+    }
+
+    const nonEmptyRows = rows.filter((r) => !(r.length === 1 && r[0] === ""));
+    if (nonEmptyRows.length < 2) return [];
+
+    const [headerRow, ...dataRows] = nonEmptyRows;
+    return dataRows.map((values) => {
       const obj: Record<string, string> = {};
-      headers.forEach((h, idx) => { obj[h] = values[idx] ?? ""; });
+      headerRow.forEach((h, idx) => { obj[h] = values[idx] ?? ""; });
       return obj;
     });
   }

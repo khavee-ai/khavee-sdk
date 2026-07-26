@@ -18,6 +18,7 @@ export class PgVectorProvider implements VectorSearchProvider {
   private embeddingDimensions: number;
   private defaultTopK: number;
   private defaultThreshold: number;
+  private defaultKeywordThreshold: number;
   private defaultConcurrency: number;
 
   /**
@@ -41,6 +42,10 @@ export class PgVectorProvider implements VectorSearchProvider {
     this.embeddingDimensions = config.embeddingDimensions ?? 1536;
     this.defaultTopK = config.defaultTopK ?? 5;
     this.defaultThreshold = config.defaultThreshold ?? 0.3;
+    // 0.15, not pg_trgm's own 0.3 operator default: that default was tuned
+    // for English word-level fuzzy matching, whereas Thai character-run
+    // matching needs a lower floor.
+    this.defaultKeywordThreshold = config.defaultKeywordThreshold ?? 0.15;
     this.defaultConcurrency = config.defaultConcurrency ?? 5;
   }
 
@@ -102,7 +107,8 @@ export class PgVectorProvider implements VectorSearchProvider {
   // ── Schema / migration ─────────────────────────────────────────────────────
 
   /**
-   * Creates the pgvector extension, the documents table, and an HNSW index.
+   * Creates the pgvector extension, the documents table, an HNSW index, the
+   * pg_trgm extension, and a GIN trigram index on `content`.
    * Safe to run multiple times (idempotent).
    */
   async migrate(): Promise<void> {
@@ -124,6 +130,13 @@ export class PgVectorProvider implements VectorSearchProvider {
         ON ${this.tableName} USING hnsw (embedding vector_cosine_ops)
         WITH (m = 16, ef_construction = 64)
       `);
+      await client.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+      // Unlike the HNSW index above, this uses IF NOT EXISTS with no DROP:
+      // it has no tunable params that could change between migrate() runs,
+      // so dropping and rebuilding it on every call would be pure waste.
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS ${this.tableName}_content_trgm_idx ON ${this.tableName} USING gin (content gin_trgm_ops)`
+      );
     } finally {
       client.release();
     }

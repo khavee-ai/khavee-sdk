@@ -34,6 +34,15 @@ export interface PgVectorConfig {
   /** Default minimum similarity score 0–1 (default: 0.3) */
   defaultThreshold?: number;
 
+  /**
+   * Default minimum pg_trgm trigram similarity 0–1 for `searchByKeyword`
+   * (default: 0.15). Deliberately lower than pg_trgm's own 0.3 operator
+   * default, which was tuned for English word-level fuzzy matching — Thai
+   * character-run matching needs a lower floor. Real-world tuning against
+   * actual query traffic may be needed.
+   */
+  defaultKeywordThreshold?: number;
+
   /** Max parallel INSERT statements per embedding batch during bulk insert (default: 5) */
   defaultConcurrency?: number;
 
@@ -98,6 +107,18 @@ export interface VectorSearchProvider {
    */
   searchByEmbedding?(
     embedding: number[],
+    topK?: number,
+    threshold?: number,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]>;
+
+  /**
+   * Optional: run a trigram (pg_trgm) keyword search alongside vector
+   * search, for fusing the two ranked lists (e.g. via Reciprocal Rank
+   * Fusion) instead of relying on cosine similarity alone.
+   */
+  searchByKeyword?(
+    query: string,
     topK?: number,
     threshold?: number,
     metadataFilter?: Record<string, unknown>

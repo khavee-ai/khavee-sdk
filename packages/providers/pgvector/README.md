@@ -85,7 +85,7 @@ await db.destroy();
 | `tableName` | `string` | `"documents"` | Table used to store documents. |
 | `defaultTopK` | `number` | `5` | Default number of results returned by `search`/`searchDocuments` if not overridden per call. |
 | `defaultThreshold` | `number` | `0.3` | Default minimum cosine similarity (0–1) for a result to be returned. |
-| `defaultConcurrency` | `number` | `5` | Max parallel embedding requests during bulk insert / CSV import. |
+| `defaultConcurrency` | `number` | `5` | Max parallel INSERT statements per embedding batch during bulk insert / CSV import. |
 | `ssl` | `boolean \| { rejectUnauthorized: boolean }` | `false` | SSL configuration passed through to the underlying `pg.Pool`. |
 
 ## What `migrate()` sets up
@@ -115,8 +115,8 @@ All methods are async unless noted.
 | `embed` | `embed(text: string): Promise<number[]>` | Generates an embedding vector for a string via the OpenAI embeddings API. |
 | `migrate` | `migrate(): Promise<void>` | Creates the pgvector extension, table, and HNSW index. See above. |
 | `insertDocument` | `insertDocument(content: string, metadata?: Record<string, unknown>): Promise<PgVectorDocument>` | Embeds `content` and inserts one row. Returns the inserted `{ id, content, metadata, createdAt }`. |
-| `bulkInsertDocuments` | `bulkInsertDocuments(rows: BulkInsertRow[], concurrency?: number): Promise<BulkInsertResult>` | Embeds and inserts many rows in parallel batches (batch size = `concurrency`, default `defaultConcurrency`). Returns `{ inserted, failed, errors }`, where each error is `{ row, reason }` (1-indexed row number). |
-| `importCSV` | `importCSV(csvText: string, options?: CSVImportOptions): Promise<BulkInsertResult>` | Parses a CSV string (must have a header row) and bulk-inserts every row. The column named by `options.contentColumn` (default `"content"`) becomes the embedded text; every other column becomes `metadata`. Throws if the content column is missing. |
+| `bulkInsertDocuments` | `bulkInsertDocuments(rows: BulkInsertRow[], concurrency?: number): Promise<BulkInsertResult>` | Embeds and inserts many rows. Embeddings are generated in batched API calls of up to 100 texts each (an internal, non-configurable constant); `concurrency` (default `defaultConcurrency`) controls how many parallel INSERT statements run per batch — it no longer controls embedding parallelism. Returns `{ inserted, failed, errors }`, where each error is `{ row, reason }` (1-indexed row number). |
+| `importCSV` | `importCSV(csvText: string, options?: CSVImportOptions): Promise<BulkInsertResult>` | Parses a CSV string (must have a header row) and bulk-inserts every row via `bulkInsertDocuments` (same batched-embedding behavior applies). The column named by `options.contentColumn` (default `"content"`) becomes the embedded text; every other column becomes `metadata`. Throws if the content column is missing. |
 | `parseCSV` | `parseCSV(csvText: string): Record<string, string>[]` | Minimal RFC-4180 CSV parser used internally by `importCSV`. Handles quoted fields, escaped quotes (`""`), and CRLF/LF line endings. Exposed as a public method if you need to parse CSV without inserting. |
 | `listDocuments` | `listDocuments(limit?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorDocument[]>` | Returns the most recently inserted documents (`ORDER BY id DESC`), default `limit` 20. Pass `metadataFilter` (e.g. `{ userId: 'u1' }`) to scope results via a JSONB containment match. |
 | `search` | `search(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Alias for `searchDocuments` — satisfies the `VectorSearchProvider` interface. |
@@ -152,7 +152,7 @@ interface BulkInsertResult {
 
 interface CSVImportOptions {
   contentColumn?: string; // default: "content"
-  concurrency?: number;   // default: defaultConcurrency
+  concurrency?: number;   // max parallel INSERTs per embedding batch, default: defaultConcurrency
 }
 
 interface VectorSearchProvider {
@@ -223,6 +223,21 @@ content,category,author
 ```ts
 await db.importCSV(csvString, { contentColumn: "content", concurrency: 5 });
 ```
+
+## Batched embedding during bulk import
+
+`bulkInsertDocuments`/`importCSV` generate embeddings in batches instead of
+one OpenAI API call per row. Importing 267 rows makes 3 embeddings API calls
+(chunks of up to 100 texts each) instead of 267.
+
+- The batch size is an internal constant (100) and is deliberately not
+  configurable.
+- `bulkInsertDocuments`/`importCSV` signatures and the `BulkInsertResult`
+  shape are unchanged — no caller migration is needed.
+- Error semantics: if one batch's embedding call fails, every row in that
+  batch is reported failed in `result.errors` with its 1-indexed row number,
+  and the remaining batches still import normally. A single row's INSERT
+  failure still fails only that row — its batch siblings still insert.
 
 ## Next step: retrieval-augmented generation
 

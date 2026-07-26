@@ -477,6 +477,86 @@ export class PgVectorProvider implements VectorSearchProvider {
     return rows as PgVectorSearchResult[];
   }
 
+  // ── Keyword search ─────────────────────────────────────────────────────────
+
+  /**
+   * Trigram (pg_trgm) keyword search. This is NOT vector/cosine search and
+   * NOT Postgres full-text search (`tsvector`/`ts_rank`) — Thai script has no
+   * inter-word spaces, so tsvector-based FTS cannot segment it into
+   * meaningful word tokens. Trigram matching is character-level and
+   * language-agnostic, so it works regardless of word boundaries.
+   *
+   * The returned `similarity` field holds a trigram similarity score, NOT
+   * cosine similarity — it is not comparable in scale to `search`/
+   * `searchByEmbedding` results. The intended consumption pattern is fusing
+   * this list with a vector-search list via Reciprocal Rank Fusion, which
+   * uses only each list's internal rank order, not raw score magnitude.
+   *
+   * Requires `migrate()` to have been run so the `pg_trgm` extension and
+   * trigram index exist.
+   *
+   * @param query          Natural language query string, matched via trigram similarity
+   * @param topK           Max number of results (default: config.defaultTopK)
+   * @param threshold      Min trigram similarity 0–1 (default: config.defaultKeywordThreshold, 0.15).
+   *                       Real-world tuning against actual query traffic may be needed.
+   * @param metadataFilter Optional JSONB containment filter, e.g. { userId, projectId }
+   */
+  async searchByKeyword(
+    query: string,
+    topK: number = this.defaultTopK,
+    threshold: number = this.defaultKeywordThreshold,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]> {
+    return this.runKeywordQuery(query, topK, threshold, metadataFilter);
+  }
+
+  /**
+   * Single place the trigram SQL is built, mirroring the `runVectorQuery`
+   * extraction, so the pattern stays uniform across both search sides.
+   */
+  private async runKeywordQuery(
+    query: string,
+    topK: number,
+    threshold: number,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]> {
+    const hasFilter = metadataFilter && Object.keys(metadataFilter).length > 0;
+
+    if (hasFilter) {
+      const { rows } = await this.pool.query(
+        `SELECT
+           id,
+           content,
+           metadata,
+           created_at AS "createdAt",
+           similarity(content, $1) AS similarity
+         FROM ${this.tableName}
+         WHERE similarity(content, $1) >= $2
+           AND metadata @> $4::jsonb
+         ORDER BY similarity(content, $1) DESC
+         LIMIT $3`,
+        [query, threshold, topK, JSON.stringify(metadataFilter)]
+      );
+      return rows as PgVectorSearchResult[];
+    }
+
+    const { rows } = await this.pool.query(
+      `SELECT
+         id,
+         content,
+         metadata,
+         created_at AS "createdAt",
+         similarity(content, $1) AS similarity
+       FROM ${this.tableName}
+       WHERE similarity(content, $1) >= $2
+       ORDER BY similarity(content, $1) DESC
+       LIMIT $3`,
+      [query, threshold, topK]
+    );
+
+    return rows as PgVectorSearchResult[];
+  }
+
   // ── Delete ─────────────────────────────────────────────────────────────────
 
   async deleteDocument(id: number): Promise<void> {

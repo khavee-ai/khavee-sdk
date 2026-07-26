@@ -34,7 +34,7 @@ export interface PgVectorConfig {
   /** Default minimum similarity score 0–1 (default: 0.3) */
   defaultThreshold?: number;
 
-  /** Max parallel embedding requests during bulk insert (default: 5) */
+  /** Max parallel INSERT statements per embedding batch during bulk insert (default: 5) */
   defaultConcurrency?: number;
 
   /** SSL configuration for PostgreSQL connection (default: false) */
@@ -77,7 +77,7 @@ export interface CSVImportOptions {
   contentColumn?: string;
 
   /**
-   * Number of parallel embed calls during CSV import (default: 5)
+   * Max parallel INSERT statements per embedding batch during CSV import (default: 5)
    */
   concurrency?: number;
 }

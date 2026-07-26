@@ -20,6 +20,16 @@ export class PgVectorProvider implements VectorSearchProvider {
   private defaultThreshold: number;
   private defaultConcurrency: number;
 
+  /**
+   * Internal tuning constant — max texts sent per `embeddings.create` call.
+   * Not exposed on `PgVectorConfig`: 100 texts per request stays well under
+   * OpenAI's per-request array-size limit for `text-embedding-3-small`/
+   * `-large` regardless of individual text length, so a single request can
+   * never blow the array/token ceiling. This is an internal performance
+   * knob, not something any consumer needs to tune.
+   */
+  private readonly embeddingBatchSize = 100;
+
   constructor(config: PgVectorConfig) {
     this.pool = new Pool({
       connectionString: config.connectionString,
@@ -46,6 +56,47 @@ export class PgVectorProvider implements VectorSearchProvider {
 
   private toVectorLiteral(embedding: number[]): string {
     return `[${embedding.join(",")}]`;
+  }
+
+  /**
+   * Embed many texts in internally-chunked batches of `embeddingBatchSize`.
+   * Makes one `embeddings.create` call per chunk instead of one call per
+   * text, and returns embeddings in the same order as the input `texts`.
+   *
+   * @param texts Texts to embed, in order
+   * @returns Embedding vectors, index-aligned with `texts`
+   * @throws {Error} If a chunk's response returns a different number of
+   *                 embeddings than texts sent — fails loudly rather than
+   *                 silently misaligning every subsequent row's embedding
+   */
+  private async embedBatch(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+
+    const results: number[][] = [];
+
+    for (let i = 0; i < texts.length; i += this.embeddingBatchSize) {
+      const chunk = texts.slice(i, i + this.embeddingBatchSize);
+      const res = await this.openai.embeddings.create({
+        model: this.embeddingModel,
+        input: chunk,
+      });
+
+      // Defensive: sort a copy by `index` rather than trusting response
+      // order, and never mutate `res.data` in place.
+      const sorted = [...res.data].sort((a, b) => a.index - b.index);
+
+      if (sorted.length !== chunk.length) {
+        throw new Error(
+          `Embedding batch size mismatch: sent ${chunk.length} texts, received ${sorted.length} embeddings`
+        );
+      }
+
+      for (const item of sorted) {
+        results.push(item.embedding);
+      }
+    }
+
+    return results;
   }
 
   // ── Schema / migration ─────────────────────────────────────────────────────
@@ -88,6 +139,19 @@ export class PgVectorProvider implements VectorSearchProvider {
     metadata: Record<string, unknown> = {}
   ): Promise<PgVectorDocument> {
     const embedding = await this.embed(content);
+    return this.insertDocumentWithEmbedding(content, metadata, embedding);
+  }
+
+  /**
+   * Single place the INSERT SQL is built, so `insertDocument` and
+   * `bulkInsertDocuments` can never drift apart (mirrors the `runVectorQuery`
+   * extraction from quick task 260726-9cq).
+   */
+  private async insertDocumentWithEmbedding(
+    content: string,
+    metadata: Record<string, unknown>,
+    embedding: number[]
+  ): Promise<PgVectorDocument> {
     const vec = this.toVectorLiteral(embedding);
 
     const { rows } = await this.pool.query(
@@ -102,7 +166,11 @@ export class PgVectorProvider implements VectorSearchProvider {
   // ── Bulk insert ────────────────────────────────────────────────────────────
 
   /**
-   * Embed and insert multiple documents. Processes rows in parallel batches.
+   * Embed and insert multiple documents. Embeddings are generated in
+   * batches of up to `embeddingBatchSize` texts per OpenAI API call (instead
+   * of one call per row); `concurrency` now controls how many parallel
+   * INSERT statements run per batch, not how many parallel embedding
+   * requests are in flight.
    */
   async bulkInsertDocuments(
     rows: BulkInsertRow[],
@@ -110,20 +178,45 @@ export class PgVectorProvider implements VectorSearchProvider {
   ): Promise<BulkInsertResult> {
     const result: BulkInsertResult = { inserted: 0, failed: 0, errors: [] };
 
-    for (let i = 0; i < rows.length; i += concurrency) {
-      const batch = rows.slice(i, i + concurrency);
-      await Promise.all(
-        batch.map(async (row, batchIdx) => {
-          const rowNum = i + batchIdx + 1;
-          try {
-            await this.insertDocument(row.content, row.metadata ?? {});
-            result.inserted++;
-          } catch (err) {
-            result.failed++;
-            result.errors.push({ row: rowNum, reason: String(err) });
-          }
-        })
-      );
+    // Guard against a zero/negative/NaN concurrency, which previously
+    // produced an infinite loop.
+    const insertConcurrency = Math.max(1, Math.floor(concurrency) || 1);
+
+    for (let i = 0; i < rows.length; i += this.embeddingBatchSize) {
+      const chunk = rows.slice(i, i + this.embeddingBatchSize);
+
+      let embeddings: number[][];
+      try {
+        embeddings = await this.embedBatch(chunk.map((r) => r.content));
+      } catch (err) {
+        // One chunk's embedding failure must never abort the whole import —
+        // attribute the failure to every row in this chunk and move on.
+        for (let idx = 0; idx < chunk.length; idx++) {
+          result.failed++;
+          result.errors.push({ row: i + idx + 1, reason: String(err) });
+        }
+        continue;
+      }
+
+      for (let j = 0; j < chunk.length; j += insertConcurrency) {
+        const slice = chunk.slice(j, j + insertConcurrency);
+        await Promise.all(
+          slice.map(async (row, k) => {
+            const rowNum = i + j + k + 1;
+            try {
+              await this.insertDocumentWithEmbedding(
+                row.content,
+                row.metadata ?? {},
+                embeddings[j + k]
+              );
+              result.inserted++;
+            } catch (err) {
+              result.failed++;
+              result.errors.push({ row: rowNum, reason: String(err) });
+            }
+          })
+        );
+      }
     }
 
     return result;

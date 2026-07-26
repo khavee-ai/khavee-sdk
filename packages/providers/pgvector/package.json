@@ -39,7 +39,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "verify:search": "node scripts/verify-search-dedupe.cjs"
+    "verify:search": "node scripts/verify-search-dedupe.cjs",
+    "verify:batch": "node scripts/verify-batch-embedding.cjs"
   },
   "dependencies": {
     "openai": "^4.0.0",

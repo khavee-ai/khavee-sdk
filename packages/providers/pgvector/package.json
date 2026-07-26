@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-pgvector",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "PostgreSQL + pgvector provider for Khavee AI SDK",
   "keywords": [
     "pgvector",
@@ -40,7 +40,8 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "verify:search": "node scripts/verify-search-dedupe.cjs",
-    "verify:batch": "node scripts/verify-batch-embedding.cjs"
+    "verify:batch": "node scripts/verify-batch-embedding.cjs",
+    "verify:keyword": "node scripts/verify-keyword-search.cjs"
   },
   "dependencies": {
     "openai": "^4.0.0",

@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@khaveeai/providers-pgvector.svg)](https://www.npmjs.com/package/@khaveeai/providers-pgvector)
 [![license](https://img.shields.io/npm/l/@khaveeai/providers-pgvector.svg)](../../../LICENSE)
 
-`PgVectorProvider` is a vector-store provider backed by PostgreSQL + the [pgvector](https://github.com/pgvector/pgvector) extension: document storage, CSV bulk import, and cosine-similarity search over embedded text. Implements `VectorSearchProvider` — the building block for a RAG pipeline.
+`PgVectorProvider` is a vector-store provider backed by PostgreSQL + the [pgvector](https://github.com/pgvector/pgvector) extension: document storage, CSV bulk import, cosine-similarity search, and trigram-based keyword search over embedded text. Implements `VectorSearchProvider` — the building block for a RAG pipeline.
 
 ## Install
 
@@ -85,6 +85,7 @@ await db.destroy();
 | `tableName` | `string` | `"documents"` | Table used to store documents. |
 | `defaultTopK` | `number` | `5` | Default number of results returned by `search`/`searchDocuments` if not overridden per call. |
 | `defaultThreshold` | `number` | `0.3` | Default minimum cosine similarity (0–1) for a result to be returned. |
+| `defaultKeywordThreshold` | `number` | `0.15` | Default minimum pg_trgm trigram similarity (0–1) for `searchByKeyword`. Deliberately below pg_trgm's own 0.3 operator default, which was tuned for English word-level fuzzy matching. |
 | `defaultConcurrency` | `number` | `5` | Max parallel INSERT statements per embedding batch during bulk insert / CSV import. |
 | `ssl` | `boolean \| { rejectUnauthorized: boolean }` | `false` | SSL configuration passed through to the underlying `pg.Pool`. |
 
@@ -102,9 +103,17 @@ safe to call on every app start). It runs:
 3. Drops and recreates an HNSW index (`<tableName>_embedding_idx`) on the
    `embedding` column using `vector_cosine_ops` (cosine distance) with `m =
    16, ef_construction = 64`.
+4. `CREATE EXTENSION IF NOT EXISTS pg_trgm` — enables the pg_trgm extension.
+5. Creates a GIN trigram index (`<tableName>_content_trgm_idx`) on the
+   `content` column using `gin_trgm_ops`, with `IF NOT EXISTS` (no
+   drop/recreate) — unlike the HNSW index above, this index has no tunable
+   params that could change between `migrate()` runs, so there is nothing to
+   gain from rebuilding it every time.
 
 Because the index uses `vector_cosine_ops`, all similarity scores returned by
 search are cosine similarity (`1 - cosine_distance`), in the 0–1 range.
+`searchByKeyword`'s `similarity` field is a trigram similarity score instead
+— see "Hybrid search: keyword + vector" below.
 
 ## API reference
 
@@ -122,6 +131,7 @@ All methods are async unless noted.
 | `search` | `search(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Alias for `searchDocuments` — satisfies the `VectorSearchProvider` interface. |
 | `searchDocuments` | `searchDocuments(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Embeds `query`, then returns the `topK` most similar documents with cosine similarity `>= threshold`, ordered by similarity descending. Optional `metadataFilter` restricts results via JSONB containment. |
 | `searchByEmbedding` | `searchByEmbedding(embedding: number[], topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Same similarity query as `searchDocuments`, but takes a pre-computed embedding vector instead of a query string — skips the OpenAI embedding API call entirely. `search()`/`searchDocuments()` are unchanged and still embed internally, so existing code needs no migration. |
+| `searchByKeyword` | `searchByKeyword(query: string, topK?: number, threshold?: number, metadataFilter?: Record<string, unknown>): Promise<PgVectorSearchResult[]>` | Trigram (pg_trgm) keyword search — matches character-level trigrams rather than embedding cosine similarity. Requires `migrate()` to have created the pg_trgm extension/index. `threshold` defaults to `config.defaultKeywordThreshold` (0.15). See "Hybrid search: keyword + vector" below. |
 | `deleteDocument` | `deleteDocument(id: number): Promise<void>` | Deletes a document row by `id`. |
 | `destroy` | `destroy(): Promise<void>` | Closes the underlying `pg.Pool`. Call this when shutting down your app. |
 
@@ -170,6 +180,14 @@ interface VectorSearchProvider {
     threshold?: number,
     metadataFilter?: Record<string, unknown>
   ): Promise<PgVectorSearchResult[]>;
+
+  // Optional: trigram keyword search, for fusing with vector search
+  searchByKeyword?(
+    query: string,
+    topK?: number,
+    threshold?: number,
+    metadataFilter?: Record<string, unknown>
+  ): Promise<PgVectorSearchResult[]>;
 }
 ```
 
@@ -207,6 +225,41 @@ throws a plain `Error` (no DB round-trip) if:
 `search()` and `searchDocuments()` are completely unchanged by this — they
 still embed the query text internally on every call, so existing code needs
 no migration.
+
+## Hybrid search: keyword + vector
+
+Cosine similarity alone can miss exact/near-exact term matches that share a
+substring with unrelated content. Postgres full-text search (`tsvector`/
+`to_tsvector`/`ts_rank`) can't fill this gap for Thai-language content: FTS
+tokenizes on whitespace/punctuation, and Thai script has no inter-word
+spaces, so stock Postgres has no way to segment it into meaningful word
+tokens. `pg_trgm` trigram matching operates on fixed-length character
+sequences regardless of word boundaries, making it language-agnostic —
+`searchByKeyword` uses it instead.
+
+```ts
+const query = "เสริมหน้าอก";
+
+const [vectorResults, keywordResults] = await Promise.all([
+  db.searchByEmbedding(await db.embed(query), 10, 0.3),
+  db.searchByKeyword(query, 10, 0.15),
+]);
+
+// Fuse by RANK (Reciprocal Rank Fusion), not by raw score — vectorResults'
+// `similarity` is cosine similarity and keywordResults' `similarity` is
+// trigram similarity; the two scales are not comparable. RRF only needs
+// each list's internal rank order (its position in the array).
+```
+
+Notes:
+
+- `migrate()` must be re-run on **existing** databases to create the
+  `pg_trgm` extension and the `<tableName>_content_trgm_idx` GIN index —
+  it's idempotent, so re-running it is safe even if you've already run it
+  before this feature existed.
+- `0.15` (`defaultKeywordThreshold`) is a starting point, not a tuned
+  value — it requires validation against real query traffic before relying
+  on it in production.
 
 ## CSV import format
 

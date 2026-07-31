@@ -116,7 +116,7 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // its existing independent consumers (ChatBox/ControlBar/ClickToTalkOverlay
   // each already call it too; this is the established multi-consumer
   // pattern for this context, not a new architecture).
-  const { conversation, isConnected } = useRealtime();
+  const { conversation, isConnected, isMicEnabled, disableMicrophone } = useRealtime();
   const [showGreeting, setShowGreeting] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
   const prevConversationLengthRef = useRef(0);
@@ -171,14 +171,24 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // Move focus into the panel on open, and back to the launcher on close —
   // without this, a keyboard/screen-reader user who opens the panel stays
   // focused on a now-hidden launcher button (WCAG 2.2 Focus Not Obscured).
+  //
+  // Also mutes the mic on close (found live: minimizing the panel left the
+  // mic capturing audio in the background with no visible indication —
+  // real privacy problem, not just UX). Checked BEFORE wasOpenRef.current
+  // is reassigned below, same as the focus branch above it, so this only
+  // fires on the true-to-false transition, never on close-while-already-
+  // closed or on first mount (wasOpenRef starts false).
   useEffect(() => {
     if (isOpen) {
       closeButtonRef.current?.focus();
     } else if (wasOpenRef.current) {
       launcherRef.current?.focus();
+      if (isMicEnabled) {
+        disableMicrophone();
+      }
     }
     wasOpenRef.current = isOpen;
-  }, [isOpen]);
+  }, [isOpen, isMicEnabled, disableMicrophone]);
 
   // Escape closes the nearest open layer first (chat sheet, then panel)
   // rather than jumping straight to fully closed — mirrors the existing

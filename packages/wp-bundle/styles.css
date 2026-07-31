@@ -755,8 +755,18 @@
    the sheet's own height below via --khaveeai-sheet-h (set on
    .khaveeai-floating-avatar-area above) + its 16px inset — was a hardcoded
    300px until the responsive fix below needed the sheet to shrink on
-   short viewports too, which would've silently left this stale. */
-.khaveeai-floating-controls--sheet-open {
+   short viewports too, which would've silently left this stale.
+   Bug (found live, screenshot showed mic/chat buttons sitting directly on
+   top of the chat input): a bare `.khaveeai-floating-controls--sheet-open`
+   selector is LESS specific (one class) than the base positioning rule
+   above (`.khaveeai-floating-avatar-area .khaveeai-controls
+   .khaveeai-floating-controls`, three classes) — so the base rule's
+   `bottom: 16px` always won regardless of source order, and this lift
+   never actually applied. Repeating the base rule's full selector plus
+   this modifier class guarantees higher specificity than it, the same way
+   every other floating-controls override in this file already does. */
+.khaveeai-floating-avatar-area
+  .khaveeai-controls.khaveeai-floating-controls.khaveeai-floating-controls--sheet-open {
   bottom: calc(var(--khaveeai-sheet-h) + 16px + env(safe-area-inset-bottom));
 }
 

@@ -103,6 +103,11 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // single source of the base inset — this only adds to it.
   const floatingPosition = config.floatingPosition ?? "bottom-right";
   const floatingOffsetY = config.floatingOffsetY ?? 0;
+  // Quick fix: shopping-cart-drawer/modal z-index conflicts — AvatarRenderer
+  // always sends a resolved value (999999 default, or the site owner's
+  // configured override), so this is set unconditionally rather than only
+  // when truthy like floatingOffsetY above (whose real default IS 0/falsy).
+  const floatingZIndex = config.floatingZIndex ?? 999999;
 
   // Brand/accent color (260716-primary-color): overrides --khaveeai-primary
   // (declared with the historical #6929ff purple as its default on
@@ -118,6 +123,8 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
     (widgetStyle as Record<string, string>)["--khaveeai-floating-offset-y"] =
       `${floatingOffsetY}px`;
   }
+  (widgetStyle as Record<string, string>)["--khaveeai-floating-z-index"] =
+    String(floatingZIndex);
   if (floatingPrimaryColor) {
     (widgetStyle as Record<string, string>)["--khaveeai-primary"] =
       floatingPrimaryColor;

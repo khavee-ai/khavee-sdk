@@ -1242,6 +1242,14 @@ JS;
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		add_settings_field(
+			'floating_z_index',
+			__( 'Floating widget z-index', 'khaveeai' ),
+			array( $this, 'render_floating_z_index_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -1372,6 +1380,14 @@ JS;
 		// reposition it arbitrarily.
 		$sanitized['floating_offset_y'] = isset( $input['floating_offset_y'] )
 			? max( 0, min( 400, (int) $input['floating_offset_y'] ) )
+			: 0;
+
+		// 0 = unset (AvatarRenderer applies the 999999 default) — no upper
+		// clamp beyond a sane integer ceiling, since a site owner needs to
+		// go BELOW another element's arbitrary z-index, not within a fixed
+		// range like the pixel offset above.
+		$sanitized['floating_z_index'] = isset( $input['floating_z_index'] )
+			? max( 0, min( 2147483647, (int) $input['floating_z_index'] ) )
 			: 0;
 
 		return $sanitized;
@@ -1771,6 +1787,10 @@ JS;
 		// the avatar/camera/background the preview mount renders).
 		$this->render_form_table_row( __( 'Floating widget position', 'khaveeai' ), array( $this, 'render_floating_position_field' ) );
 		$this->render_form_table_row( __( 'Floating widget vertical offset', 'khaveeai' ), array( $this, 'render_floating_offset_y_field' ) );
+		// Quick fix: shopping-cart-drawer/modal z-index conflicts — a site
+		// owner needs to lower Khavee's stacking order below whatever else
+		// on the page is also fighting to stay on top.
+		$this->render_form_table_row( __( 'Floating widget z-index', 'khaveeai' ), array( $this, 'render_floating_z_index_field' ) );
 		echo '</tbody></table>';
 
 		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
@@ -2696,6 +2716,39 @@ JS;
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Extra distance (in pixels) to lift the widget up off the page edge, e.g. to clear another floating widget beneath it. 0 = default 24px inset.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's z-index field — lets a site owner lower
+	 * the widget's stacking order below its default (999999, chosen to sit
+	 * above ordinary page content) when it conflicts with another
+	 * high-z-index overlay on the same page, e.g. a WooCommerce mini-cart
+	 * drawer or a modal that opens on top of it and becomes unclickable
+	 * underneath. A plain number input (not a range slider, unlike the
+	 * offset-Y field above) since site owners need to type a specific value
+	 * to sit just below a known conflicting element, not drag to an
+	 * approximate one.
+	 *
+	 * 0 = unset, meaning "use the 999999 default" (see AvatarRenderer::
+	 * apply_defensive_defaults()'s `> 0` sentinel handling for this field) —
+	 * every existing install with this field never touched keeps today's
+	 * exact behavior.
+	 *
+	 * @return void
+	 */
+	public function render_floating_z_index_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_z_index'] ) ? (int) $settings['floating_z_index'] : 0;
+
+		printf(
+			'<input type="number" min="0" step="1" id="khaveeai_floating_z_index" name="%s[floating_z_index]" value="%s" style="width:120px;" placeholder="999999" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'CSS stacking order of the floating widget. Leave at 0 to use the default (999999, above ordinary page content). Lower this if the widget covers another overlay on your site, e.g. a shopping-cart drawer or a modal.', 'khaveeai' ) .
 			'</p>';
 	}
 

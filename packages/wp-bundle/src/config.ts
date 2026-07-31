@@ -193,6 +193,14 @@ export interface KhaveeAvatarConfig {
    * of the base 24px inset. Default 0. */
   floatingOffsetY?: number;
   /**
+   * CSS z-index of the floating widget's fixed-position container. Default
+   * 999999 (chosen to sit above ordinary page content). Lower this when the
+   * widget conflicts with another high-z-index overlay on the same page —
+   * e.g. a shopping-cart drawer or modal — that should stay clickable
+   * underneath / on top of Khavee.
+   */
+  floatingZIndex?: number;
+  /**
    * Brand/accent color for the floating widget (260716-primary-color) —
    * overrides the --khaveeai-primary CSS custom property (default #6929ff
    * purple) that drives the header, launcher, mic button, chat bubbles,

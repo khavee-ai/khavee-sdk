@@ -131,6 +131,8 @@ final class AvatarRenderer {
 		// way instead of the two stacking on top of each other.
 		$config['floatingPosition'] = (string) $merged['floating_position'];
 		$config['floatingOffsetY']  = (int) $merged['floating_offset_y'];
+		// Quick fix: shopping-cart-drawer/modal z-index conflicts.
+		$config['floatingZIndex']   = (int) $merged['floating_z_index'];
 
 		return sprintf(
 			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
@@ -210,6 +212,11 @@ final class AvatarRenderer {
 		$merged['floating_position'] = isset( $merged['floating_position'] ) && '' !== $merged['floating_position']
 			? (string) $merged['floating_position'] : 'bottom-right';
 		$merged['floating_offset_y'] = isset( $merged['floating_offset_y'] ) ? (int) $merged['floating_offset_y'] : 0;
+		// `> 0`-sentinel pattern (0 means "unset"), same as floating_avatar_scale
+		// above — real default is 999999 (chosen to sit above ordinary page
+		// content), not 0, so the isset()-only shape used for floating_offset_y
+		// (whose real default IS 0) doesn't apply here.
+		$merged['floating_z_index'] = ( $merged['floating_z_index'] ?? 0 ) > 0 ? (int) $merged['floating_z_index'] : 999999;
 
 		return $merged;
 	}

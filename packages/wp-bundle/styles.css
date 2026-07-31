@@ -487,10 +487,17 @@
      the calc() below is a no-op (bottom: calc(24px + 0px)) otherwise, so
      the default inset is unchanged for every existing embed. */
   --khaveeai-floating-offset-y: 0px;
+  /* Shopping-cart-drawer/modal z-index conflict quick fix: this default
+     (999999) is only ever used if FloatingWidget.tsx's inline style fails
+     to apply for some reason — the component always sets
+     --khaveeai-floating-z-index inline (AvatarRenderer::render_floating()
+     always resolves a value server-side, 999999 unless a site owner
+     configured a lower override in Settings). */
+  --khaveeai-floating-z-index: 999999;
   position: fixed;
   bottom: calc(24px + var(--khaveeai-floating-offset-y));
   right: 24px;
-  z-index: 999999;
+  z-index: var(--khaveeai-floating-z-index);
   display: flex;
   flex-direction: column;
   align-items: flex-end;

@@ -249,6 +249,11 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // sentinel) falls through to the same default text as before, so every
   // existing install is unaffected until a site owner sets this.
   const widgetName = config.floatingWidgetName || "AI Assistant";
+  // A site owner's custom copy always wins; otherwise build one from the
+  // (possibly also-defaulted) widget name so an unconfigured install still
+  // reads as a proactive, scoped greeting rather than generic boilerplate.
+  const greetingText =
+    config.floatingGreetingText || `Hi, I'm ${widgetName} — tap to start talking.`;
 
   // Brand/accent color (260716-primary-color): overrides --khaveeai-primary
   // (declared with the historical #6929ff purple as its default on
@@ -394,7 +399,7 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
           of flow) while closed, so this sits directly above the launcher
           in the flex column. Only ever shown while the widget is closed. */}
       {!isOpen && showGreeting && (
-        <GreetingBubble widgetName={widgetName} onDismiss={dismissGreeting} />
+        <GreetingBubble text={greetingText} onDismiss={dismissGreeting} />
       )}
 
       <button

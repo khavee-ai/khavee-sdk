@@ -216,6 +216,12 @@ export interface KhaveeAvatarConfig {
    * "use the default" — FloatingWidget.tsx falls back to "AI Assistant".
    */
   floatingWidgetName?: string;
+  /**
+   * First-visit greeting-bubble text. Empty string (the value
+   * AvatarRenderer::render_floating() always sends when unset) means "use
+   * the default" — FloatingWidget.tsx builds one from floatingWidgetName.
+   */
+  floatingGreetingText?: string;
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────

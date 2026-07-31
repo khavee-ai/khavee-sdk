@@ -175,6 +175,21 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			// Khavee's out of the way instead of the two overlapping.
 			'floating_position' => isset( $settings['floating_position'] ) ? (string) $settings['floating_position'] : self::DEFAULT_FLOATING_POSITION,
 			'floating_offset_y' => isset( $settings['floating_offset_y'] ) ? (int)    $settings['floating_offset_y'] : 0,
+			// Bugfix (260731, found live-testing floating_greeting_text end to
+			// end against wp-env): these three keys were being saved and
+			// sanitized correctly by SettingsPage.php, and read correctly by
+			// AvatarRenderer::apply_defensive_defaults()'s isset() checks —
+			// but never actually reached that isset() check, because this
+			// method's returned array (the sole input to $defaults in both
+			// render() and render_floating()) never included them. isset()
+			// on a missing array key is always false, so every real front-end
+			// render silently used the hardcoded fallback no matter what a
+			// site owner configured — only AvatarRenderer's SEPARATE static
+			// render_floating_preview_mount() array (used by the admin
+			// live-preview box only) ever read these three settings directly.
+			'floating_z_index'      => isset( $settings['floating_z_index'] )      ? (int)    $settings['floating_z_index']      : 0,
+			'floating_widget_name'  => isset( $settings['floating_widget_name'] )  ? (string) $settings['floating_widget_name']  : '',
+			'floating_greeting_text' => isset( $settings['floating_greeting_text'] ) ? (string) $settings['floating_greeting_text'] : '',
 		];
 	}
 

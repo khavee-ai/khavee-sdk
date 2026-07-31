@@ -8,16 +8,18 @@
  * state lives in FloatingWidget.tsx (matches this codebase's existing
  * split — FloatingWidget owns local UI state, its children are dumb).
  *
- * Copy names widgetName (UX pass 260731 finding: a proactive greeting
- * should set scope — what the assistant is, not just "tap here" — per
- * standard chatbot-UX guidance); falls back to the same generic phrasing
- * a site that hasn't configured a name already saw.
+ * Copy defaults to naming widgetName (UX pass 260731 finding: a proactive
+ * greeting should set scope — what the assistant is, not just "tap here" —
+ * per standard chatbot-UX guidance), but a site owner can override it
+ * entirely via floating_greeting_text in Settings — `text` is the final,
+ * already-resolved string; FloatingWidget.tsx owns the fallback logic, this
+ * component stays a dumb renderer like the rest of this split.
  */
 export function GreetingBubble({
-  widgetName,
+  text,
   onDismiss,
 }: {
-  widgetName: string;
+  text: string;
   onDismiss: () => void;
 }) {
   return (
@@ -40,7 +42,7 @@ export function GreetingBubble({
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
       </button>
-      <p>Hi, I'm {widgetName} — tap to start talking.</p>
+      <p>{text}</p>
     </div>
   );
 }

@@ -1265,6 +1265,14 @@ JS;
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		add_settings_field(
+			'floating_greeting_text',
+			__( 'Floating widget greeting', 'khaveeai' ),
+			array( $this, 'render_floating_greeting_text_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -1411,6 +1419,12 @@ JS;
 		// attribute alone).
 		$sanitized['floating_widget_name'] = isset( $input['floating_widget_name'] )
 			? substr( sanitize_text_field( (string) $input['floating_widget_name'] ), 0, 50 )
+			: '';
+
+		// '' = unset (FloatingWidget.tsx builds a default from the widget name
+		// instead) — same shape as floating_widget_name above.
+		$sanitized['floating_greeting_text'] = isset( $input['floating_greeting_text'] )
+			? substr( sanitize_text_field( (string) $input['floating_greeting_text'] ), 0, 150 )
 			: '';
 
 		return $sanitized;
@@ -1818,6 +1832,14 @@ JS;
 		// the actual rendered 3D avatar. Lets a site owner give it a name
 		// ("Ask Sarah", "Store Assistant") instead of the default.
 		$this->render_form_table_row( __( 'Floating widget name', 'khaveeai' ), array( $this, 'render_floating_widget_name_field' ) );
+		// Custom greeting text (mkae-user-can-custom-greeting-text): overrides
+		// GreetingBubble.tsx's generated "Hi, I'm {name} — tap to start
+		// talking." default with the site owner's own copy — page-placement-
+		// style field with nothing to render inside the preview box (the
+		// greeting bubble isn't part of PreviewFloatingWidget.tsx at all), so
+		// this follows floating_offset_y/floating_z_index's pattern, not
+		// floating_widget_name's own rebuild()-wired one just above it.
+		$this->render_form_table_row( __( 'Floating widget greeting', 'khaveeai' ), array( $this, 'render_floating_greeting_text_field' ) );
 		echo '</tbody></table>';
 
 		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
@@ -2802,6 +2824,32 @@ JS;
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Shown in the floating panel header. Leave blank to use "AI Assistant".', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's first-visit greeting-bubble text field —
+	 * overrides GreetingBubble.tsx's generated "Hi, I'm {name} — tap to
+	 * start talking." default. Empty string is the "unset" sentinel, same
+	 * shape as render_floating_widget_name_field() above; FloatingWidget.tsx
+	 * builds the default from the widget name when this is blank, rather
+	 * than AvatarRenderer hardcoding a fallback here.
+	 *
+	 * @return void
+	 */
+	public function render_floating_greeting_text_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_greeting_text'] ) ? (string) $settings['floating_greeting_text'] : '';
+
+		printf(
+			'<input type="text" id="khaveeai_floating_greeting_text" name="%s[floating_greeting_text]" value="%s" style="width:400px;" placeholder="%s" maxlength="150" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( $current ),
+			esc_attr__( 'Hi! Ask me anything about our products.', 'khaveeai' )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Shown in the bubble that greets first-time visitors, before they open the chat. Leave blank to auto-generate one from the widget name above.', 'khaveeai' ) .
 			'</p>';
 	}
 

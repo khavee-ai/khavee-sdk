@@ -134,6 +134,7 @@ final class AvatarRenderer {
 		// Quick fix: shopping-cart-drawer/modal z-index conflicts.
 		$config['floatingZIndex']   = (int) $merged['floating_z_index'];
 		$config['floatingWidgetName'] = (string) $merged['floating_widget_name'];
+		$config['floatingGreetingText'] = (string) $merged['floating_greeting_text'];
 
 		return sprintf(
 			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
@@ -221,6 +222,10 @@ final class AvatarRenderer {
 		// '' = unset — FloatingWidget.tsx applies the "AI Assistant" fallback,
 		// same split as floating_bg_color's own isset-empty-string handling.
 		$merged['floating_widget_name'] = isset( $merged['floating_widget_name'] ) ? (string) $merged['floating_widget_name'] : '';
+		// '' = unset — FloatingWidget.tsx builds the default greeting from
+		// floating_widget_name itself (`Hi, I'm ${widgetName} — ...`), same
+		// split as floating_widget_name's own fallback above.
+		$merged['floating_greeting_text'] = isset( $merged['floating_greeting_text'] ) ? (string) $merged['floating_greeting_text'] : '';
 
 		return $merged;
 	}

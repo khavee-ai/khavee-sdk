@@ -291,11 +291,12 @@
 .khaveeai-chat__bubble {
   padding: 12px 16px;
   font-family: inherit;
-  /* Fluid type — see .khaveeai-cta-button's comment above. This is the
-     main message text, read the longest and most often of anything in
-     this file — kept close to the original 16px rather than shrinking as
-     aggressively as the smaller meta-text elements below. */
-  font-size: clamp(14px, 3.8vw, 16px);
+  /* Fluid type — see .khaveeai-cta-button's comment above. Feedback (found
+     live): the original 16px max read as too big for message text inside
+     this compact panel — dropped both bounds a step from the first pass
+     (16→15 max, 14→13 min); 13px stays above the ~12px floor generally
+     considered the smallest comfortable body-text size. */
+  font-size: clamp(13px, 3.4vw, 15px);
   font-weight: 400;
   line-height: 1.5;
   word-break: break-word;

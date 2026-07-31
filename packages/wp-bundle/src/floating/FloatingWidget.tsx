@@ -48,6 +48,17 @@
  * online-status dot; (4) opening chat fully hid mic controls → ControlBar
  * repositions above the sheet instead of fading out. See GreetingBubble.tsx
  * and styles.css for the rest.
+ *
+ * UX pass round 2 (260731, follow-up from external UX/UI research): (5) the
+ * idle "Click to talk" CTA was dead-center of the avatar area regardless of
+ * framing, landing on the character's chest → moved lower, clear of both
+ * the face and ControlBar (see .khaveeai-floating-avatar-area .khaveeai-overlay
+ * in styles.css); (6) the greeting bubble's generic copy didn't say what the
+ * assistant is → now names widgetName (GreetingBubble.tsx); (7) Escape
+ * doesn't close anything, and focus isn't managed on open/close → keyboard
+ * handling + focus-return added below (WCAG 2.2 keyboard/focus-visible
+ * guidance); (8) the greeting's dismiss button was an 18x18 hit target,
+ * under the 24x24 CSS px WCAG 2.2 minimum → bumped in styles.css.
  */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRealtime } from "@khaveeai/react";
@@ -91,6 +102,13 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // Swipe-down-to-close bookkeeping for the bottom sheet.
   const touchStartY = useRef<number>(0);
   const sheetRef = useRef<HTMLDivElement>(null);
+  // Focus management (UX pass round 2, finding #7): the launcher and the
+  // panel's minimize button are the two focus anchors — opening moves focus
+  // into the panel, closing returns it to the launcher, so keyboard users
+  // never lose their place.
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
 
   // First-visit invite bubble (UX finding #1) and unread badge (UX finding
   // #2) both key off the SAME underlying signal — the realtime transcript —
@@ -149,6 +167,34 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
     setIsOpen((v) => !v);
     if (showGreeting) dismissGreeting();
   }
+
+  // Move focus into the panel on open, and back to the launcher on close —
+  // without this, a keyboard/screen-reader user who opens the panel stays
+  // focused on a now-hidden launcher button (WCAG 2.2 Focus Not Obscured).
+  useEffect(() => {
+    if (isOpen) {
+      closeButtonRef.current?.focus();
+    } else if (wasOpenRef.current) {
+      launcherRef.current?.focus();
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  // Escape closes the nearest open layer first (chat sheet, then panel)
+  // rather than jumping straight to fully closed — mirrors the existing
+  // sheet-handle-tap and header-close affordances, just from the keyboard.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (isChatOpen) {
+        setIsChatOpen(false);
+      } else if (isOpen) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isChatOpen]);
 
   function handleSheetTouchStart(e: React.TouchEvent<HTMLDivElement>) {
     touchStartY.current = e.touches[0].clientY;
@@ -243,6 +289,7 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
             <div className="khaveeai-floating-header-title">{widgetName}</div>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             className="khaveeai-floating-close"
             aria-label="Minimize"
@@ -347,10 +394,11 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
           of flow) while closed, so this sits directly above the launcher
           in the flex column. Only ever shown while the widget is closed. */}
       {!isOpen && showGreeting && (
-        <GreetingBubble onDismiss={dismissGreeting} />
+        <GreetingBubble widgetName={widgetName} onDismiss={dismissGreeting} />
       )}
 
       <button
+        ref={launcherRef}
         type="button"
         className="khaveeai-floating-launcher"
         aria-label={`Open chat with ${widgetName}`}

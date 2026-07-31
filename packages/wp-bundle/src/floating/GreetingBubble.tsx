@@ -7,8 +7,19 @@
  * that follows). Purely presentational; all timing/dismissal-persistence
  * state lives in FloatingWidget.tsx (matches this codebase's existing
  * split — FloatingWidget owns local UI state, its children are dumb).
+ *
+ * Copy names widgetName (UX pass 260731 finding: a proactive greeting
+ * should set scope — what the assistant is, not just "tap here" — per
+ * standard chatbot-UX guidance); falls back to the same generic phrasing
+ * a site that hasn't configured a name already saw.
  */
-export function GreetingBubble({ onDismiss }: { onDismiss: () => void }) {
+export function GreetingBubble({
+  widgetName,
+  onDismiss,
+}: {
+  widgetName: string;
+  onDismiss: () => void;
+}) {
   return (
     <div className="khaveeai-floating-greeting" role="status">
       <button
@@ -29,7 +40,7 @@ export function GreetingBubble({ onDismiss }: { onDismiss: () => void }) {
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
       </button>
-      <p>Talk to our AI assistant</p>
+      <p>Hi, I'm {widgetName} — tap to start talking.</p>
     </div>
   );
 }

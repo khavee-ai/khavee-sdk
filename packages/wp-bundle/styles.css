@@ -670,6 +670,19 @@
   overflow: hidden;
 }
 
+/* UX pass round 2 (260731) finding: ClickToTalkOverlay's base .khaveeai-overlay
+   rule centers the CTA in the middle of the avatar area, which lands
+   directly on the character's chest/torso regardless of how the avatar is
+   framed. Scoped to the floating widget only (the inline embed's centered
+   CTA is untouched — it has no ControlBar to clear and no team feedback
+   about this) and anchored near the bottom instead: 96px of clearance is
+   enough for the 44px-min-height CTA button to sit above ControlBar (48px
+   buttons + 16px inset + safe-area-inset-bottom) without overlapping it. */
+.khaveeai-floating-avatar-area .khaveeai-overlay {
+  align-items: flex-end;
+  padding-bottom: 96px;
+}
+
 .khaveeai-floating-avatar-area canvas {
   display: block;
   width: 100%;
@@ -836,12 +849,15 @@
   margin: 0;
 }
 
+/* 24x24 CSS px is the WCAG 2.2 minimum pointer target size (was 20x20) —
+   bumped, and the parent bubble's right padding (30px) already had enough
+   room to absorb the extra 4px without a layout change. */
 .khaveeai-floating-greeting-dismiss {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 20px;
-  height: 20px;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: 6px;

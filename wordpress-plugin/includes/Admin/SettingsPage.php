@@ -1417,14 +1417,20 @@ JS;
 		// shape as floating_bg_color above. substr, not just maxlength on the
 		// input (T-09-01-01 defense-in-depth: never trust the client-side
 		// attribute alone).
+		// mb_substr, not substr (found live testing Thai copy for this exact
+		// field): substr() truncates by BYTE, not character — Thai is ~3
+		// bytes/char in UTF-8, so a plain substr(...,0,50) actually caps
+		// around 16-17 Thai characters, not 50, and can slice a multi-byte
+		// character in half, storing corrupted/invalid UTF-8.
 		$sanitized['floating_widget_name'] = isset( $input['floating_widget_name'] )
-			? substr( sanitize_text_field( (string) $input['floating_widget_name'] ), 0, 50 )
+			? mb_substr( sanitize_text_field( (string) $input['floating_widget_name'] ), 0, 50 )
 			: '';
 
 		// '' = unset (FloatingWidget.tsx builds a default from the widget name
-		// instead) — same shape as floating_widget_name above.
+		// instead) — same shape as floating_widget_name above. Same
+		// mb_substr fix as floating_widget_name above.
 		$sanitized['floating_greeting_text'] = isset( $input['floating_greeting_text'] )
-			? substr( sanitize_text_field( (string) $input['floating_greeting_text'] ), 0, 150 )
+			? mb_substr( sanitize_text_field( (string) $input['floating_greeting_text'] ), 0, 150 )
 			: '';
 
 		return $sanitized;

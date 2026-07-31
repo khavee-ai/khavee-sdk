@@ -62,7 +62,14 @@ export function PreviewFloatingWidget({
     >
       {/* ── Header ────────────────────────────────────────────────────── */}
       <div className="khaveeai-floating-header">
-        <div className="khaveeai-floating-header-title">AI Assistant</div>
+        <div className="khaveeai-floating-header-identity">
+          {/* Status dot omitted here (unlike the real FloatingWidget.tsx) —
+              there is no live connection in a preview-safe mount, so an
+              "online" dot would always read false and just be noise. */}
+          <div className="khaveeai-floating-header-title">
+            {config.floatingWidgetName || "AI Assistant"}
+          </div>
+        </div>
         <button
           type="button"
           className="khaveeai-floating-close"

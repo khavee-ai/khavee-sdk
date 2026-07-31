@@ -300,6 +300,49 @@
   border-radius: 24px 24px 24px 6px;
 }
 
+/* ── Typing indicator (UX finding: the khaveeai-chat--{chatStatus} class
+   hook already existed for this but had no CSS — "thinking" was
+   invisible). Same chrome as the assistant bubble so it reads as part of
+   the transcript rather than a separate overlay. */
+.khaveeai-chat__typing {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--khaveeai-primary) 4%, white);
+  border-radius: 24px 24px 24px 6px;
+}
+
+.khaveeai-chat__typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--khaveeai-primary) 60%, transparent);
+  animation: khaveeai-typing-bounce 1s infinite ease-in-out;
+}
+
+.khaveeai-chat__typing-dot:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.khaveeai-chat__typing-dot:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+@keyframes khaveeai-typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
 /* System messages: left-aligned, muted style (uncommonly shown) */
 .khaveeai-chat__bubble--system {
   align-self: flex-start;
@@ -563,9 +606,38 @@
   justify-content: space-between;
 }
 
+/* Header identity (UX finding: header was plain text, felt generic/
+   unbranded next to the actual rendered 3D avatar below it). Wraps the
+   title + a small online-status dot. */
+.khaveeai-floating-header-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .khaveeai-floating-header-title {
   font-size: 15px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Green when connected, translucent white otherwise — mirrors the
+   familiar messaging-app "online" dot, cheap way to make the header read
+   as a live assistant rather than static chrome. */
+.khaveeai-floating-header-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+  transition: background 200ms ease;
+}
+
+.khaveeai-floating-header-status--online {
+  background: #34d399;
 }
 
 .khaveeai-floating-close {
@@ -618,6 +690,7 @@
   display: flex;
   flex-direction: row;
   gap: 16px;
+  transition: bottom 300ms ease-in-out;
 }
 
 /* Circular primary buttons — scoped to the floating controls container
@@ -656,33 +729,35 @@
   background: #12151d;
 }
 
-/* Fade the ControlBar out (not display:none — keeps mic state readable/
-   togglable via keyboard, and avoids layout shift) while the sheet is
-   open, so it stops sitting above the sheet's input row (see
-   FloatingWidget.tsx for why: base .khaveeai-controls z-index:30 > sheet's
-   z-index:5). */
-.khaveeai-floating-controls--hidden {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 150ms ease;
+/* Lift the ControlBar to sit just above the sheet's top edge while the
+   sheet is open, instead of fading it out (UX finding: hiding it entirely
+   meant losing mic mute access — and the "close chat" affordance via the
+   chat-toggle button — for the whole time you're typing). Offset matches
+   the sheet's own height below (300px) + its 16px inset. */
+.khaveeai-floating-controls--sheet-open {
+  bottom: calc(300px + 16px + env(safe-area-inset-bottom));
 }
 
-/* ── Chat sheet (260715-2ih; re-overlaid 260715-follow-up-2) ─────────────
+/* ── Chat sheet (260715-2ih; re-overlaid 260715-follow-up-2; enlarged for
+   more chat room 260731) ──────────────────────────────────────────────
    Nested INSIDE .khaveeai-floating-avatar-area (see FloatingWidget.tsx),
    which is `position:relative` — this sheet is `position:absolute` against
-   THAT box, not the whole widget. Sized to cover roughly the bottom 60% of
-   the (now-taller, 420px) avatar area, so the top ~40% (avatar's face/
-   upper body) stays visible above the sheet while it's open, instead of
-   fully hiding the avatar (the previous in-flow "stack below the panel"
-   approach) or spilling past the panel/covering the launcher (the very
-   first fixed/viewport-wide overlay approach). */
+   THAT box, not the whole widget. Sized to cover roughly the bottom 75% of
+   the 420px avatar area (UX finding: the previous 60%/250px gave chat too
+   little room), leaving the top ~120px (avatar's face) visible above the
+   sheet while it's open, instead of fully hiding the avatar (the previous
+   in-flow "stack below the panel" approach) or spilling past the panel/
+   covering the launcher (the very first fixed/viewport-wide overlay
+   approach). If this height changes, also update
+   .khaveeai-floating-controls--sheet-open's offset above, which is
+   hardcoded to match. */
 .khaveeai-floating-sheet {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 250px;
-  max-height: 60%;
+  height: 300px;
+  max-height: 75%;
   background: #ffffff;
   border-radius: 20px 20px 0 0;
   overflow: hidden;
@@ -736,6 +811,65 @@
   border-radius: 0;
 }
 
+/* ── Greeting bubble (UX finding: launcher was a bare icon with zero
+   context — first-time visitor had no idea this opens a voice AI before
+   the mic-permission prompt) ─────────────────────────────────────────────
+   Sits in-flow directly above the launcher (FloatingWidget.tsx renders it
+   between the panel and the launcher; the panel is position:absolute and
+   out of flow while closed, so this and the launcher are the only two
+   flex children — column direction stacks it above). Same flat-card chrome
+   as the panel (#dde1ea border, no shadow/gradient) for visual consistency. */
+.khaveeai-floating-greeting {
+  position: relative;
+  max-width: 240px;
+  padding: 12px 30px 12px 16px;
+  background: #ffffff;
+  border: 1px solid #dde1ea;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #1f2430;
+  animation: khaveeai-greeting-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.khaveeai-floating-greeting p {
+  margin: 0;
+}
+
+.khaveeai-floating-greeting-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa1b0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.khaveeai-floating-greeting-dismiss:hover {
+  background: #f3f4f6;
+  color: #1f2430;
+}
+
+@keyframes khaveeai-greeting-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .khaveeai-floating-launcher {
   width: 60px;
   height: 60px;
@@ -751,6 +885,21 @@
   flex-shrink: 0;
   font-family: inherit;
   transition: transform 160ms ease, background 160ms ease;
+}
+
+/* ── Unread badge (UX finding: minimizing mid-conversation gave zero
+   signal that anything happened — no way to know to reopen). Shown on the
+   launcher when the panel is closed and a new assistant message arrives;
+   cleared on reopen (FloatingWidget.tsx). */
+.khaveeai-floating-launcher-badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #ffffff;
 }
 
 .khaveeai-floating-launcher:hover {
@@ -786,8 +935,19 @@
   .khaveeai-floating-panel,
   .khaveeai-floating-launcher,
   .khaveeai-floating-launcher svg,
-  .khaveeai-floating-sheet {
+  .khaveeai-floating-sheet,
+  .khaveeai-floating-controls.khaveeai-floating-controls,
+  .khaveeai-floating-header-status {
     transition: none !important;
+  }
+
+  .khaveeai-floating-greeting {
+    animation: none !important;
+  }
+
+  .khaveeai-chat__typing-dot {
+    animation: none !important;
+    opacity: 0.8;
   }
 }
 

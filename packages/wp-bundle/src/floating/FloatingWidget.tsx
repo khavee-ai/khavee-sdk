@@ -40,15 +40,48 @@
  * mount point's React root (chat transcript, launcher, everything), even
  * though only the avatar itself is broken. See AvatarErrorBoundary.tsx for
  * the full root-cause writeup.
+ *
+ * UX pass (260731): four findings from a team review of this widget —
+ * (1) launcher gave zero context before the mic-permission ask → greeting
+ * bubble; (2) minimizing mid-conversation gave no signal to reopen →
+ * unread badge; (3) header read as generic/unbranded → configurable name +
+ * online-status dot; (4) opening chat fully hid mic controls → ControlBar
+ * repositions above the sheet instead of fading out. See GreetingBubble.tsx
+ * and styles.css for the rest.
  */
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useRealtime } from "@khaveeai/react";
 import { AvatarScene } from "../mount";
 import { ChatBox } from "../ui/ChatBox";
 import { ClickToTalkOverlay } from "../ui/ClickToTalkOverlay";
 import { ErrorOverlay } from "../ui/ErrorOverlay";
 import { ControlBar } from "../ui/ControlBar";
 import { AvatarErrorBoundary } from "../ui/AvatarErrorBoundary";
+import { GreetingBubble } from "./GreetingBubble";
 import type { KhaveeAvatarConfig } from "../config";
+
+const GREETING_STORAGE_KEY = "khaveeai-greeting-dismissed";
+const GREETING_SHOW_DELAY_MS = 1500;
+const GREETING_AUTO_HIDE_MS = 12000;
+
+/** Reads localStorage defensively — some sites/browsers block it (privacy
+ * mode, embedded iframes, tracker blockers); the greeting bubble degrades
+ * to "always eligible to show" rather than throwing. */
+function hasGreetingBeenDismissed(): boolean {
+  try {
+    return localStorage.getItem(GREETING_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markGreetingDismissed(): void {
+  try {
+    localStorage.setItem(GREETING_STORAGE_KEY, "1");
+  } catch {
+    // Ignored — worst case the greeting reappears on the next page view.
+  }
+}
 
 export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -58,6 +91,64 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // Swipe-down-to-close bookkeeping for the bottom sheet.
   const touchStartY = useRef<number>(0);
   const sheetRef = useRef<HTMLDivElement>(null);
+
+  // First-visit invite bubble (UX finding #1) and unread badge (UX finding
+  // #2) both key off the SAME underlying signal — the realtime transcript —
+  // so FloatingWidget subscribes to useRealtime() directly here, alongside
+  // its existing independent consumers (ChatBox/ControlBar/ClickToTalkOverlay
+  // each already call it too; this is the established multi-consumer
+  // pattern for this context, not a new architecture).
+  const { conversation, isConnected } = useRealtime();
+  const [showGreeting, setShowGreeting] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
+  const prevConversationLengthRef = useRef(0);
+
+  function dismissGreeting() {
+    setShowGreeting(false);
+    markGreetingDismissed();
+  }
+
+  // Show the greeting once, after a short delay so it doesn't flash on
+  // page load, then auto-hide (and mark dismissed either way) if the
+  // visitor never interacts with it.
+  useEffect(() => {
+    if (hasGreetingBeenDismissed()) return;
+
+    const showTimer = setTimeout(() => setShowGreeting(true), GREETING_SHOW_DELAY_MS);
+    return () => clearTimeout(showTimer);
+  }, []);
+
+  useEffect(() => {
+    if (!showGreeting) return;
+
+    const hideTimer = setTimeout(dismissGreeting, GREETING_AUTO_HIDE_MS);
+    return () => clearTimeout(hideTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGreeting]);
+
+  // Unread badge: while the panel is closed, a growing conversation with a
+  // new assistant turn means something happened the visitor hasn't seen.
+  useEffect(() => {
+    if (isOpen) {
+      // Reopening always clears it — the panel is the "read" state.
+      setHasUnread(false);
+      prevConversationLengthRef.current = conversation.length;
+      return;
+    }
+
+    if (conversation.length > prevConversationLengthRef.current) {
+      const newest = conversation[conversation.length - 1];
+      if (newest?.role === "assistant") {
+        setHasUnread(true);
+      }
+    }
+    prevConversationLengthRef.current = conversation.length;
+  }, [conversation, isOpen]);
+
+  function handleLauncherClick() {
+    setIsOpen((v) => !v);
+    if (showGreeting) dismissGreeting();
+  }
 
   function handleSheetTouchStart(e: React.TouchEvent<HTMLDivElement>) {
     touchStartY.current = e.touches[0].clientY;
@@ -108,6 +199,10 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // configured override), so this is set unconditionally rather than only
   // when truthy like floatingOffsetY above (whose real default IS 0/falsy).
   const floatingZIndex = config.floatingZIndex ?? 999999;
+  // UX finding #3: generic "AI Assistant" felt unbranded. '' (PHP's unset
+  // sentinel) falls through to the same default text as before, so every
+  // existing install is unaffected until a site owner sets this.
+  const widgetName = config.floatingWidgetName || "AI Assistant";
 
   // Brand/accent color (260716-primary-color): overrides --khaveeai-primary
   // (declared with the historical #6929ff purple as its default on
@@ -140,7 +235,13 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
       <div className="khaveeai-floating-panel">
         {/* ── Header ────────────────────────────────────────────────────── */}
         <div className="khaveeai-floating-header">
-          <div className="khaveeai-floating-header-title">AI Assistant</div>
+          <div className="khaveeai-floating-header-identity">
+            <span
+              className={`khaveeai-floating-header-status${isConnected ? " khaveeai-floating-header-status--online" : ""}`}
+              aria-hidden="true"
+            />
+            <div className="khaveeai-floating-header-title">{widgetName}</div>
+          </div>
           <button
             type="button"
             className="khaveeai-floating-close"
@@ -194,26 +295,28 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
               of the always-visible avatar area, clear of the centered
               ClickToTalkOverlay CTA. onToggleChat now drives the bottom
               sheet below, not the whole-widget open/close.
-              Base .khaveeai-controls has z-index:30 (so it sits above the
-              inline embed's canvas), which put it ABOVE the sheet
-              (z-index:5) too — found live-testing 260715: buttons floated
-              on top of the sheet's message input, blocking it. Faded out
-              (not unmounted, so ControlBar's mic/connection state survives)
-              via the --hidden modifier below whenever the sheet is open. */}
+              UX finding #4: this used to fade out entirely while the sheet
+              was open (base .khaveeai-controls z-index:30 sat above the
+              sheet's z-index:5, so it had to go — found live-testing
+              260715). That meant losing mic-mute access AND the "tap again
+              to close chat" affordance for the whole time you were typing.
+              Now it's repositioned above the sheet instead (still visible,
+              still clickable) via the --sheet-open modifier. */}
           <ControlBar
             chatEnabled
             isChatOpen={isChatOpen}
             onToggleChat={() => setIsChatOpen((v) => !v)}
-            className={`khaveeai-floating-controls${isChatOpen ? " khaveeai-floating-controls--hidden" : ""}`}
+            className={`khaveeai-floating-controls${isChatOpen ? " khaveeai-floating-controls--sheet-open" : ""}`}
           />
 
           {/* ── Chat sheet ────────────────────────────────────────────────
               Nested INSIDE the avatar area (not a sibling of the panel) so
               it can overlay the bottom portion of the avatar without
               spilling past the panel's own edges or covering the launcher
-              button below. Sized to cover roughly the bottom 60% of the
-              avatar area, leaving the top ~40% (the avatar's face/upper
-              body) visible while open. Closed by default; slides up on
+              button below. Sized to cover roughly the bottom 75% of the
+              avatar area (bumped up from 60% — UX finding: chat had too
+              little room), leaving the top ~120px (the avatar's face)
+              visible while open. Closed by default; slides up on
               isChatOpen. */}
           <div
             ref={sheetRef}
@@ -238,13 +341,27 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
         </div>
       </div>
 
+      {/* UX finding #1: first-time visitors had no context before opening
+          the panel and hitting a mic-permission prompt. Renders between
+          the panel and the launcher — the panel is position:absolute (out
+          of flow) while closed, so this sits directly above the launcher
+          in the flex column. Only ever shown while the widget is closed. */}
+      {!isOpen && showGreeting && (
+        <GreetingBubble onDismiss={dismissGreeting} />
+      )}
+
       <button
         type="button"
         className="khaveeai-floating-launcher"
-        aria-label="Open chat with AI Assistant"
+        aria-label={`Open chat with ${widgetName}`}
         aria-expanded={isOpen}
-        onClick={() => setIsOpen((v) => !v)}
+        onClick={handleLauncherClick}
       >
+        {/* UX finding #2: minimizing mid-conversation gave no signal to
+            reopen. Cleared on open (see the isOpen effect above). */}
+        {hasUnread && (
+          <span className="khaveeai-floating-launcher-badge" aria-hidden="true" />
+        )}
         <svg
           className="khaveeai-floating-icon-chat"
           width="26"

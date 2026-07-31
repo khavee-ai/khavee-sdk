@@ -210,6 +210,12 @@ export interface KhaveeAvatarConfig {
    * whole widget. Any valid CSS color string (hex, rgb(), named color).
    */
   floatingPrimaryColor?: string;
+  /**
+   * Display name shown in the floating panel header. Empty string (the
+   * value AvatarRenderer::render_floating() always sends when unset) means
+   * "use the default" — FloatingWidget.tsx falls back to "AI Assistant".
+   */
+  floatingWidgetName?: string;
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────

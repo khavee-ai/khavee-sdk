@@ -17,6 +17,7 @@
  */
 import { useState, useEffect, useRef } from "react";
 import { useRealtime } from "@khaveeai/react";
+import { TypingIndicator } from "./TypingIndicator";
 
 export function ChatBox({
   placement,
@@ -33,7 +34,8 @@ export function ChatBox({
    */
   onClose?: () => void;
 }) {
-  const { conversation, sendMessage, chatStatus, isConnected } = useRealtime();
+  const { conversation, sendMessage, chatStatus, isConnected, isThinking } =
+    useRealtime();
   const [input, setInput] = useState("");
   // scrollRef: the scrollable transcript container; scrolls to its last bubble on update.
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -46,7 +48,7 @@ export function ChatBox({
       behavior: "smooth",
       block: "end",
     });
-  }, [conversation]);
+  }, [conversation, isThinking]);
 
   // ── Send handler ─────────────────────────────────────────────────────────────
   // Guards against empty/whitespace messages and messages sent while disconnected.
@@ -108,8 +110,11 @@ export function ChatBox({
         <div className="khaveeai-chat__disconnected">
           Click the avatar to start, then type here.
         </div>
-      ) : conversation.length === 0 ? (
-        // Connected but no messages yet: empty state.
+      ) : conversation.length === 0 && !isThinking ? (
+        // Connected but no messages yet: empty state. Excludes isThinking —
+        // a first message can already be processing before any bubble
+        // exists, and the typing indicator below is more informative than
+        // static empty-state copy in that moment.
         // UI-SPEC copywriting verbatim.
         <div className="khaveeai-chat__empty-state">
           <p className="khaveeai-chat__empty-heading">Start the conversation</p>
@@ -118,7 +123,8 @@ export function ChatBox({
           </p>
         </div>
       ) : (
-        // Connected with messages: scrollable transcript.
+        // Connected with messages (or thinking on the very first message):
+        // scrollable transcript.
         <div className="khaveeai-chat__transcript" ref={scrollRef}>
           {conversation.map((msg, i) => (
             // bubble--user: right-aligned, accent gradient bg, tail bottom-right
@@ -131,6 +137,7 @@ export function ChatBox({
               {msg.text}
             </div>
           ))}
+          {isThinking && <TypingIndicator />}
         </div>
       )}
 

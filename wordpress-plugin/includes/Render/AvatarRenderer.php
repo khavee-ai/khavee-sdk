@@ -133,6 +133,7 @@ final class AvatarRenderer {
 		$config['floatingOffsetY']  = (int) $merged['floating_offset_y'];
 		// Quick fix: shopping-cart-drawer/modal z-index conflicts.
 		$config['floatingZIndex']   = (int) $merged['floating_z_index'];
+		$config['floatingWidgetName'] = (string) $merged['floating_widget_name'];
 
 		return sprintf(
 			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
@@ -217,6 +218,9 @@ final class AvatarRenderer {
 		// content), not 0, so the isset()-only shape used for floating_offset_y
 		// (whose real default IS 0) doesn't apply here.
 		$merged['floating_z_index'] = ( $merged['floating_z_index'] ?? 0 ) > 0 ? (int) $merged['floating_z_index'] : 999999;
+		// '' = unset — FloatingWidget.tsx applies the "AI Assistant" fallback,
+		// same split as floating_bg_color's own isset-empty-string handling.
+		$merged['floating_widget_name'] = isset( $merged['floating_widget_name'] ) ? (string) $merged['floating_widget_name'] : '';
 
 		return $merged;
 	}

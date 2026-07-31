@@ -384,6 +384,11 @@ jQuery( function ( $ ) {
 		var offsetYEl      = document.getElementById( 'khaveeai_floating_avatar_offset_y' );
 		var scaleEl        = document.getElementById( 'khaveeai_floating_avatar_scale' );
 		var rotEl          = document.getElementById( 'khaveeai_floating_camera_rotation_y' );
+		// UX finding (260731): unlike floating_offset_y/floating_z_index
+		// (page-placement CSS with nothing to show inside this 360x520
+		// preview box), the widget name IS rendered inside the preview
+		// panel's own header — so, unlike those two, this belongs in cfg.
+		var widgetNameEl   = document.getElementById( 'khaveeai_floating_widget_name' );
 
 		var bgColorValue = ( colorOverrideId === 'khaveeai_floating_bg_color' && colorOverrideValue )
 			? colorOverrideValue
@@ -406,6 +411,7 @@ jQuery( function ( $ ) {
 			avatarOffsetX: offsetXEl ? parseFloat( offsetXEl.value ) : 0.0,
 			avatarOffsetY: offsetYEl ? parseFloat( offsetYEl.value ) : 0.0,
 			cameraRotationY: rotEl ? parseFloat( rotEl.value ) : 0.0,
+			floatingWidgetName: widgetNameEl ? widgetNameEl.value : '',
 			// Quick task 260708-1ws: preserved on every field change so the
 			// floating preview keeps its header+200px-avatar+chat structure
 			// instead of reverting to the plain-avatar layout on the first
@@ -478,7 +484,8 @@ jQuery( function ( $ ) {
 		'khaveeai_floating_avatar_offset_x',
 		'khaveeai_floating_avatar_offset_y',
 		'khaveeai_floating_avatar_scale',
-		'khaveeai_floating_camera_rotation_y'
+		'khaveeai_floating_camera_rotation_y',
+		'khaveeai_floating_widget_name'
 	];
 	ids.forEach( function ( id ) {
 		var el = document.getElementById( id );
@@ -1250,6 +1257,14 @@ JS;
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		add_settings_field(
+			'floating_widget_name',
+			__( 'Floating widget name', 'khaveeai' ),
+			array( $this, 'render_floating_widget_name_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -1389,6 +1404,14 @@ JS;
 		$sanitized['floating_z_index'] = isset( $input['floating_z_index'] )
 			? max( 0, min( 2147483647, (int) $input['floating_z_index'] ) )
 			: 0;
+
+		// '' = unset (FloatingWidget.tsx falls back to "AI Assistant") — same
+		// shape as floating_bg_color above. substr, not just maxlength on the
+		// input (T-09-01-01 defense-in-depth: never trust the client-side
+		// attribute alone).
+		$sanitized['floating_widget_name'] = isset( $input['floating_widget_name'] )
+			? substr( sanitize_text_field( (string) $input['floating_widget_name'] ), 0, 50 )
+			: '';
 
 		return $sanitized;
 	}
@@ -1791,6 +1814,10 @@ JS;
 		// owner needs to lower Khavee's stacking order below whatever else
 		// on the page is also fighting to stay on top.
 		$this->render_form_table_row( __( 'Floating widget z-index', 'khaveeai' ), array( $this, 'render_floating_z_index_field' ) );
+		// UX finding: header read as generic/unbranded plain text next to
+		// the actual rendered 3D avatar. Lets a site owner give it a name
+		// ("Ask Sarah", "Store Assistant") instead of the default.
+		$this->render_form_table_row( __( 'Floating widget name', 'khaveeai' ), array( $this, 'render_floating_widget_name_field' ) );
 		echo '</tbody></table>';
 
 		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
@@ -2753,6 +2780,32 @@ JS;
 	}
 
 	/**
+	 * Render the floating widget's display-name field — shown in the panel
+	 * header instead of the generic "AI Assistant" default. Empty string is
+	 * the "unset" sentinel (mirrors floating_bg_color's own isset-empty-
+	 * string shape above) — AvatarRenderer never fills in a hardcoded
+	 * fallback here; FloatingWidget.tsx does (`|| "AI Assistant"`), same
+	 * split as every other floating*Color field.
+	 *
+	 * @return void
+	 */
+	public function render_floating_widget_name_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_widget_name'] ) ? (string) $settings['floating_widget_name'] : '';
+
+		printf(
+			'<input type="text" id="khaveeai_floating_widget_name" name="%s[floating_widget_name]" value="%s" style="width:240px;" placeholder="%s" maxlength="50" />',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( $current ),
+			esc_attr__( 'AI Assistant', 'khaveeai' )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Shown in the floating panel header. Leave blank to use "AI Assistant".', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
 	 * Render a small, passive live preview of the GLOBAL avatar inside the
 	 * Avatar section's card (quick task 260707-0u6 item 3) — reuses the SAME
 	 * khaveeai-preview bundle mount mechanism render_floating_preview_mount()
@@ -2869,6 +2922,12 @@ JS;
 			'avatarOffsetX' => isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0,
 			'avatarOffsetY' => isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0,
 			'cameraRotationY' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : 0.0,
+			// UX finding (260731): visible inside this preview panel's own
+			// header (unlike floating_offset_y/floating_z_index, which only
+			// affect the published page's fixed-position CSS and have
+			// nothing to render here) — same key name the real front-end
+			// config uses (PreviewAvatarConfig extends KhaveeAvatarConfig).
+			'floatingWidgetName' => isset( $settings['floating_widget_name'] ) ? (string) $settings['floating_widget_name'] : '',
 			// Quick task 260708-1ws: signals PreviewScene.tsx to render
 			// PreviewFloatingWidget (header + fixed 200px avatar area + flexed
 			// chat, matching the real .khaveeai-floating-panel structure)

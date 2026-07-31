@@ -663,6 +663,12 @@
    ClickToTalkOverlay/ErrorOverlay — both position:absolute; inset:0 —
    overlay it, mirroring the inline-embed .khaveeai-root pattern). */
 .khaveeai-floating-avatar-area {
+  /* Single source of truth for the sheet's own height (below) AND how far
+     ControlBar lifts above it while open (--sheet-open, further below) —
+     both need to move together whenever this area's own height changes
+     (responsive fix below), so hardcoding "300px" in two separate places
+     (the bug this replaces) can't silently drift out of sync again. */
+  --khaveeai-sheet-h: 300px;
   flex-shrink: 0;
   height: 420px;
   background: #6929ff;
@@ -746,9 +752,12 @@
    sheet is open, instead of fading it out (UX finding: hiding it entirely
    meant losing mic mute access — and the "close chat" affordance via the
    chat-toggle button — for the whole time you're typing). Offset matches
-   the sheet's own height below (300px) + its 16px inset. */
+   the sheet's own height below via --khaveeai-sheet-h (set on
+   .khaveeai-floating-avatar-area above) + its 16px inset — was a hardcoded
+   300px until the responsive fix below needed the sheet to shrink on
+   short viewports too, which would've silently left this stale. */
 .khaveeai-floating-controls--sheet-open {
-  bottom: calc(300px + 16px + env(safe-area-inset-bottom));
+  bottom: calc(var(--khaveeai-sheet-h) + 16px + env(safe-area-inset-bottom));
 }
 
 /* ── Chat sheet (260715-2ih; re-overlaid 260715-follow-up-2; enlarged for
@@ -761,15 +770,15 @@
    sheet while it's open, instead of fully hiding the avatar (the previous
    in-flow "stack below the panel" approach) or spilling past the panel/
    covering the launcher (the very first fixed/viewport-wide overlay
-   approach). If this height changes, also update
-   .khaveeai-floating-controls--sheet-open's offset above, which is
-   hardcoded to match. */
+   approach). Height comes from --khaveeai-sheet-h (set on the parent
+   .khaveeai-floating-avatar-area) rather than a literal 300px — see that
+   declaration for why. */
 .khaveeai-floating-sheet {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 300px;
+  height: var(--khaveeai-sheet-h);
   max-height: 75%;
   background: #ffffff;
   border-radius: 20px 20px 0 0;
@@ -822,6 +831,17 @@
   max-height: none;
   margin: 0;
   border-radius: 0;
+}
+
+/* Responsive fix (found live on a real mobile deployment): ChatBox's own
+   header duplicated the panel header directly above it — both showed the
+   same widget name, both showed a close (X) button — wasting vertical
+   space that's scarce on a phone. The sheet's drag-handle (immediately
+   above, tap-to-close) is already this sheet's close affordance, so the
+   nested header is pure redundancy here, unlike the inline embed's
+   ChatBox, which has no other header and keeps its own. */
+.khaveeai-floating-sheet .khaveeai-chat__header {
+  display: none;
 }
 
 /* ── Greeting bubble (UX finding: launcher was a bare icon with zero
@@ -982,5 +1002,36 @@
 
   .khaveeai-floating-widget[data-position="bottom-left"] {
     left: 16px;
+  }
+}
+
+/* Responsive fit (found live on a real mobile deployment): the panel's
+   height is header (~52px) + a FIXED 420px avatar area — on a real phone
+   viewport, after the browser's own status bar/address bar/nav bar eat
+   into it, that routinely doesn't fit, and nothing above was capping it.
+   Shrinks the avatar area — and, since the chat sheet's height is a
+   max-height PERCENTAGE of this same box (see .khaveeai-floating-sheet
+   above), the sheet along with it — whenever either dimension is
+   constrained: narrow phones in portrait (max-width) AND any phone in
+   landscape or with an on-screen keyboard open (max-height) both hit
+   this, hence the comma (OR), not a single combined condition. dvh, not
+   vh, specifically because vh is pinned to the LARGEST possible viewport
+   (address bar hidden) — the exact case that overflowed in the
+   screenshot this was found from; dvh tracks the address bar's real,
+   current state. */
+@media (max-width: 480px), (max-height: 700px) {
+  .khaveeai-floating-avatar-area {
+    height: min(420px, 50dvh);
+    /* Shrinks in step with the height above via the SAME ratio the base
+       rule uses (300/420 ≈ 71%) — .khaveeai-floating-sheet's own
+       max-height:75% would already cap an unshrunk 300px sheet against a
+       smaller parent, but ControlBar's --sheet-open offset (above) reads
+       this variable directly, not a percentage, so it must be updated
+       explicitly here too or it'd still offset for the old, larger sheet. */
+    --khaveeai-sheet-h: min(300px, 35.7dvh);
+  }
+
+  .khaveeai-floating-panel {
+    max-height: calc(100dvh - 96px);
   }
 }

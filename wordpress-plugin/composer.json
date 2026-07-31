@@ -11,5 +11,9 @@
     "psr-4": {
       "Khavee\\Plugin\\": "includes/"
     }
+  },
+  "scripts": {
+    "post-install-cmd": ["php bin/strip-vendor-cruft.php"],
+    "post-update-cmd": ["php bin/strip-vendor-cruft.php"]
   }
 }

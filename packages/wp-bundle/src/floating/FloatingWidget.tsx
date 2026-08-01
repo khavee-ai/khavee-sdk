@@ -238,6 +238,7 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
     avatarOffsetY: config.floatingAvatarOffsetY ?? 0.0,
     bgTransparent: config.floatingBgTransparent ?? false,
     cameraRotationY: config.floatingCameraRotationY ?? 0.0,
+    cameraRotationX: config.floatingCameraRotationX ?? 0.0,
   };
 
   // Page-placement (260715-75r): which corner to anchor to (styles.css'

@@ -49,7 +49,7 @@ export function PreviewFloatingWidget({
   onCameraAngleChange,
 }: {
   config: PreviewAvatarConfig;
-  onCameraAngleChange?: (deg: number) => void;
+  onCameraAngleChange?: (deg: number, tiltDeg: number) => void;
 }) {
   return (
     <div

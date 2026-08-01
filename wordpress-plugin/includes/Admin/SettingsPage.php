@@ -384,6 +384,7 @@ jQuery( function ( $ ) {
 		var offsetYEl      = document.getElementById( 'khaveeai_floating_avatar_offset_y' );
 		var scaleEl        = document.getElementById( 'khaveeai_floating_avatar_scale' );
 		var rotEl          = document.getElementById( 'khaveeai_floating_camera_rotation_y' );
+		var tiltEl         = document.getElementById( 'khaveeai_floating_camera_rotation_x' );
 		// UX finding (260731): unlike floating_offset_y/floating_z_index
 		// (page-placement CSS with nothing to show inside this 360x520
 		// preview box), the widget name IS rendered inside the preview
@@ -411,6 +412,7 @@ jQuery( function ( $ ) {
 			avatarOffsetX: offsetXEl ? parseFloat( offsetXEl.value ) : 0.0,
 			avatarOffsetY: offsetYEl ? parseFloat( offsetYEl.value ) : 0.0,
 			cameraRotationY: rotEl ? parseFloat( rotEl.value ) : 0.0,
+			cameraRotationX: tiltEl ? parseFloat( tiltEl.value ) : 0.0,
 			floatingWidgetName: widgetNameEl ? widgetNameEl.value : '',
 			// Quick task 260708-1ws: preserved on every field change so the
 			// floating preview keeps its header+200px-avatar+chat structure
@@ -437,6 +439,10 @@ jQuery( function ( $ ) {
 		var rotOut = document.getElementById( 'khaveeai_floating_camera_rotation_y_out' );
 		if ( rotOut && rotEl ) {
 			rotOut.textContent = rotEl.value;
+		}
+		var tiltOut = document.getElementById( 'khaveeai_floating_camera_rotation_x_out' );
+		if ( tiltOut && tiltEl ) {
+			tiltOut.textContent = tiltEl.value;
 		}
 	}
 
@@ -485,6 +491,7 @@ jQuery( function ( $ ) {
 		'khaveeai_floating_avatar_offset_y',
 		'khaveeai_floating_avatar_scale',
 		'khaveeai_floating_camera_rotation_y',
+		'khaveeai_floating_camera_rotation_x',
 		'khaveeai_floating_widget_name'
 	];
 	ids.forEach( function ( id ) {
@@ -517,11 +524,12 @@ jQuery( function ( $ ) {
 	// Quick task 260706-wop: closes the drag-orbit loop. The khaveeai-preview
 	// bundle's mountPreview.tsx dispatches this CustomEvent on the mount div
 	// once per drag/zoom release on the preview's OrbitControls (PreviewScene.tsx
-	// onEnd -> angleFromCameraPosition). Write the read-back angle into the
-	// slider + its readout, then rebuild() — which writes the SAME angle back
-	// into the preview config, so CameraController re-applies the angle it was
-	// just read from (no oscillation: onEnd only fires on user interaction,
-	// never on this programmatic reset).
+	// onEnd -> angleFromCameraPosition / tiltFromCameraPosition). Write the
+	// read-back horizontal AND vertical angles into their sliders + readouts,
+	// then rebuild() — which writes the SAME angles back into the preview
+	// config, so CameraController re-applies the angle it was just read from
+	// (no oscillation: onEnd only fires on user interaction, never on this
+	// programmatic reset).
 	mount.addEventListener( 'khaveeai-preview-camera-angle', function ( e ) {
 		var d = Math.round( e.detail.deg );
 		var el = document.getElementById( 'khaveeai_floating_camera_rotation_y' );
@@ -531,6 +539,15 @@ jQuery( function ( $ ) {
 		var out = document.getElementById( 'khaveeai_floating_camera_rotation_y_out' );
 		if ( out ) {
 			out.textContent = d;
+		}
+		var t = Math.round( e.detail.tiltDeg );
+		var tiltEl2 = document.getElementById( 'khaveeai_floating_camera_rotation_x' );
+		if ( tiltEl2 ) {
+			tiltEl2.value = t;
+		}
+		var tiltOut2 = document.getElementById( 'khaveeai_floating_camera_rotation_x_out' );
+		if ( tiltOut2 ) {
+			tiltOut2.textContent = t;
 		}
 		rebuild();
 	} );
@@ -1230,6 +1247,14 @@ JS;
 			'khaveeai_main'
 		);
 
+		add_settings_field(
+			'floating_camera_rotation_x',
+			__( 'Floating camera vertical angle', 'khaveeai' ),
+			array( $this, 'render_floating_camera_rotation_x_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
 		// Quick task 260715-75r: floating-widget page-placement config —
 		// which corner it anchors to and a pixel Y-nudge, so a site owner
 		// whose page already has another floating widget in the same corner
@@ -1389,6 +1414,14 @@ JS;
 		$sanitized['floating_avatar_offset_y'] = isset( $input['floating_avatar_offset_y'] ) ? (float) $input['floating_avatar_offset_y'] : 0.0;
 		$sanitized['floating_avatar_scale']    = isset( $input['floating_avatar_scale'] ) ? (float) $input['floating_avatar_scale'] : 1.0;
 		$sanitized['floating_camera_rotation_y'] = isset( $input['floating_camera_rotation_y'] ) ? (float) $input['floating_camera_rotation_y'] : 0.0;
+		// Vertical counterpart — clamped to +/-80 (not the horizontal
+		// field's +/-180) since config.ts's resolveSceneDefaults() applies
+		// the same clamp before tilting the camera; matching it here means
+		// the slider's own range (below) can't show a value that gets
+		// silently clamped away client-side.
+		$sanitized['floating_camera_rotation_x'] = isset( $input['floating_camera_rotation_x'] )
+			? max( -80, min( 80, (float) $input['floating_camera_rotation_x'] ) )
+			: 0.0;
 
 		// Quick task 260715-75r: floating-widget page-placement config.
 		// Position is a closed whitelist (not sanitize_text_field free-form) —
@@ -1719,7 +1752,8 @@ JS;
 		//     #khaveeai_floating_avatar_offset_x (+ _out),
 		//     #khaveeai_floating_avatar_offset_y (+ _out),
 		//     #khaveeai_floating_avatar_scale (+ _out),
-		//     #khaveeai_floating_camera_rotation_y (+ _out)
+		//     #khaveeai_floating_camera_rotation_y (+ _out),
+		//     #khaveeai_floating_camera_rotation_x (+ _out)
 		//   - #khaveeai_avatar_picker_button, #khaveeai_avatar_attachment_id,
 		//     #khaveeai_avatar_current
 		//   - Not JS-read, but tied to name="khaveeai_settings[...]"
@@ -1822,6 +1856,8 @@ JS;
 		// Quick task 260706-wop: floating-only camera angle, also drivable by
 		// dragging/orbiting the live preview below (bidirectional).
 		$this->render_form_table_row( __( 'Floating camera angle', 'khaveeai' ), array( $this, 'render_floating_camera_rotation_y_field' ) );
+		// Vertical counterpart — UX finding: only a horizontal angle existed.
+		$this->render_form_table_row( __( 'Floating camera vertical angle', 'khaveeai' ), array( $this, 'render_floating_camera_rotation_x_field' ) );
 		// Quick task 260715-75r: page-placement config — which corner the
 		// widget anchors to plus a pixel Y-nudge, so a site owner whose page
 		// already has another floating widget in the same corner can move
@@ -2714,6 +2750,33 @@ JS;
 	}
 
 	/**
+	 * Render the floating panel's vertical camera tilt input — vertical
+	 * counterpart to render_floating_camera_rotation_y_field() above (UX
+	 * finding: only a horizontal angle existed). Also drivable by dragging
+	 * the live preview vertically, same mechanism as the horizontal field.
+	 *
+	 * @return void
+	 */
+	public function render_floating_camera_rotation_x_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_camera_rotation_x'] ) ? (float) $settings['floating_camera_rotation_x'] : 0.0;
+
+		// min/max +/-80, not the horizontal field's +/-180 — matches the
+		// clamp in config.ts's resolveSceneDefaults() (see that clamp's own
+		// comment for why going closer to +/-90 risks a sudden flip).
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-80" max="80" step="1" id="khaveeai_floating_camera_rotation_x" name="%s[floating_camera_rotation_x]" value="%s" /><output id="khaveeai_floating_camera_rotation_x_out" for="khaveeai_floating_camera_rotation_x">%s</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Vertical camera tilt in degrees for the floating widget only. Positive looks down at the avatar from higher up, negative looks up from lower down. Dragging the live preview below also updates this.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
 	 * Render the floating widget's page-corner <select> (quick task
 	 * 260715-75r) — lets a site owner move Khavee's widget off the default
 	 * bottom-right corner when another floating widget (Intercom, Crisp,
@@ -2976,6 +3039,10 @@ JS;
 			'avatarOffsetX' => isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0,
 			'avatarOffsetY' => isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0,
 			'cameraRotationY' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : 0.0,
+			// Vertical counterpart — same static-initial-render rationale as
+			// cameraRotationY above (this array only covers first paint;
+			// rebuild() takes over for every subsequent slider/drag edit).
+			'cameraRotationX' => isset( $settings['floating_camera_rotation_x'] ) ? (float) $settings['floating_camera_rotation_x'] : 0.0,
 			// UX finding (260731): visible inside this preview panel's own
 			// header (unlike floating_offset_y/floating_z_index, which only
 			// affect the published page's fixed-position CSS and have

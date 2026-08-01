@@ -154,6 +154,10 @@ export interface KhaveeAvatarConfig {
   /** Horizontal camera orbit, in degrees, applied on top of the preset's
    * base position. 0 = the preset's own angle, positive = orbit right. */
   cameraRotationY?: number;
+  /** Vertical camera tilt (elevation), in degrees, applied AFTER the
+   * horizontal orbit above. 0 = the preset's own angle, positive = look
+   * down at the avatar from higher up, negative = look up from lower down. */
+  cameraRotationX?: number;
   /** When true, display the chat text panel alongside the avatar. */
   chatShow?: boolean;
   /** Chat panel placement relative to the avatar canvas. Default "beside". */
@@ -182,6 +186,10 @@ export interface KhaveeAvatarConfig {
    * preset's own angle, positive = orbit right. Independent of the
    * inline-embed's cameraRotationY. */
   floatingCameraRotationY?: number;
+  /** Vertical camera tilt, in degrees, floating panel only. 0 = the
+   * preset's own angle, positive = look down from higher up. Independent
+   * of the inline-embed's cameraRotationX. */
+  floatingCameraRotationX?: number;
   // Floating-widget page-placement config (quick task 260715-75r): which
   // corner of the viewport the widget anchors to and a pixel Y-nudge, so a
   // site owner whose page already has another floating widget (Intercom,
@@ -252,6 +260,45 @@ function orbitAroundTarget(
 }
 
 /**
+ * Tilts `position` around `target` on the vertical (elevation) axis by
+ * `degrees`, preserving the horizontal facing direction (azimuth) and the
+ * total distance from target — the vertical counterpart to
+ * orbitAroundTarget's horizontal orbit. Intended to run AFTER
+ * orbitAroundTarget in resolveSceneDefaults, so a horizontal rotation is
+ * applied first and this tilts up/down from that new facing, rather than
+ * the two computing independent, uncomposed offsets from the preset base.
+ *
+ * Clamped by the caller (resolveSceneDefaults) to a range well short of
+ * +/-90deg — this function itself has no clamp, but a caller-supplied
+ * value near the pole would send radiusXZ toward 0 and, past it, swing the
+ * camera to the opposite azimuth still right-side up (no "up" vector
+ * recalculation happens here), which reads as a sudden flip rather than a
+ * smooth tilt.
+ */
+function tiltAroundTarget(
+  position: [number, number, number],
+  target: [number, number, number],
+  degrees: number
+): [number, number, number] {
+  const dx = position[0] - target[0];
+  const dy = position[1] - target[1];
+  const dz = position[2] - target[2];
+  const radiusXZ = Math.sqrt(dx * dx + dz * dz);
+  if (radiusXZ === 0) {
+    // Already directly above/below target — no horizontal direction to
+    // preserve, so there's nothing meaningful left to tilt from.
+    return position;
+  }
+  const radius = Math.sqrt(radiusXZ * radiusXZ + dy * dy);
+  const rad = (degrees * Math.PI) / 180;
+  const newElevation = Math.atan2(dy, radiusXZ) + rad;
+  const newRadiusXZ = radius * Math.cos(newElevation);
+  const newDy = radius * Math.sin(newElevation);
+  const scale = newRadiusXZ / radiusXZ;
+  return [target[0] + dx * scale, target[1] + newDy, target[2] + dz * scale];
+}
+
+/**
  * Inverse of `orbitAroundTarget`: given a camera position that has been
  * orbited (e.g. by dragging OrbitControls in the live preview), reads back
  * the Y-axis degrees that would reproduce it via
@@ -286,6 +333,38 @@ export function angleFromCameraPosition(
   return deg;
 }
 
+/**
+ * Inverse of `tiltAroundTarget`: given a camera position that has been
+ * tilted (e.g. by dragging OrbitControls vertically in the live preview),
+ * reads back the vertical degrees that would reproduce it via
+ * `tiltAroundTarget(basePosition, target, deg)`.
+ *
+ * Unlike `angleFromCameraPosition`'s azimuth (which wraps at +/-180deg and
+ * needs normalizing), elevation via atan2(dy, radiusXZ) is always within
+ * (-90, 90) by construction — no wrap-around case exists, so this is
+ * simpler than its horizontal counterpart. Also independent of whatever
+ * horizontal rotation is ALSO applied: orbitAroundTarget only changes
+ * azimuth, never elevation, so this reads the same tilt degrees regardless
+ * of the current horizontal angle.
+ */
+export function tiltFromCameraPosition(
+  cameraPosition: [number, number, number],
+  target: [number, number, number],
+  basePosition: [number, number, number]
+): number {
+  const baseRadiusXZ = Math.sqrt(
+    (basePosition[0] - target[0]) ** 2 + (basePosition[2] - target[2]) ** 2
+  );
+  const baseElevation = Math.atan2(basePosition[1] - target[1], baseRadiusXZ);
+
+  const curRadiusXZ = Math.sqrt(
+    (cameraPosition[0] - target[0]) ** 2 + (cameraPosition[2] - target[2]) ** 2
+  );
+  const curElevation = Math.atan2(cameraPosition[1] - target[1], curRadiusXZ);
+
+  return ((curElevation - baseElevation) * 180) / Math.PI;
+}
+
 // ── Scene default resolver ────────────────────────────────────────────────────
 
 /**
@@ -312,10 +391,17 @@ export function resolveSceneDefaults(c: KhaveeAvatarConfig) {
   const basePosition = CAMERA_PRESETS[preset].position;
   const cameraTarget = CAMERA_PRESETS[preset].target;
   const rotationDeg = c.cameraRotationY ?? 0;
-  const cameraPosition =
+  const horizontalPosition =
     rotationDeg === 0
       ? basePosition
       : orbitAroundTarget(basePosition, cameraTarget, rotationDeg);
+  // Clamped short of +/-90deg — see tiltAroundTarget's own comment for why
+  // going further risks a sudden flip rather than a smooth tilt.
+  const tiltDeg = Math.max(-80, Math.min(80, c.cameraRotationX ?? 0));
+  const cameraPosition =
+    tiltDeg === 0
+      ? horizontalPosition
+      : tiltAroundTarget(horizontalPosition, cameraTarget, tiltDeg);
   // `> 0` (not `??`): Gutenberg ALWAYS populates lightIntensity/avatarScale
   // with their block.json schema default (0) even when the author never
   // touched the slider, so `c.lightIntensity`/`c.avatarScale` are a real,
@@ -337,6 +423,7 @@ export function resolveSceneDefaults(c: KhaveeAvatarConfig) {
     avatarOffsetY: c.avatarOffsetY ?? 0.0,
     cameraPreset: preset,
     cameraRotationY: rotationDeg,
+    cameraRotationX: tiltDeg,
     cameraPosition,
     cameraTarget,
     /** fov=20 matches khavee-app PreviewModel.tsx:61 (consistent with preset vectors). */

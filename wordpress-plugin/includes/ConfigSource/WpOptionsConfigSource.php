@@ -168,6 +168,13 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			'floating_avatar_offset_y' => isset( $settings['floating_avatar_offset_y'] ) ? (float)  $settings['floating_avatar_offset_y'] : 0.0,
 			'floating_avatar_scale'    => isset( $settings['floating_avatar_scale'] )    ? (float)  $settings['floating_avatar_scale']    : 1.0,
 			'floating_camera_rotation_y' => isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : self::DEFAULT_CAMERA_ROTATION_Y,
+			// Vertical counterpart (UX finding: only a horizontal camera
+			// angle existed). Added directly alongside its Y sibling here —
+			// see the "Bugfix" comment a few lines below for why a new
+			// floating_* key MUST be added to this array, not just to
+			// AvatarRenderer's isset() defaults, or it never reaches the
+			// front end at all.
+			'floating_camera_rotation_x' => isset( $settings['floating_camera_rotation_x'] ) ? (float) $settings['floating_camera_rotation_x'] : 0.0,
 			// Floating-widget page-placement config (quick task 260715-75r) —
 			// which corner the widget anchors to and a pixel Y-nudge, so site
 			// owners whose page already has another floating widget

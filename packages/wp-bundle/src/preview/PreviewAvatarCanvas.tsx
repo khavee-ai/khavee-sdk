@@ -33,6 +33,7 @@ import { VRMAvatar, useVRMExpressions } from "@khaveeai/react";
 import {
   resolveSceneDefaults,
   angleFromCameraPosition,
+  tiltFromCameraPosition,
   CAMERA_PRESETS,
   IDLE_ANIMATION_URL,
 } from "../config";
@@ -178,14 +179,15 @@ function usePreviewTalking(enabled: boolean): void {
  * @param config - The parsed PreviewAvatarConfig (KhaveeAvatarConfig extended
  *   with previewTalking/previewMode) from the mount point's data attribute.
  * @param onCameraAngleChange - Optional callback fired once per drag/zoom
- *   release on the OrbitControls, with the resulting Y-axis degrees.
+ *   release on the OrbitControls, with the resulting Y-axis (horizontal)
+ *   and X-axis (vertical tilt) degrees.
  */
 export function PreviewAvatarCanvas({
   config,
   onCameraAngleChange,
 }: {
   config: PreviewAvatarConfig;
-  onCameraAngleChange?: (deg: number) => void;
+  onCameraAngleChange?: (deg: number, tiltDeg: number) => void;
 }) {
   const sceneDefaults = resolveSceneDefaults(config);
   const isTalking = config.previewTalking ?? false;
@@ -201,9 +203,13 @@ export function PreviewAvatarCanvas({
   /**
    * Fires once when the user releases a drag/zoom on the preview's
    * OrbitControls (NOT per-frame — onChange would write-thrash the slider
-   * on every render). Reads the live camera's current position back into a
-   * Y-axis degrees value via the inverse of orbitAroundTarget, and reports
-   * it to the caller.
+   * on every render). Reads the live camera's current position back into
+   * Y-axis (horizontal) and X-axis (vertical tilt) degrees via the
+   * inverses of orbitAroundTarget/tiltAroundTarget, and reports both to
+   * the caller. OrbitControls here has no maxPolarAngle/minPolarAngle set,
+   * so vertical dragging already worked visually before this tilt
+   * readback existed — it just silently discarded on release instead of
+   * persisting, since only the Y-angle was ever read back.
    */
   const handleOrbitEnd = () => {
     const camera = liveCameraRef.current;
@@ -219,7 +225,12 @@ export function PreviewAvatarCanvas({
       sceneDefaults.cameraTarget,
       basePosition
     );
-    onCameraAngleChange(deg);
+    const tiltDeg = tiltFromCameraPosition(
+      cameraPosition,
+      sceneDefaults.cameraTarget,
+      basePosition
+    );
+    onCameraAngleChange(deg, tiltDeg);
   };
 
   // Quick task 260707-oyu: no more differentiated/keyed `gl` value here — see

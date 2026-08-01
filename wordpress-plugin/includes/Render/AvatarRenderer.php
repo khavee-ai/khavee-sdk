@@ -123,6 +123,9 @@ final class AvatarRenderer {
 		$config['floatingAvatarOffsetY']  = (float) $merged['floating_avatar_offset_y'];
 		$config['floatingAvatarScale']    = (float) $merged['floating_avatar_scale'];
 		$config['floatingCameraRotationY'] = (float) $merged['floating_camera_rotation_y'];
+		// Vertical counterpart to the above (UX finding: only a horizontal
+		// camera angle existed, no way to tilt up/down).
+		$config['floatingCameraRotationX'] = (float) $merged['floating_camera_rotation_x'];
 
 		// Floating-widget page-placement config (quick task 260715-75r) —
 		// which corner the widget anchors to (default bottom-right) plus a
@@ -211,6 +214,9 @@ final class AvatarRenderer {
 		// as the global avatar_scale field above.
 		$merged['floating_avatar_scale'] = ( $merged['floating_avatar_scale'] ?? 0 ) > 0 ? (float) $merged['floating_avatar_scale'] : 1.0;
 		$merged['floating_camera_rotation_y'] = isset( $merged['floating_camera_rotation_y'] ) ? (float) $merged['floating_camera_rotation_y'] : 0.0;
+		// Vertical counterpart — same isset()-based defaulting (0.0 is a
+		// legitimate real default, "no tilt", not a sentinel).
+		$merged['floating_camera_rotation_x'] = isset( $merged['floating_camera_rotation_x'] ) ? (float) $merged['floating_camera_rotation_x'] : 0.0;
 		$merged['floating_position'] = isset( $merged['floating_position'] ) && '' !== $merged['floating_position']
 			? (string) $merged['floating_position'] : 'bottom-right';
 		$merged['floating_offset_y'] = isset( $merged['floating_offset_y'] ) ? (int) $merged['floating_offset_y'] : 0;

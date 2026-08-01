@@ -116,7 +116,7 @@ function PreviewSceneInner({
   onCameraAngleChange,
 }: {
   config: PreviewAvatarConfig;
-  onCameraAngleChange?: (deg: number) => void;
+  onCameraAngleChange?: (deg: number, tiltDeg: number) => void;
 }) {
   // Floating-widget parity layout (quick task 260708-1ws): fixed 360x520
   // panel sizing comes entirely from .khaveeai-floating-panel's own CSS —
@@ -211,16 +211,16 @@ function PreviewSceneInner({
  *   from the data-khaveeai-preview-config attribute on the mount-point div.
  * @param onCameraAngleChange - Optional callback fired once per drag/zoom
  *   release on the preview's OrbitControls, with the resulting Y-axis
- *   degrees (see PreviewAvatarCanvas's handleOrbitEnd). Used by
- *   mountPreview.tsx to bridge the drag gesture out to the plain-JS
- *   Settings page.
+ *   (horizontal) and X-axis (vertical tilt) degrees (see
+ *   PreviewAvatarCanvas's handleOrbitEnd). Used by mountPreview.tsx to
+ *   bridge the drag gesture out to the plain-JS Settings page.
  */
 export function PreviewScene({
   config,
   onCameraAngleChange,
 }: {
   config: KhaveeAvatarConfig;
-  onCameraAngleChange?: (deg: number) => void;
+  onCameraAngleChange?: (deg: number, tiltDeg: number) => void;
 }) {
   return (
     <KhaveeProvider>

@@ -258,6 +258,14 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // value (60 default via the same `> 0` sentinel pattern as avatarScale),
   // so there's no real "0/unset" case reaching this component.
   const floatingLauncherSize = config.floatingLauncherSize ?? 60;
+  // Mobile overrides: 0/unset means "same as desktop" — only set the
+  // mobile-specific CSS var when a site owner actually configured a
+  // distinct value; styles.css's mobile media query falls back to the
+  // desktop var via var(--x-mobile, var(--x)) otherwise, so leaving these
+  // unset changes nothing for every existing install.
+  const floatingOffsetYMobile = config.floatingOffsetYMobile ?? 0;
+  const floatingOffsetXMobile = config.floatingOffsetXMobile ?? 0;
+  const floatingLauncherSizeMobile = config.floatingLauncherSizeMobile ?? 0;
   // Quick fix: shopping-cart-drawer/modal z-index conflicts — AvatarRenderer
   // always sends a resolved value (999999 default, or the site owner's
   // configured override), so this is set unconditionally rather than only
@@ -290,6 +298,21 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   if (floatingOffsetX) {
     (widgetStyle as Record<string, string>)["--khaveeai-floating-offset-x"] =
       `${floatingOffsetX}px`;
+  }
+  if (floatingOffsetYMobile) {
+    (widgetStyle as Record<string, string>)[
+      "--khaveeai-floating-offset-y-mobile"
+    ] = `${floatingOffsetYMobile}px`;
+  }
+  if (floatingOffsetXMobile) {
+    (widgetStyle as Record<string, string>)[
+      "--khaveeai-floating-offset-x-mobile"
+    ] = `${floatingOffsetXMobile}px`;
+  }
+  if (floatingLauncherSizeMobile) {
+    (widgetStyle as Record<string, string>)[
+      "--khaveeai-floating-launcher-size-mobile"
+    ] = `${floatingLauncherSizeMobile}px`;
   }
   (widgetStyle as Record<string, string>)["--khaveeai-floating-z-index"] =
     String(floatingZIndex);

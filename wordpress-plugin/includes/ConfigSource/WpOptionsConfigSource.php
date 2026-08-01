@@ -189,6 +189,13 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			// end if it's missing from this array.
 			'floating_offset_x' => isset( $settings['floating_offset_x'] ) ? (int) $settings['floating_offset_x'] : 0,
 			'floating_launcher_size' => isset( $settings['floating_launcher_size'] ) ? (int) $settings['floating_launcher_size'] : 60,
+			// Mobile-only overrides — added directly alongside their desktop
+			// siblings here, not after the fact (same recurring bugfix
+			// rationale as floating_camera_rotation_x/floating_offset_x
+			// above).
+			'floating_offset_y_mobile' => isset( $settings['floating_offset_y_mobile'] ) ? (int) $settings['floating_offset_y_mobile'] : 0,
+			'floating_offset_x_mobile' => isset( $settings['floating_offset_x_mobile'] ) ? (int) $settings['floating_offset_x_mobile'] : 0,
+			'floating_launcher_size_mobile' => isset( $settings['floating_launcher_size_mobile'] ) ? (int) $settings['floating_launcher_size_mobile'] : 0,
 			// Bugfix (260731, found live-testing floating_greeting_text end to
 			// end against wp-env): these three keys were being saved and
 			// sanitized correctly by SettingsPage.php, and read correctly by

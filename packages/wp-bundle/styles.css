@@ -1047,20 +1047,51 @@
 }
 
 @media (max-width: 480px) {
+  /* Mobile-specific overrides (found needed live: a button size or offset
+     tuned for desktop routinely doesn't suit a phone). Each var() below
+     has a fallback chain — var(--x-mobile, var(--x)) — so a site owner
+     who never touches the "on mobile" fields gets exactly the desktop
+     value here, unchanged; only setting a mobile-specific override
+     changes anything. NOT a self-reference (would be invalid per the CSS
+     spec's cyclic-custom-property rule) — -mobile and non--mobile are
+     genuinely different custom properties, chained via fallback, not the
+     same property redefined in terms of itself. */
   .khaveeai-floating-widget {
     --khaveeai-floating-width: calc(100vw - 32px);
-    bottom: calc(16px + var(--khaveeai-floating-offset-y));
+    bottom: calc(16px + var(--khaveeai-floating-offset-y-mobile, var(--khaveeai-floating-offset-y)));
   }
 
   /* Mirrors the base bottom-right rule's tighter mobile inset (16px vs
      24px) — only sets the side matching the current data-position, same
      shape as the desktop-width rules above. */
   .khaveeai-floating-widget:not([data-position="bottom-left"]) {
-    right: calc(16px + var(--khaveeai-floating-offset-x));
+    right: calc(16px + var(--khaveeai-floating-offset-x-mobile, var(--khaveeai-floating-offset-x)));
   }
 
   .khaveeai-floating-widget[data-position="bottom-left"] {
-    left: calc(16px + var(--khaveeai-floating-offset-x));
+    left: calc(16px + var(--khaveeai-floating-offset-x-mobile, var(--khaveeai-floating-offset-x)));
+  }
+
+  /* Icon/badge sizes duplicate the SAME fallback expression as the
+     launcher's own width/height below, rather than deriving from
+     --khaveeai-floating-launcher-size (which stays at its desktop value
+     here — redefining it in terms of itself would hit the same cyclic
+     issue noted above) — this is the price of the fallback-chain
+     approach: every consumer of the sized value repeats the chain,
+     instead of one variable reassignment cascading to all of them. */
+  .khaveeai-floating-launcher {
+    width: var(--khaveeai-floating-launcher-size-mobile, var(--khaveeai-floating-launcher-size));
+    height: var(--khaveeai-floating-launcher-size-mobile, var(--khaveeai-floating-launcher-size));
+  }
+
+  .khaveeai-floating-launcher svg {
+    width: calc(var(--khaveeai-floating-launcher-size-mobile, var(--khaveeai-floating-launcher-size)) * 0.4333);
+    height: calc(var(--khaveeai-floating-launcher-size-mobile, var(--khaveeai-floating-launcher-size)) * 0.4333);
+  }
+
+  .khaveeai-floating-launcher-badge {
+    width: calc(var(--khaveeai-floating-launcher-size-mobile, var(--khaveeai-floating-launcher-size)) * 0.2333);
+    height: calc(var(--khaveeai-floating-launcher-size-mobile, var(--khaveeai-floating-launcher-size)) * 0.2333);
   }
 }
 

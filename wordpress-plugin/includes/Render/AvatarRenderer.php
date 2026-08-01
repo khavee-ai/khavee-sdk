@@ -138,6 +138,13 @@ final class AvatarRenderer {
 		$config['floatingOffsetX']  = (int) $merged['floating_offset_x'];
 		// Collapsed launcher button diameter.
 		$config['floatingLauncherSize'] = (int) $merged['floating_launcher_size'];
+		// Mobile-only overrides (<=480px viewport) for the three fields
+		// above — 0 means "same as desktop" (FloatingWidget.tsx only sets
+		// the mobile-specific CSS var when non-zero; styles.css's mobile
+		// media query falls back to the desktop var otherwise).
+		$config['floatingOffsetYMobile'] = (int) $merged['floating_offset_y_mobile'];
+		$config['floatingOffsetXMobile'] = (int) $merged['floating_offset_x_mobile'];
+		$config['floatingLauncherSizeMobile'] = (int) $merged['floating_launcher_size_mobile'];
 		// Quick fix: shopping-cart-drawer/modal z-index conflicts.
 		$config['floatingZIndex']   = (int) $merged['floating_z_index'];
 		$config['floatingWidgetName'] = (string) $merged['floating_widget_name'];
@@ -230,6 +237,14 @@ final class AvatarRenderer {
 		// `> 0`-sentinel pattern (0 means "unset", real default is 60), same
 		// as floating_avatar_scale above.
 		$merged['floating_launcher_size'] = ( $merged['floating_launcher_size'] ?? 0 ) > 0 ? (int) $merged['floating_launcher_size'] : 60;
+		// Mobile-only overrides — plain isset()-based defaulting to 0,
+		// unlike floating_launcher_size above: 0 IS the real default here
+		// ("no mobile-specific override, inherit the desktop value" — see
+		// FloatingWidget.tsx/styles.css), not a sentinel for "unset, apply
+		// some other real default".
+		$merged['floating_offset_y_mobile'] = isset( $merged['floating_offset_y_mobile'] ) ? (int) $merged['floating_offset_y_mobile'] : 0;
+		$merged['floating_offset_x_mobile'] = isset( $merged['floating_offset_x_mobile'] ) ? (int) $merged['floating_offset_x_mobile'] : 0;
+		$merged['floating_launcher_size_mobile'] = isset( $merged['floating_launcher_size_mobile'] ) ? (int) $merged['floating_launcher_size_mobile'] : 0;
 		// `> 0`-sentinel pattern (0 means "unset"), same as floating_avatar_scale
 		// above — real default is 999999 (chosen to sit above ordinary page
 		// content), not 0, so the isset()-only shape used for floating_offset_y

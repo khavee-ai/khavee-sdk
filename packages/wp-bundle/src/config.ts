@@ -206,6 +206,16 @@ export interface KhaveeAvatarConfig {
   floatingOffsetX?: number;
   /** Diameter, in pixels, of the collapsed launcher button. Default 60. */
   floatingLauncherSize?: number;
+  /** Mobile-only override (<=480px viewport) for floatingOffsetY. 0/unset
+   * means "same as desktop" — this does NOT stack with the desktop value,
+   * it replaces it below the breakpoint. */
+  floatingOffsetYMobile?: number;
+  /** Mobile-only override (<=480px viewport) for floatingOffsetX. 0/unset
+   * means "same as desktop". */
+  floatingOffsetXMobile?: number;
+  /** Mobile-only override (<=480px viewport) for floatingLauncherSize.
+   * 0/unset means "same as desktop". */
+  floatingLauncherSizeMobile?: number;
   /**
    * CSS z-index of the floating widget's fixed-position container. Default
    * 999999 (chosen to sit above ordinary page content). Lower this when the

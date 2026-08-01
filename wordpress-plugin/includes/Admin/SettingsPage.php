@@ -513,35 +513,32 @@ jQuery( function ( $ ) {
 	// separate from the ids.forEach block above and NOT wired into
 	// rebuild() — it's page-placement CSS, not part of the avatar-scene
 	// preview config rebuild() sends into the WebGL mount.
-	var offsetYPxEl  = document.getElementById( 'khaveeai_floating_offset_y' );
-	var offsetYPxOut = document.getElementById( 'khaveeai_floating_offset_y_out' );
-	if ( offsetYPxEl && offsetYPxOut ) {
-		offsetYPxEl.addEventListener( 'input', function () {
-			offsetYPxOut.textContent = offsetYPxEl.value + 'px';
-		} );
-	}
-
-	// Bug (found live, reported directly): floating_offset_x and
-	// floating_launcher_size were missing this same live-readout wiring —
-	// added when those two fields were, but only to sanitize/render/
-	// registration, not here — so their "Xpx" text stayed frozen at
-	// whatever was last saved until a full page reload, even though the
-	// slider itself worked and saved correctly.
-	var offsetXPxEl  = document.getElementById( 'khaveeai_floating_offset_x' );
-	var offsetXPxOut = document.getElementById( 'khaveeai_floating_offset_x_out' );
-	if ( offsetXPxEl && offsetXPxOut ) {
-		offsetXPxEl.addEventListener( 'input', function () {
-			offsetXPxOut.textContent = offsetXPxEl.value + 'px';
-		} );
-	}
-
-	var launcherSizePxEl  = document.getElementById( 'khaveeai_floating_launcher_size' );
-	var launcherSizePxOut = document.getElementById( 'khaveeai_floating_launcher_size_out' );
-	if ( launcherSizePxEl && launcherSizePxOut ) {
-		launcherSizePxEl.addEventListener( 'input', function () {
-			launcherSizePxOut.textContent = launcherSizePxEl.value + 'px';
-		} );
-	}
+	//
+	// Generalized into a loop (bug found live, reported directly):
+	// floating_offset_x and floating_launcher_size were each added as a
+	// hand-copied block like offset_y's original one, and this exact wiring
+	// was forgotten both times — their "Xpx" text stayed frozen at whatever
+	// was last saved until a full page reload, even though the slider
+	// itself worked and saved correctly. A loop over every px-readout
+	// field's id can't have that one omitted by hand again; adding a new
+	// mobile-override field (as three more were, right below) is now just
+	// one more entry in this array, not a new copy-pasted block to forget.
+	[
+		'khaveeai_floating_offset_y',
+		'khaveeai_floating_offset_x',
+		'khaveeai_floating_launcher_size',
+		'khaveeai_floating_offset_y_mobile',
+		'khaveeai_floating_offset_x_mobile',
+		'khaveeai_floating_launcher_size_mobile'
+	].forEach( function ( id ) {
+		var pxEl  = document.getElementById( id );
+		var pxOut = document.getElementById( id + '_out' );
+		if ( pxEl && pxOut ) {
+			pxEl.addEventListener( 'input', function () {
+				pxOut.textContent = pxEl.value + 'px';
+			} );
+		}
+	} );
 
 	// Quick task 260706-wop: closes the drag-orbit loop. The khaveeai-preview
 	// bundle's mountPreview.tsx dispatches this CustomEvent on the mount div
@@ -1314,6 +1311,30 @@ JS;
 		);
 
 		add_settings_field(
+			'floating_offset_y_mobile',
+			__( 'Floating widget vertical offset (mobile)', 'khaveeai' ),
+			array( $this, 'render_floating_offset_y_mobile_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_offset_x_mobile',
+			__( 'Floating widget horizontal offset (mobile)', 'khaveeai' ),
+			array( $this, 'render_floating_offset_x_mobile_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_launcher_size_mobile',
+			__( 'Floating widget button size (mobile)', 'khaveeai' ),
+			array( $this, 'render_floating_launcher_size_mobile_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
 			'floating_z_index',
 			__( 'Floating widget z-index', 'khaveeai' ),
 			array( $this, 'render_floating_z_index_field' ),
@@ -1487,6 +1508,24 @@ JS;
 		$sanitized['floating_launcher_size'] = isset( $input['floating_launcher_size'] )
 			? max( 40, min( 100, (int) $input['floating_launcher_size'] ) )
 			: 60;
+
+		// Mobile-only overrides — offsets share the same 0-400 clamp/shape
+		// as their desktop siblings (0 is a legitimate "no override" value
+		// at both layers, not just this one). Launcher size mobile is the
+		// exception: 0 must survive AS 0 (it means "inherit desktop", not
+		// "unset, apply an internal default"), so only a genuinely non-zero
+		// input gets the 40-100 clamp — clamping 0 itself up to 40 would
+		// make "inherit" impossible to express.
+		$sanitized['floating_offset_y_mobile'] = isset( $input['floating_offset_y_mobile'] )
+			? max( 0, min( 400, (int) $input['floating_offset_y_mobile'] ) )
+			: 0;
+		$sanitized['floating_offset_x_mobile'] = isset( $input['floating_offset_x_mobile'] )
+			? max( 0, min( 400, (int) $input['floating_offset_x_mobile'] ) )
+			: 0;
+		$raw_launcher_size_mobile = isset( $input['floating_launcher_size_mobile'] ) ? (int) $input['floating_launcher_size_mobile'] : 0;
+		$sanitized['floating_launcher_size_mobile'] = $raw_launcher_size_mobile > 0
+			? max( 40, min( 100, $raw_launcher_size_mobile ) )
+			: 0;
 
 		// 0 = unset (AvatarRenderer applies the 999999 default) — no upper
 		// clamp beyond a sane integer ceiling, since a site owner needs to
@@ -1803,7 +1842,12 @@ JS;
 		//     #khaveeai_floating_avatar_offset_y (+ _out),
 		//     #khaveeai_floating_avatar_scale (+ _out),
 		//     #khaveeai_floating_camera_rotation_y (+ _out),
-		//     #khaveeai_floating_camera_rotation_x (+ _out)
+		//     #khaveeai_floating_camera_rotation_x (+ _out),
+		//     #khaveeai_floating_offset_x (+ _out),
+		//     #khaveeai_floating_launcher_size (+ _out),
+		//     #khaveeai_floating_offset_y_mobile (+ _out),
+		//     #khaveeai_floating_offset_x_mobile (+ _out),
+		//     #khaveeai_floating_launcher_size_mobile (+ _out)
 		//   - #khaveeai_avatar_picker_button, #khaveeai_avatar_attachment_id,
 		//     #khaveeai_avatar_current
 		//   - Not JS-read, but tied to name="khaveeai_settings[...]"
@@ -1921,6 +1965,12 @@ JS;
 		// Launcher button diameter — also page-placement-style (nothing to
 		// render in the preview box, which never shows a launcher at all).
 		$this->render_form_table_row( __( 'Floating widget button size', 'khaveeai' ), array( $this, 'render_floating_launcher_size_field' ) );
+		// Mobile-only overrides for the three fields directly above —
+		// grouped right after their desktop counterparts so the pairing is
+		// visually obvious on the settings page.
+		$this->render_form_table_row( __( 'Floating widget vertical offset (mobile)', 'khaveeai' ), array( $this, 'render_floating_offset_y_mobile_field' ) );
+		$this->render_form_table_row( __( 'Floating widget horizontal offset (mobile)', 'khaveeai' ), array( $this, 'render_floating_offset_x_mobile_field' ) );
+		$this->render_form_table_row( __( 'Floating widget button size (mobile)', 'khaveeai' ), array( $this, 'render_floating_launcher_size_mobile_field' ) );
 		// Quick fix: shopping-cart-drawer/modal z-index conflicts — a site
 		// owner needs to lower Khavee's stacking order below whatever else
 		// on the page is also fighting to stay on top.
@@ -2933,13 +2983,85 @@ JS;
 			: 60;
 
 		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="40" max="100" step="2" id="khaveeai_floating_launcher_size" name="%s[floating_launcher_size]" value="%s" /><output id="khaveeai_floating_launcher_size_out" for="khaveeai_floating_launcher_size">%spx</output></span>',
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="40" max="100" step="1" id="khaveeai_floating_launcher_size" name="%s[floating_launcher_size]" value="%s" /><output id="khaveeai_floating_launcher_size_out" for="khaveeai_floating_launcher_size">%spx</output></span>',
 			esc_attr( self::OPTION_NAME ),
 			esc_attr( (string) $current ),
 			esc_html( (string) $current )
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Diameter, in pixels, of the collapsed launcher button. Default 60.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's mobile-only vertical offset override —
+	 * same field as render_floating_offset_y_field() above, but only
+	 * applied at <=480px viewport widths. 0 = "same as desktop" (not a
+	 * separate real default) — styles.css's mobile media query falls back
+	 * to the desktop value via a CSS var() fallback chain when this is 0.
+	 *
+	 * @return void
+	 */
+	public function render_floating_offset_y_mobile_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_offset_y_mobile'] ) ? (int) $settings['floating_offset_y_mobile'] : 0;
+
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_y_mobile" name="%s[floating_offset_y_mobile]" value="%s" /><output id="khaveeai_floating_offset_y_mobile_out" for="khaveeai_floating_offset_y_mobile">%spx</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Overrides the vertical offset above, but only on phone-width screens (480px or narrower). 0 = use the same value as desktop.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's mobile-only horizontal offset override —
+	 * mobile counterpart to render_floating_offset_y_mobile_field() above.
+	 *
+	 * @return void
+	 */
+	public function render_floating_offset_x_mobile_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_offset_x_mobile'] ) ? (int) $settings['floating_offset_x_mobile'] : 0;
+
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_x_mobile" name="%s[floating_offset_x_mobile]" value="%s" /><output id="khaveeai_floating_offset_x_mobile_out" for="khaveeai_floating_offset_x_mobile">%spx</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Overrides the horizontal offset above, but only on phone-width screens (480px or narrower). 0 = use the same value as desktop.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's mobile-only launcher size override.
+	 * Unlike render_floating_launcher_size_field() above, 0 is a real,
+	 * meaningful value here ("no mobile override, inherit desktop"), not a
+	 * sentinel worked around by a `> 0` check — the slider's own min="0"
+	 * makes that the natural resting/default position.
+	 *
+	 * @return void
+	 */
+	public function render_floating_launcher_size_mobile_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_launcher_size_mobile'] ) ? (int) $settings['floating_launcher_size_mobile'] : 0;
+
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="100" step="1" id="khaveeai_floating_launcher_size_mobile" name="%s[floating_launcher_size_mobile]" value="%s" /><output id="khaveeai_floating_launcher_size_mobile_out" for="khaveeai_floating_launcher_size_mobile">%spx</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Overrides the button size above, but only on phone-width screens (480px or narrower). 0 = use the same size as desktop; values below 40 are treated as 40.', 'khaveeai' ) .
 			'</p>';
 	}
 

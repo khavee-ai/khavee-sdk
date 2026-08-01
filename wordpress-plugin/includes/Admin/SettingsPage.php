@@ -521,6 +521,28 @@ jQuery( function ( $ ) {
 		} );
 	}
 
+	// Bug (found live, reported directly): floating_offset_x and
+	// floating_launcher_size were missing this same live-readout wiring —
+	// added when those two fields were, but only to sanitize/render/
+	// registration, not here — so their "Xpx" text stayed frozen at
+	// whatever was last saved until a full page reload, even though the
+	// slider itself worked and saved correctly.
+	var offsetXPxEl  = document.getElementById( 'khaveeai_floating_offset_x' );
+	var offsetXPxOut = document.getElementById( 'khaveeai_floating_offset_x_out' );
+	if ( offsetXPxEl && offsetXPxOut ) {
+		offsetXPxEl.addEventListener( 'input', function () {
+			offsetXPxOut.textContent = offsetXPxEl.value + 'px';
+		} );
+	}
+
+	var launcherSizePxEl  = document.getElementById( 'khaveeai_floating_launcher_size' );
+	var launcherSizePxOut = document.getElementById( 'khaveeai_floating_launcher_size_out' );
+	if ( launcherSizePxEl && launcherSizePxOut ) {
+		launcherSizePxEl.addEventListener( 'input', function () {
+			launcherSizePxOut.textContent = launcherSizePxEl.value + 'px';
+		} );
+	}
+
 	// Quick task 260706-wop: closes the drag-orbit loop. The khaveeai-preview
 	// bundle's mountPreview.tsx dispatches this CustomEvent on the mount div
 	// once per drag/zoom release on the preview's OrbitControls (PreviewScene.tsx

@@ -1241,7 +1241,7 @@ JS;
 
 		add_settings_field(
 			'floating_camera_rotation_y',
-			__( 'Floating camera angle', 'khaveeai' ),
+			__( 'Floating camera horizontal angle', 'khaveeai' ),
 			array( $this, 'render_floating_camera_rotation_y_field' ),
 			self::PAGE_SLUG,
 			'khaveeai_main'
@@ -1855,7 +1855,7 @@ JS;
 		$this->render_form_table_row( __( 'Floating avatar scale', 'khaveeai' ), array( $this, 'render_floating_avatar_scale_field' ) );
 		// Quick task 260706-wop: floating-only camera angle, also drivable by
 		// dragging/orbiting the live preview below (bidirectional).
-		$this->render_form_table_row( __( 'Floating camera angle', 'khaveeai' ), array( $this, 'render_floating_camera_rotation_y_field' ) );
+		$this->render_form_table_row( __( 'Floating camera horizontal angle', 'khaveeai' ), array( $this, 'render_floating_camera_rotation_y_field' ) );
 		// Vertical counterpart — UX finding: only a horizontal angle existed.
 		$this->render_form_table_row( __( 'Floating camera vertical angle', 'khaveeai' ), array( $this, 'render_floating_camera_rotation_x_field' ) );
 		// Quick task 260715-75r: page-placement config — which corner the
@@ -2721,7 +2721,7 @@ JS;
 	}
 
 	/**
-	 * Render the floating panel's camera angle input (quick task
+	 * Render the floating panel's horizontal camera angle input (quick task
 	 * 260706-wop) — independent of the inline embed's global camera
 	 * rotation. Also drivable by dragging/orbiting the live preview below;
 	 * enqueue_settings_assets()'s inline JS listens for the preview's
@@ -2745,7 +2745,7 @@ JS;
 			esc_html( (string) $current )
 		);
 		echo '<p class="description">' .
-			esc_html__( 'Camera angle in degrees for the floating widget only. Dragging/orbiting the live preview below also updates this.', 'khaveeai' ) .
+			esc_html__( 'Horizontal camera angle in degrees for the floating widget only. Dragging/orbiting the live preview below also updates this.', 'khaveeai' ) .
 			'</p>';
 	}
 

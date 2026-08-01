@@ -200,6 +200,12 @@ export interface KhaveeAvatarConfig {
   /** Extra pixels to lift the widget up off the page's bottom edge, on top
    * of the base 24px inset. Default 0. */
   floatingOffsetY?: number;
+  /** Extra pixels to nudge the widget in from whichever side it's anchored
+   * to (right for "bottom-right", left for "bottom-left"), on top of the
+   * base 24px inset. Default 0. */
+  floatingOffsetX?: number;
+  /** Diameter, in pixels, of the collapsed launcher button. Default 60. */
+  floatingLauncherSize?: number;
   /**
    * CSS z-index of the floating widget's fixed-position container. Default
    * 999999 (chosen to sit above ordinary page content). Lower this when the

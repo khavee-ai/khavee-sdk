@@ -556,6 +556,19 @@
      the calc() below is a no-op (bottom: calc(24px + 0px)) otherwise, so
      the default inset is unchanged for every existing embed. */
   --khaveeai-floating-offset-y: 0px;
+  /* Horizontal counterpart — same non-zero-only inline-set / no-op-by-
+     default shape as offset-y above. Consumed by BOTH anchor corners
+     below (right: for bottom-right, left: for bottom-left) since which
+     edge it nudges away from depends on data-position. */
+  --khaveeai-floating-offset-x: 0px;
+  /* Launcher diameter — always set inline by FloatingWidget.tsx (see its
+     own comment; unlike the two offsets above, this has a real non-zero
+     default), so 60px here is only a fallback if that ever fails to
+     apply. Icon/badge sizes below are calc()'d off this ONE value so
+     resizing the button scales its contents proportionally instead of
+     the icon/badge staying a fixed size inside a bigger or smaller
+     circle. */
+  --khaveeai-floating-launcher-size: 60px;
   /* Shopping-cart-drawer/modal z-index conflict quick fix: this default
      (999999) is only ever used if FloatingWidget.tsx's inline style fails
      to apply for some reason — the component always sets
@@ -565,7 +578,7 @@
   --khaveeai-floating-z-index: 999999;
   position: fixed;
   bottom: calc(24px + var(--khaveeai-floating-offset-y));
-  right: 24px;
+  right: calc(24px + var(--khaveeai-floating-offset-x));
   z-index: var(--khaveeai-floating-z-index);
   display: flex;
   flex-direction: column;
@@ -583,7 +596,7 @@
    always bottom-right). */
 .khaveeai-floating-widget[data-position="bottom-left"] {
   right: auto;
-  left: 24px;
+  left: calc(24px + var(--khaveeai-floating-offset-x));
   align-items: flex-start;
 }
 
@@ -945,8 +958,8 @@
 }
 
 .khaveeai-floating-launcher {
-  width: 60px;
-  height: 60px;
+  width: var(--khaveeai-floating-launcher-size);
+  height: var(--khaveeai-floating-launcher-size);
   border-radius: 50%;
   border: none;
   background: var(--khaveeai-primary);
@@ -969,8 +982,9 @@
   position: absolute;
   top: -1px;
   right: -1px;
-  width: 14px;
-  height: 14px;
+  /* 14/60 of the launcher's own diameter, scales with it. */
+  width: calc(var(--khaveeai-floating-launcher-size) * 0.2333);
+  height: calc(var(--khaveeai-floating-launcher-size) * 0.2333);
   border-radius: 50%;
   background: #ef4444;
   border: 2px solid #ffffff;
@@ -987,6 +1001,13 @@
 }
 
 .khaveeai-floating-launcher svg {
+  /* 26/60 of the launcher's own diameter (the chat icon's original ratio;
+     the close icon's own 24px was close enough to share one ratio rather
+     than add a second calc() for a ~1px difference at the default size).
+     Overrides the width/height HTML attributes still on both <svg>
+     elements — CSS width/height on an SVG element wins over those. */
+  width: calc(var(--khaveeai-floating-launcher-size) * 0.4333);
+  height: calc(var(--khaveeai-floating-launcher-size) * 0.4333);
   transition: transform 200ms ease, opacity 150ms ease;
 }
 
@@ -1035,11 +1056,11 @@
      24px) — only sets the side matching the current data-position, same
      shape as the desktop-width rules above. */
   .khaveeai-floating-widget:not([data-position="bottom-left"]) {
-    right: 16px;
+    right: calc(16px + var(--khaveeai-floating-offset-x));
   }
 
   .khaveeai-floating-widget[data-position="bottom-left"] {
-    left: 16px;
+    left: calc(16px + var(--khaveeai-floating-offset-x));
   }
 }
 

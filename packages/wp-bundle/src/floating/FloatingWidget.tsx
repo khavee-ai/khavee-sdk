@@ -251,6 +251,13 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
   // single source of the base inset — this only adds to it.
   const floatingPosition = config.floatingPosition ?? "bottom-right";
   const floatingOffsetY = config.floatingOffsetY ?? 0;
+  // Horizontal counterpart — same non-zero-only, real-default-IS-0 shape.
+  const floatingOffsetX = config.floatingOffsetX ?? 0;
+  // Button size: unconditional like floatingZIndex below, not conditional
+  // like the two offsets above — AvatarRenderer always resolves a concrete
+  // value (60 default via the same `> 0` sentinel pattern as avatarScale),
+  // so there's no real "0/unset" case reaching this component.
+  const floatingLauncherSize = config.floatingLauncherSize ?? 60;
   // Quick fix: shopping-cart-drawer/modal z-index conflicts — AvatarRenderer
   // always sends a resolved value (999999 default, or the site owner's
   // configured override), so this is set unconditionally rather than only
@@ -280,8 +287,14 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
     (widgetStyle as Record<string, string>)["--khaveeai-floating-offset-y"] =
       `${floatingOffsetY}px`;
   }
+  if (floatingOffsetX) {
+    (widgetStyle as Record<string, string>)["--khaveeai-floating-offset-x"] =
+      `${floatingOffsetX}px`;
+  }
   (widgetStyle as Record<string, string>)["--khaveeai-floating-z-index"] =
     String(floatingZIndex);
+  (widgetStyle as Record<string, string>)["--khaveeai-floating-launcher-size"] =
+    `${floatingLauncherSize}px`;
   if (floatingPrimaryColor) {
     (widgetStyle as Record<string, string>)["--khaveeai-primary"] =
       floatingPrimaryColor;

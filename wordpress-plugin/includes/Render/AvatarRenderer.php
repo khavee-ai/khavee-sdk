@@ -134,6 +134,10 @@ final class AvatarRenderer {
 		// way instead of the two stacking on top of each other.
 		$config['floatingPosition'] = (string) $merged['floating_position'];
 		$config['floatingOffsetY']  = (int) $merged['floating_offset_y'];
+		// Horizontal counterpart to the above.
+		$config['floatingOffsetX']  = (int) $merged['floating_offset_x'];
+		// Collapsed launcher button diameter.
+		$config['floatingLauncherSize'] = (int) $merged['floating_launcher_size'];
 		// Quick fix: shopping-cart-drawer/modal z-index conflicts.
 		$config['floatingZIndex']   = (int) $merged['floating_z_index'];
 		$config['floatingWidgetName'] = (string) $merged['floating_widget_name'];
@@ -220,6 +224,12 @@ final class AvatarRenderer {
 		$merged['floating_position'] = isset( $merged['floating_position'] ) && '' !== $merged['floating_position']
 			? (string) $merged['floating_position'] : 'bottom-right';
 		$merged['floating_offset_y'] = isset( $merged['floating_offset_y'] ) ? (int) $merged['floating_offset_y'] : 0;
+		// Horizontal counterpart — same isset()-based defaulting (0 is a
+		// legitimate real default here, not a sentinel).
+		$merged['floating_offset_x'] = isset( $merged['floating_offset_x'] ) ? (int) $merged['floating_offset_x'] : 0;
+		// `> 0`-sentinel pattern (0 means "unset", real default is 60), same
+		// as floating_avatar_scale above.
+		$merged['floating_launcher_size'] = ( $merged['floating_launcher_size'] ?? 0 ) > 0 ? (int) $merged['floating_launcher_size'] : 60;
 		// `> 0`-sentinel pattern (0 means "unset"), same as floating_avatar_scale
 		// above — real default is 999999 (chosen to sit above ordinary page
 		// content), not 0, so the isset()-only shape used for floating_offset_y

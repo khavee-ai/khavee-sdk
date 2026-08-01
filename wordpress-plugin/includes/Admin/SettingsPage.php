@@ -1276,6 +1276,22 @@ JS;
 		);
 
 		add_settings_field(
+			'floating_offset_x',
+			__( 'Floating widget horizontal offset', 'khaveeai' ),
+			array( $this, 'render_floating_offset_x_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
+			'floating_launcher_size',
+			__( 'Floating widget button size', 'khaveeai' ),
+			array( $this, 'render_floating_launcher_size_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
+
+		add_settings_field(
 			'floating_z_index',
 			__( 'Floating widget z-index', 'khaveeai' ),
 			array( $this, 'render_floating_z_index_field' ),
@@ -1437,6 +1453,18 @@ JS;
 		$sanitized['floating_offset_y'] = isset( $input['floating_offset_y'] )
 			? max( 0, min( 400, (int) $input['floating_offset_y'] ) )
 			: 0;
+
+		// Horizontal counterpart — same clamp/shape as offset_y above.
+		$sanitized['floating_offset_x'] = isset( $input['floating_offset_x'] )
+			? max( 0, min( 400, (int) $input['floating_offset_x'] ) )
+			: 0;
+
+		// Launcher button diameter — clamped to the slider's own 40-100
+		// range (defense-in-depth, T-09-01-01: never trust the client-side
+		// min/max attributes alone).
+		$sanitized['floating_launcher_size'] = isset( $input['floating_launcher_size'] )
+			? max( 40, min( 100, (int) $input['floating_launcher_size'] ) )
+			: 60;
 
 		// 0 = unset (AvatarRenderer applies the 999999 default) — no upper
 		// clamp beyond a sane integer ceiling, since a site owner needs to
@@ -1866,6 +1894,11 @@ JS;
 		// the avatar/camera/background the preview mount renders).
 		$this->render_form_table_row( __( 'Floating widget position', 'khaveeai' ), array( $this, 'render_floating_position_field' ) );
 		$this->render_form_table_row( __( 'Floating widget vertical offset', 'khaveeai' ), array( $this, 'render_floating_offset_y_field' ) );
+		// Horizontal counterpart — same page-placement rationale as above.
+		$this->render_form_table_row( __( 'Floating widget horizontal offset', 'khaveeai' ), array( $this, 'render_floating_offset_x_field' ) );
+		// Launcher button diameter — also page-placement-style (nothing to
+		// render in the preview box, which never shows a launcher at all).
+		$this->render_form_table_row( __( 'Floating widget button size', 'khaveeai' ), array( $this, 'render_floating_launcher_size_field' ) );
 		// Quick fix: shopping-cart-drawer/modal z-index conflicts — a site
 		// owner needs to lower Khavee's stacking order below whatever else
 		// on the page is also fighting to stay on top.
@@ -2834,6 +2867,57 @@ JS;
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Extra distance (in pixels) to lift the widget up off the page edge, e.g. to clear another floating widget beneath it. 0 = default 24px inset.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's horizontal offset field — same shape and
+	 * rationale as render_floating_offset_y_field() above, nudging the
+	 * widget in from whichever side it's anchored to instead of up from the
+	 * bottom.
+	 *
+	 * @return void
+	 */
+	public function render_floating_offset_x_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_offset_x'] ) ? (int) $settings['floating_offset_x'] : 0;
+
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="4" id="khaveeai_floating_offset_x" name="%s[floating_offset_x]" value="%s" /><output id="khaveeai_floating_offset_x_out" for="khaveeai_floating_offset_x">%spx</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Extra distance (in pixels) to nudge the widget in from the page edge it\'s anchored to, e.g. to clear another floating widget beside it. 0 = default 24px inset.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's launcher button size field. `> 0`-sentinel
+	 * pattern (0 means "unset", real default is 60) since the range slider's
+	 * own min="40" means a real 0 never reaches here from the form, but
+	 * AvatarRenderer's defensive defaults need the same shape for a site
+	 * whose option row predates this field entirely.
+	 *
+	 * @return void
+	 */
+	public function render_floating_launcher_size_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = ( isset( $settings['floating_launcher_size'] ) && (int) $settings['floating_launcher_size'] > 0 )
+			? (int) $settings['floating_launcher_size']
+			: 60;
+
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="40" max="100" step="2" id="khaveeai_floating_launcher_size" name="%s[floating_launcher_size]" value="%s" /><output id="khaveeai_floating_launcher_size_out" for="khaveeai_floating_launcher_size">%spx</output></span>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( (string) $current ),
+			esc_html( (string) $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'Diameter, in pixels, of the collapsed launcher button. Default 60.', 'khaveeai' ) .
 			'</p>';
 	}
 

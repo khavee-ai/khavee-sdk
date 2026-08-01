@@ -182,6 +182,13 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			// Khavee's out of the way instead of the two overlapping.
 			'floating_position' => isset( $settings['floating_position'] ) ? (string) $settings['floating_position'] : self::DEFAULT_FLOATING_POSITION,
 			'floating_offset_y' => isset( $settings['floating_offset_y'] ) ? (int)    $settings['floating_offset_y'] : 0,
+			// Horizontal counterpart, and launcher button size — added
+			// directly alongside their siblings here (not after the fact),
+			// same bugfix-avoidance rationale as floating_camera_rotation_x
+			// above: a new floating_* key silently never reaches the front
+			// end if it's missing from this array.
+			'floating_offset_x' => isset( $settings['floating_offset_x'] ) ? (int) $settings['floating_offset_x'] : 0,
+			'floating_launcher_size' => isset( $settings['floating_launcher_size'] ) ? (int) $settings['floating_launcher_size'] : 60,
 			// Bugfix (260731, found live-testing floating_greeting_text end to
 			// end against wp-env): these three keys were being saved and
 			// sanitized correctly by SettingsPage.php, and read correctly by

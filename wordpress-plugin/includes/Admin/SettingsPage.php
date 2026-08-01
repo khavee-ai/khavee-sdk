@@ -424,25 +424,28 @@ jQuery( function ( $ ) {
 
 		mount.dataset.khaveeaiPreviewConfig = JSON.stringify( cfg );
 
+		// _out elements are now editable <input type="number"> fields, not
+		// read-only <output> — .value, not .textContent (direct feedback:
+		// a slider alone made it impossible to enter an exact number).
 		var offsetXOut = document.getElementById( 'khaveeai_floating_avatar_offset_x_out' );
 		if ( offsetXOut && offsetXEl ) {
-			offsetXOut.textContent = offsetXEl.value;
+			offsetXOut.value = offsetXEl.value;
 		}
 		var offsetYOut = document.getElementById( 'khaveeai_floating_avatar_offset_y_out' );
 		if ( offsetYOut && offsetYEl ) {
-			offsetYOut.textContent = offsetYEl.value;
+			offsetYOut.value = offsetYEl.value;
 		}
 		var scaleOut = document.getElementById( 'khaveeai_floating_avatar_scale_out' );
 		if ( scaleOut && scaleEl ) {
-			scaleOut.textContent = scaleEl.value;
+			scaleOut.value = scaleEl.value;
 		}
 		var rotOut = document.getElementById( 'khaveeai_floating_camera_rotation_y_out' );
 		if ( rotOut && rotEl ) {
-			rotOut.textContent = rotEl.value;
+			rotOut.value = rotEl.value;
 		}
 		var tiltOut = document.getElementById( 'khaveeai_floating_camera_rotation_x_out' );
 		if ( tiltOut && tiltEl ) {
-			tiltOut.textContent = tiltEl.value;
+			tiltOut.value = tiltEl.value;
 		}
 	}
 
@@ -509,21 +512,29 @@ jQuery( function ( $ ) {
 		el.addEventListener( 'change', function () { rebuild(); } );
 	} );
 
-	// Quick task 260715-75r: floating_offset_y's own live readout, kept
-	// separate from the ids.forEach block above and NOT wired into
-	// rebuild() — it's page-placement CSS, not part of the avatar-scene
-	// preview config rebuild() sends into the WebGL mount.
+	// Generic bidirectional range<->number sync for every slider+number-
+	// input pair render_range_with_number_field() renders (direct
+	// feedback: a slider alone made it impossible to enter an exact
+	// value — every field on this page now has an editable number input
+	// beside its slider, not just the page-placement ones below).
 	//
-	// Generalized into a loop (bug found live, reported directly):
-	// floating_offset_x and floating_launcher_size were each added as a
-	// hand-copied block like offset_y's original one, and this exact wiring
-	// was forgotten both times — their "Xpx" text stayed frozen at whatever
-	// was last saved until a full page reload, even though the slider
-	// itself worked and saved correctly. A loop over every px-readout
-	// field's id can't have that one omitted by hand again; adding a new
-	// mobile-override field (as three more were, right below) is now just
-	// one more entry in this array, not a new copy-pasted block to forget.
+	// Range -> number is also generalized here (was a hand-copied block
+	// per field, e.g. rebuild()'s own offsetXOut/rotOut/etc. sync above,
+	// or a standalone loop for the page-placement fields only) — a loop
+	// over every field's id can't have one omitted by hand the way
+	// floating_offset_x/floating_launcher_size's readout wiring was
+	// forgotten when those two were added. Number -> range is entirely
+	// new: typing a value forwards it to the range slider and re-
+	// dispatches 'input' on it, so every listener ALREADY attached to
+	// the range (rebuild(), the avatar-scene ids.forEach above) fires
+	// exactly as if the user had dragged there — one direction of sync
+	// reuses the other's existing effects instead of duplicating them.
 	[
+		'khaveeai_floating_avatar_offset_x',
+		'khaveeai_floating_avatar_offset_y',
+		'khaveeai_floating_avatar_scale',
+		'khaveeai_floating_camera_rotation_y',
+		'khaveeai_floating_camera_rotation_x',
 		'khaveeai_floating_offset_y',
 		'khaveeai_floating_offset_x',
 		'khaveeai_floating_launcher_size',
@@ -531,13 +542,18 @@ jQuery( function ( $ ) {
 		'khaveeai_floating_offset_x_mobile',
 		'khaveeai_floating_launcher_size_mobile'
 	].forEach( function ( id ) {
-		var pxEl  = document.getElementById( id );
-		var pxOut = document.getElementById( id + '_out' );
-		if ( pxEl && pxOut ) {
-			pxEl.addEventListener( 'input', function () {
-				pxOut.textContent = pxEl.value + 'px';
-			} );
+		var rangeEl  = document.getElementById( id );
+		var numberEl = document.getElementById( id + '_out' );
+		if ( ! rangeEl || ! numberEl ) {
+			return;
 		}
+		rangeEl.addEventListener( 'input', function () {
+			numberEl.value = rangeEl.value;
+		} );
+		numberEl.addEventListener( 'input', function () {
+			rangeEl.value = numberEl.value;
+			rangeEl.dispatchEvent( new Event( 'input', { bubbles: true } ) );
+		} );
 	} );
 
 	// Quick task 260706-wop: closes the drag-orbit loop. The khaveeai-preview
@@ -557,7 +573,7 @@ jQuery( function ( $ ) {
 		}
 		var out = document.getElementById( 'khaveeai_floating_camera_rotation_y_out' );
 		if ( out ) {
-			out.textContent = d;
+			out.value = d;
 		}
 		var t = Math.round( e.detail.tiltDeg );
 		var tiltEl2 = document.getElementById( 'khaveeai_floating_camera_rotation_x' );
@@ -566,7 +582,7 @@ jQuery( function ( $ ) {
 		}
 		var tiltOut2 = document.getElementById( 'khaveeai_floating_camera_rotation_x_out' );
 		if ( tiltOut2 ) {
-			tiltOut2.textContent = t;
+			tiltOut2.value = t;
 		}
 		rebuild();
 	} );
@@ -2146,6 +2162,55 @@ JS;
 	}
 
 	/**
+	 * Emit a range slider paired with an editable number input showing the
+	 * same value (direct feedback: a slider alone made it impossible to
+	 * enter an exact number — every render_floating_*_field() method below
+	 * that used to pair a slider with a read-only `<output>` now calls this
+	 * instead).
+	 *
+	 * Only the range input carries `name="..."` and submits with the form;
+	 * the number input has none — it's a pure UI convenience kept in sync
+	 * with the range purely via JS (enqueue_settings_assets()'s generic
+	 * range<->number binding loop), the same relationship `<output>` had to
+	 * the range before this, just editable now instead of read-only.
+	 *
+	 * The number input keeps the legacy "_out" id suffix (not "_num" or
+	 * similar) so none of the existing JS that already reads/writes that id
+	 * (rebuild(), the drag-orbit CustomEvent listener) needed to change
+	 * anything beyond `.textContent =` becoming `.value =`.
+	 *
+	 * @param string $id      Base id — the range gets this id verbatim, the
+	 *                        number input gets "{$id}_out".
+	 * @param string $option_key Key inside self::OPTION_NAME this field
+	 *                        submits under (e.g. "floating_offset_y").
+	 * @param string $min     Shared min attribute (string so callers can
+	 *                        pass either an int or a float literal as-is).
+	 * @param string $max     Shared max attribute.
+	 * @param string $step    Shared step attribute.
+	 * @param string $current Current value, pre-formatted by the caller
+	 *                        (int vs float callers already differ on this).
+	 * @param string $suffix  Optional unit suffix shown as plain text after
+	 *                        the number input (e.g. "px"). Not part of the
+	 *                        number input's own value — a number input
+	 *                        can't display embedded non-numeric text the
+	 *                        way `<output>`'s textContent could.
+	 * @return void
+	 */
+	private function render_range_with_number_field( string $id, string $option_key, string $min, string $max, string $step, string $current, string $suffix = '' ): void {
+		printf(
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="%1$s" max="%2$s" step="%3$s" id="%4$s" name="%5$s[%6$s]" value="%7$s" style="flex:1;max-width:240px;" /><input type="number" min="%1$s" max="%2$s" step="%3$s" id="%4$s_out" value="%7$s" style="width:80px;" />%8$s</span>',
+			esc_attr( $min ),
+			esc_attr( $max ),
+			esc_attr( $step ),
+			esc_attr( $id ),
+			esc_attr( self::OPTION_NAME ),
+			esc_attr( $option_key ),
+			esc_attr( $current ),
+			'' !== $suffix ? ' ' . esc_html( $suffix ) : ''
+		);
+	}
+
+	/**
 	 * Intro text for the main settings section.
 	 *
 	 * @return void
@@ -2754,15 +2819,10 @@ JS;
 		$current  = isset( $settings['floating_avatar_offset_x'] ) ? (float) $settings['floating_avatar_offset_x'] : 0.0;
 
 		// Quick task 260706-vf4: range slider (min/max/step mirror editor.js's
-		// avatarOffsetX RangeControl, lines 528-538) plus a sibling <output>
-		// live-readout element. Same id/name as before — sanitize_settings()
-		// and the persisted option shape are unaffected.
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-1" max="1" step="0.05" id="khaveeai_floating_avatar_offset_x" name="%s[floating_avatar_offset_x]" value="%s" /><output id="khaveeai_floating_avatar_offset_x_out" for="khaveeai_floating_avatar_offset_x">%s</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		// avatarOffsetX RangeControl, lines 528-538) paired with an editable
+		// number input. Same id/name as before — sanitize_settings() and the
+		// persisted option shape are unaffected.
+		$this->render_range_with_number_field( 'khaveeai_floating_avatar_offset_x', 'floating_avatar_offset_x', '-1', '1', '0.05', (string) $current );
 		echo '<p class="description">' .
 			esc_html__( 'Horizontal avatar offset for the floating widget only. 0 = centred.', 'khaveeai' ) .
 			'</p>';
@@ -2781,15 +2841,10 @@ JS;
 		$current  = isset( $settings['floating_avatar_offset_y'] ) ? (float) $settings['floating_avatar_offset_y'] : 0.0;
 
 		// Quick task 260706-vf4: range slider (min/max/step mirror editor.js's
-		// avatarOffsetY RangeControl, lines 540-548) plus a sibling <output>
-		// live-readout element. Same id/name as before — sanitize_settings()
-		// and the persisted option shape are unaffected.
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-1" max="1" step="0.05" id="khaveeai_floating_avatar_offset_y" name="%s[floating_avatar_offset_y]" value="%s" /><output id="khaveeai_floating_avatar_offset_y_out" for="khaveeai_floating_avatar_offset_y">%s</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		// avatarOffsetY RangeControl, lines 540-548) paired with an editable
+		// number input. Same id/name as before — sanitize_settings() and the
+		// persisted option shape are unaffected.
+		$this->render_range_with_number_field( 'khaveeai_floating_avatar_offset_y', 'floating_avatar_offset_y', '-1', '1', '0.05', (string) $current );
 		echo '<p class="description">' .
 			esc_html__( 'Vertical avatar offset for the floating widget only. 0 = centred.', 'khaveeai' ) .
 			'</p>';
@@ -2810,16 +2865,11 @@ JS;
 			: 1.0;
 
 		// Quick task 260706-vf4: range slider (min/max/step mirror editor.js's
-		// avatarScale GlobalCustomRange, lines 518-527) plus a sibling
-		// <output> live-readout element. Same id/name as before, and the
-		// `> 0`-sentinel read above is preserved — sanitize_settings() and
-		// the persisted option shape are unaffected.
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0.5" max="2" step="0.05" id="khaveeai_floating_avatar_scale" name="%s[floating_avatar_scale]" value="%s" /><output id="khaveeai_floating_avatar_scale_out" for="khaveeai_floating_avatar_scale">%s</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		// avatarScale GlobalCustomRange, lines 518-527) paired with an
+		// editable number input. Same id/name as before, and the `> 0`-
+		// sentinel read above is preserved — sanitize_settings() and the
+		// persisted option shape are unaffected.
+		$this->render_range_with_number_field( 'khaveeai_floating_avatar_scale', 'floating_avatar_scale', '0.5', '2', '0.05', (string) $current );
 		echo '<p class="description">' .
 			esc_html__( 'Avatar scale multiplier for the floating widget only. 1.0 = natural size.', 'khaveeai' ) .
 			'</p>';
@@ -2840,15 +2890,11 @@ JS;
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_camera_rotation_y'] ) ? (float) $settings['floating_camera_rotation_y'] : 0.0;
 
-		// Mirrors render_floating_avatar_scale_field()'s slider+output pattern
-		// verbatim. min/max/step match the (-180,180] range angleFromCameraPosition
-		// (packages/wp-bundle/src/config.ts) normalizes drag-read angles into.
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-180" max="180" step="1" id="khaveeai_floating_camera_rotation_y" name="%s[floating_camera_rotation_y]" value="%s" /><output id="khaveeai_floating_camera_rotation_y_out" for="khaveeai_floating_camera_rotation_y">%s</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		// Mirrors render_floating_avatar_scale_field()'s slider+number-input
+		// pattern. min/max/step match the (-180,180] range
+		// angleFromCameraPosition (packages/wp-bundle/src/config.ts)
+		// normalizes drag-read angles into.
+		$this->render_range_with_number_field( 'khaveeai_floating_camera_rotation_y', 'floating_camera_rotation_y', '-180', '180', '1', (string) $current );
 		echo '<p class="description">' .
 			esc_html__( 'Horizontal camera angle in degrees for the floating widget only. Dragging/orbiting the live preview below also updates this.', 'khaveeai' ) .
 			'</p>';
@@ -2870,12 +2916,7 @@ JS;
 		// min/max +/-80, not the horizontal field's +/-180 — matches the
 		// clamp in config.ts's resolveSceneDefaults() (see that clamp's own
 		// comment for why going closer to +/-90 risks a sudden flip).
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="-80" max="80" step="1" id="khaveeai_floating_camera_rotation_x" name="%s[floating_camera_rotation_x]" value="%s" /><output id="khaveeai_floating_camera_rotation_x_out" for="khaveeai_floating_camera_rotation_x">%s</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		$this->render_range_with_number_field( 'khaveeai_floating_camera_rotation_x', 'floating_camera_rotation_x', '-80', '80', '1', (string) $current );
 		echo '<p class="description">' .
 			esc_html__( 'Vertical camera tilt in degrees for the floating widget only. Positive looks down at the avatar from higher up, negative looks up from lower down. Dragging the live preview below also updates this.', 'khaveeai' ) .
 			'</p>';
@@ -2931,12 +2972,7 @@ JS;
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_offset_y'] ) ? (int) $settings['floating_offset_y'] : 0;
 
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_y" name="%s[floating_offset_y]" value="%s" /><output id="khaveeai_floating_offset_y_out" for="khaveeai_floating_offset_y">%spx</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		$this->render_range_with_number_field( 'khaveeai_floating_offset_y', 'floating_offset_y', '0', '400', '1', (string) $current, 'px' );
 		echo '<p class="description">' .
 			esc_html__( 'Extra distance (in pixels) to lift the widget up off the page edge, e.g. to clear another floating widget beneath it. 0 = default 24px inset.', 'khaveeai' ) .
 			'</p>';
@@ -2955,12 +2991,7 @@ JS;
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_offset_x'] ) ? (int) $settings['floating_offset_x'] : 0;
 
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_x" name="%s[floating_offset_x]" value="%s" /><output id="khaveeai_floating_offset_x_out" for="khaveeai_floating_offset_x">%spx</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		$this->render_range_with_number_field( 'khaveeai_floating_offset_x', 'floating_offset_x', '0', '400', '1', (string) $current, 'px' );
 		echo '<p class="description">' .
 			esc_html__( 'Extra distance (in pixels) to nudge the widget in from the page edge it\'s anchored to, e.g. to clear another floating widget beside it. 0 = default 24px inset.', 'khaveeai' ) .
 			'</p>';
@@ -2982,12 +3013,7 @@ JS;
 			? (int) $settings['floating_launcher_size']
 			: 60;
 
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="40" max="100" step="1" id="khaveeai_floating_launcher_size" name="%s[floating_launcher_size]" value="%s" /><output id="khaveeai_floating_launcher_size_out" for="khaveeai_floating_launcher_size">%spx</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		$this->render_range_with_number_field( 'khaveeai_floating_launcher_size', 'floating_launcher_size', '40', '100', '1', (string) $current, 'px' );
 		echo '<p class="description">' .
 			esc_html__( 'Diameter, in pixels, of the collapsed launcher button. Default 60.', 'khaveeai' ) .
 			'</p>';
@@ -3007,12 +3033,7 @@ JS;
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_offset_y_mobile'] ) ? (int) $settings['floating_offset_y_mobile'] : 0;
 
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_y_mobile" name="%s[floating_offset_y_mobile]" value="%s" /><output id="khaveeai_floating_offset_y_mobile_out" for="khaveeai_floating_offset_y_mobile">%spx</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		$this->render_range_with_number_field( 'khaveeai_floating_offset_y_mobile', 'floating_offset_y_mobile', '0', '400', '1', (string) $current, 'px' );
 		echo '<p class="description">' .
 			esc_html__( 'Overrides the vertical offset above, but only on phone-width screens (480px or narrower). 0 = use the same value as desktop.', 'khaveeai' ) .
 			'</p>';
@@ -3029,12 +3050,7 @@ JS;
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_offset_x_mobile'] ) ? (int) $settings['floating_offset_x_mobile'] : 0;
 
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_x_mobile" name="%s[floating_offset_x_mobile]" value="%s" /><output id="khaveeai_floating_offset_x_mobile_out" for="khaveeai_floating_offset_x_mobile">%spx</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		$this->render_range_with_number_field( 'khaveeai_floating_offset_x_mobile', 'floating_offset_x_mobile', '0', '400', '1', (string) $current, 'px' );
 		echo '<p class="description">' .
 			esc_html__( 'Overrides the horizontal offset above, but only on phone-width screens (480px or narrower). 0 = use the same value as desktop.', 'khaveeai' ) .
 			'</p>';
@@ -3054,12 +3070,7 @@ JS;
 		$settings = is_array( $settings ) ? $settings : array();
 		$current  = isset( $settings['floating_launcher_size_mobile'] ) ? (int) $settings['floating_launcher_size_mobile'] : 0;
 
-		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="100" step="1" id="khaveeai_floating_launcher_size_mobile" name="%s[floating_launcher_size_mobile]" value="%s" /><output id="khaveeai_floating_launcher_size_mobile_out" for="khaveeai_floating_launcher_size_mobile">%spx</output></span>',
-			esc_attr( self::OPTION_NAME ),
-			esc_attr( (string) $current ),
-			esc_html( (string) $current )
-		);
+		$this->render_range_with_number_field( 'khaveeai_floating_launcher_size_mobile', 'floating_launcher_size_mobile', '0', '100', '1', (string) $current, 'px' );
 		echo '<p class="description">' .
 			esc_html__( 'Overrides the button size above, but only on phone-width screens (480px or narrower). 0 = use the same size as desktop; values below 40 are treated as 40.', 'khaveeai' ) .
 			'</p>';

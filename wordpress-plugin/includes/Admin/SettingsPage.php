@@ -2882,7 +2882,7 @@ JS;
 		$current  = isset( $settings['floating_offset_y'] ) ? (int) $settings['floating_offset_y'] : 0;
 
 		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="4" id="khaveeai_floating_offset_y" name="%s[floating_offset_y]" value="%s" /><output id="khaveeai_floating_offset_y_out" for="khaveeai_floating_offset_y">%spx</output></span>',
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_y" name="%s[floating_offset_y]" value="%s" /><output id="khaveeai_floating_offset_y_out" for="khaveeai_floating_offset_y">%spx</output></span>',
 			esc_attr( self::OPTION_NAME ),
 			esc_attr( (string) $current ),
 			esc_html( (string) $current )
@@ -2906,7 +2906,7 @@ JS;
 		$current  = isset( $settings['floating_offset_x'] ) ? (int) $settings['floating_offset_x'] : 0;
 
 		printf(
-			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="4" id="khaveeai_floating_offset_x" name="%s[floating_offset_x]" value="%s" /><output id="khaveeai_floating_offset_x_out" for="khaveeai_floating_offset_x">%spx</output></span>',
+			'<span style="display:flex;align-items:center;gap:12px;"><input type="range" min="0" max="400" step="1" id="khaveeai_floating_offset_x" name="%s[floating_offset_x]" value="%s" /><output id="khaveeai_floating_offset_x_out" for="khaveeai_floating_offset_x">%spx</output></span>',
 			esc_attr( self::OPTION_NAME ),
 			esc_attr( (string) $current ),
 			esc_html( (string) $current )

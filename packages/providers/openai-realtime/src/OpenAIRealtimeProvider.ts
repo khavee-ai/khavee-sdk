@@ -31,6 +31,14 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   private dataChannel: RTCDataChannel | null = null;
   private audioContext: AudioContext | null = null;
   private audioStream: MediaStream | null = null;
+  // The outbound audio transceiver, always negotiated sendrecv from the
+  // very first offer regardless of whether a mic exists yet (see connect()).
+  // enableMicrophone() swaps a real track in later via replaceTrack() on
+  // THIS SAME transceiver — a local, renegotiation-free operation — instead
+  // of reconnecting the whole session, which used to reset sessionId and
+  // wipe `conversation`, silently losing the AI's context on every "enable
+  // mic after starting text-only" click (found live).
+  private audioTransceiver: RTCRtpTransceiver | null = null;
   private toolExecutor: ToolExecutor;
 
   // State
@@ -139,21 +147,41 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         this.handleDataChannelMessage(event);
       };
 
-      // Add microphone track, or an explicit recvonly audio transceiver in
-      // text-only mode (no mic permission). Found live: omitting the track
-      // entirely also omits the audio m-line from the SDP offer altogether,
-      // and OpenAI's Realtime API rejects that outright —
-      // `{"error":{"message":"Offer did not have an audio media section.",
-      // "code":"invalid_offer"}}` — even though all we wanted was to skip
-      // SENDING audio. SDP answers can only include m-lines the offer
-      // already had (RFC 3264), so a recvonly transceiver here is the only
-      // way to still receive the assistant's spoken replies (ontrack in
-      // setupAudioOutputAnalysis below fires the same way either way) while
-      // genuinely sending nothing from a mic we don't have permission for.
+      // ALWAYS a sendrecv audio transceiver, with or without a mic track —
+      // never addTrack()/recvonly-only. Two problems that fixes together:
+      //
+      // 1. Omitting audio media from the offer entirely (the original bug):
+      //    OpenAI's Realtime API rejects it outright —
+      //    `{"error":{"message":"Offer did not have an audio media
+      //    section.","code":"invalid_offer"}}`.
+      //
+      // 2. A recvonly-negotiated transceiver (the first fix for #1) can
+      //    only ever receive — WebRTC direction is negotiated per m-line,
+      //    so upgrading to send audio later needs a NEW offer/answer, and
+      //    it's undocumented whether OpenAI's one-shot POST
+      //    /v1/realtime/calls endpoint even supports renegotiating an
+      //    existing call. enableMicrophone() previously worked around that
+      //    by disconnecting and reconnecting the whole session — which
+      //    resets sessionId and wipes `conversation`, silently losing the
+      //    AI's context every time text-only mode later enables the mic
+      //    (found live).
+      //
+      // sendrecv from the start avoids needing an answer either way:
+      // `sender.track` is simply null until a mic exists, so nothing is
+      // actually sent (WebRTC sends silence/nothing for a null-track
+      // sender, not an error) — ontrack for the assistant's voice fires
+      // identically regardless of the local send state. enableMicrophone()
+      // below then calls `audioTransceiver.sender.replaceTrack(...)`,
+      // which — unlike changing a transceiver's negotiated DIRECTION —
+      // is a purely local operation needing no renegotiation at all: the
+      // m-line was already sendrecv-capable from the first offer/answer.
+      this.audioTransceiver = pc.addTransceiver("audio", {
+        direction: "sendrecv",
+      });
       if (this.audioStream) {
-        pc.addTrack(this.audioStream.getTracks()[0]);
-      } else {
-        pc.addTransceiver("audio", { direction: "recvonly" });
+        await this.audioTransceiver.sender.replaceTrack(
+          this.audioStream.getTracks()[0],
+        );
       }
 
       // Setup audio output analysis for lip sync
@@ -253,6 +281,11 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       this.peerConnection.close();
       this.peerConnection = null;
     }
+
+    // Tied to the now-closed peerConnection above — stale otherwise, since
+    // a transceiver from a closed RTCPeerConnection throws if touched
+    // (e.g. a later enableMicrophone() calling replaceTrack() on it).
+    this.audioTransceiver = null;
 
     if (this.audioContext) {
       this.audioContext.close();
@@ -759,18 +792,33 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   /**
    * Enable microphone manually. If the session started without a mic stream
    * (user denied/skipped permission at connect time), this re-requests
-   * permission and reconnects so the new session includes the audio track —
-   * rather than silently failing forever.
+   * permission and swaps the new track into the ALREADY-CONNECTED session's
+   * sendrecv audio transceiver via replaceTrack() — a local operation
+   * needing no renegotiation, since connect() always negotiates that
+   * transceiver as sendrecv up front (see its comment). Previously this
+   * disconnected and reconnected the whole session to add a track, which
+   * reset sessionId and wiped `conversation`, silently losing the AI's
+   * context every time (found live) — now the session, and its context,
+   * are never touched.
    */
   async enableMicrophone(): Promise<void> {
     if (!this.audioStream) {
-      console.log(
-        "No audio stream — requesting microphone permission and reconnecting",
-      );
-      await this.disconnect();
-      await this.connect();
-      if (!this.audioStream) {
-        // Still denied — stay in text-only mode, caller's onError already fired.
+      console.log("No audio stream — requesting microphone permission");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        this.audioStream = stream;
+        if (this.audioTransceiver) {
+          await this.audioTransceiver.sender.replaceTrack(
+            stream.getTracks()[0],
+          );
+        }
+      } catch (error) {
+        // Still denied (or blocked outright — most browsers won't
+        // re-prompt once a user has explicitly blocked an origin; the
+        // caller needs to reset it in the browser's own site settings).
+        this.onError?.(error as Error);
         return;
       }
     }

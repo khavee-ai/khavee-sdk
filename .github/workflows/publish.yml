@@ -81,12 +81,27 @@ jobs:
           fi
 
           FILTERS=""
+          BUILD_FILTERS=""
           DIRS=""
           for dir in "${!PKG_DIRS[@]}"; do
             name="${PKG_DIRS[$dir]}"
             if [ -z "$LAST_TAG" ] || ! git diff --quiet "$LAST_TAG"..HEAD -- "$dir"; then
               echo "Changed: $name ($dir)"
               FILTERS="$FILTERS --filter=$name"
+              # "$name..." (pnpm's include-dependencies suffix) — a fresh CI
+              # checkout has no packages/*/dist at all, and e.g.
+              # providers-openai-realtime's own tsconfig resolves
+              # @khaveeai/core via its published dist/index.d.ts
+              # (package.json "types"), not source. Building with the exact,
+              # no-"..." $FILTERS below only compiles the changed package
+              # itself, so its workspace:* dependencies (core especially —
+              # nearly everything depends on it) never get a dist and every
+              # build fails with "Cannot find module '@khaveeai/core'" (found
+              # live publishing v0.6.1). BUILD_FILTERS is ONLY for the build/
+              # test steps; publishing still uses the exact $FILTERS below,
+              # so an unchanged dependency never gets (re-)published just
+              # because it was compiled as a side effect.
+              BUILD_FILTERS="$BUILD_FILTERS --filter=$name..."
               DIRS="$DIRS $dir"
             fi
           done
@@ -97,6 +112,7 @@ jobs:
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "filters=$FILTERS" >> "$GITHUB_OUTPUT"
+            echo "build_filters=$BUILD_FILTERS" >> "$GITHUB_OUTPUT"
             echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
           fi
 
@@ -121,17 +137,18 @@ jobs:
             mv "$dir/package.json.tmp" "$dir/package.json"
           done
 
-      - name: Build changed packages
+      - name: Build changed packages (and their workspace dependencies)
         if: steps.changes.outputs.has_changes == 'true'
-        run: pnpm ${{ steps.changes.outputs.filters }} run build
+        run: pnpm ${{ steps.changes.outputs.build_filters }} run build
 
-      - name: Run tests (changed packages only, skip if none)
+      - name: Run tests (changed packages + dependencies, skip if none)
         if: steps.changes.outputs.has_changes == 'true'
         # --if-present must precede the script name — placed after, pnpm
         # forwards it through as a CLI arg to the underlying test runner
         # (vitest) instead of consuming it itself, which then errors on an
-        # unrecognized flag.
-        run: pnpm ${{ steps.changes.outputs.filters }} run --if-present test
+        # unrecognized flag. build_filters (not filters) for the same
+        # workspace-dependency reason as the build step above.
+        run: pnpm ${{ steps.changes.outputs.build_filters }} run --if-present test
 
       # Commit the bump BEFORE publishing, not after — if publish then fails,
       # version numbers may skip ahead but git and npm never drift out of sync.

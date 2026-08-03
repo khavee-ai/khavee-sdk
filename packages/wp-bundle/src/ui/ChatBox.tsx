@@ -41,13 +41,20 @@ export function ChatBox({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
-  // Matches khavee-app's ChatBox.tsx exactly: always scroll to the newest
-  // bubble on every conversation update (no "already near bottom" gating).
+  // Scrolls the transcript itself via scrollTop, not lastElementChild's own
+  // scrollIntoView() (found live: unreliable inside the floating widget's
+  // bottom sheet, which nests this transcript inside an ancestor that's
+  // itself CSS-transformed and overflow:hidden while sliding open/closed —
+  // scrollIntoView() has to walk up the DOM to find "the" scrollable
+  // ancestor, and that walk is exactly what a transform/overflow-hidden
+  // wrapper around the actual scrollable element can throw off). Calling
+  // scrollTo() directly on scrollRef.current — which IS the scrollable
+  // element (.khaveeai-chat__transcript has overflow-y:auto) — never has
+  // to resolve which ancestor scrolls, so it isn't exposed to that ambiguity.
   useEffect(() => {
-    scrollRef.current?.lastElementChild?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
-    });
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [conversation, isThinking]);
 
   // ── Send handler ─────────────────────────────────────────────────────────────

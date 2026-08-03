@@ -139,9 +139,21 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         this.handleDataChannelMessage(event);
       };
 
-      // Add microphone track (skipped in text-only mode — no mic permission)
+      // Add microphone track, or an explicit recvonly audio transceiver in
+      // text-only mode (no mic permission). Found live: omitting the track
+      // entirely also omits the audio m-line from the SDP offer altogether,
+      // and OpenAI's Realtime API rejects that outright —
+      // `{"error":{"message":"Offer did not have an audio media section.",
+      // "code":"invalid_offer"}}` — even though all we wanted was to skip
+      // SENDING audio. SDP answers can only include m-lines the offer
+      // already had (RFC 3264), so a recvonly transceiver here is the only
+      // way to still receive the assistant's spoken replies (ontrack in
+      // setupAudioOutputAnalysis below fires the same way either way) while
+      // genuinely sending nothing from a mic we don't have permission for.
       if (this.audioStream) {
         pc.addTrack(this.audioStream.getTracks()[0]);
+      } else {
+        pc.addTransceiver("audio", { direction: "recvonly" });
       }
 
       // Setup audio output analysis for lip sync

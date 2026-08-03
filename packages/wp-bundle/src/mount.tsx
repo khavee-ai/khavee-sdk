@@ -118,6 +118,25 @@ export function AvatarScene({ config }: { config: KhaveeAvatarConfig }) {
       // opaque, with no Canvas remount required.
       camera={{ position: scene.cameraPosition, fov: scene.cameraFov }}
       gl={{ alpha: true }}
+      // resize={{ offsetSize: true }} (found live, floating widget only):
+      // r3f's <Canvas> sizes itself via react-use-measure, which by default
+      // reads the container's getBoundingClientRect() — a value that
+      // INCLUDES any CSS transform applied by an ancestor. This Canvas is
+      // always mounted, even while FloatingWidget's panel is closed, and
+      // the closed panel sits under `transform: scale(0.9) ...`
+      // (styles.css .khaveeai-floating-widget[data-open="false"]
+      // .khaveeai-floating-panel) — so the very first measurement locks in
+      // exactly 90% of the panel's real size. Opening the panel only
+      // animates that same `transform` back to scale(1); a CSS transform
+      // never changes an element's own layout box, so ResizeObserver never
+      // re-fires and the canvas stays stuck 10% undersized (visible as a
+      // white gap below/beside the avatar, using the container's
+      // background color) until something unrelated forces a real resize.
+      // offsetSize:true switches the measurement to offsetWidth/
+      // offsetHeight, which reflect layout box size only and ignore
+      // ancestor transforms entirely — correct from the very first mount
+      // regardless of the panel's open/closed transform state.
+      resize={{ offsetSize: true }}
     >
       {/* camera-framing-mismatch debug session root-cause fix: the `camera`
           prop above is initialization-only — react-three-fiber's own

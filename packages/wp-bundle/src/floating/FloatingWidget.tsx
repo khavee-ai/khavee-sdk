@@ -69,6 +69,7 @@ import { ErrorOverlay } from "../ui/ErrorOverlay";
 import { ControlBar } from "../ui/ControlBar";
 import { AvatarErrorBoundary } from "../ui/AvatarErrorBoundary";
 import { GreetingBubble } from "./GreetingBubble";
+import { ResponseBubble } from "./ResponseBubble";
 import type { KhaveeAvatarConfig } from "../config";
 
 const GREETING_STORAGE_KEY = "khaveeai-greeting-dismissed";
@@ -401,6 +402,11 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
               to close chat" affordance for the whole time you were typing.
               Now it's repositioned above the sheet instead (still visible,
               still clickable) via the --sheet-open modifier. */}
+          {/* AI's current reply as a readable pill, above the mic/chat
+              buttons — hidden while the chat sheet is open since the full
+              transcript is already visible there. */}
+          <ResponseBubble hidden={isChatOpen} />
+
           <ControlBar
             chatEnabled
             isChatOpen={isChatOpen}

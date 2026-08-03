@@ -735,6 +735,35 @@
   height: 100%;
 }
 
+/* Response bubble: shows the AI's current reply as plain text, sitting
+   directly above ControlBar's 48px buttons (16px inset + 48px + 12px
+   clearance) so it never overlaps the mic/chat toggle. White pill per
+   spec, not the accent color — this is a passive readout, not a CTA.
+   z-index below .khaveeai-controls (30) since it never needs to sit above
+   the buttons, only above the canvas. See ResponseBubble.tsx for the
+   show/5s-hide timing this class is toggled by (plain mount/unmount, no
+   transition — nothing here asked for an animated fade). */
+.khaveeai-response-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  z-index: 20;
+  background: #ffffff;
+  color: #1f2430;
+  font-size: clamp(13px, 3.6vw, 14px);
+  line-height: 1.4;
+  padding: 10px 16px;
+  border-radius: 16px;
+  border: 1px solid #dde1ea;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
 /* Floating panel's dual-button ControlBar (mic + chat sheet toggle):
    positioned absolutely, horizontally centered near the bottom of the
    always-visible avatar area (260715-2ih — mirrors khavee-app's

@@ -137,6 +137,28 @@ interface VRMAvatarProps {
   autoLighting?: boolean;
   /** Weld coincident vertices + recompute normals for smooth (non-faceted) shading. Mutates geometry — opt-in, NOT forced by default (some assets are deliberately low-poly). Default: false */
   smoothShading?: boolean;
+  /**
+   * Called once this avatar's model has finished loading (scene + VRM data
+   * available). Fires again if `src` changes and the new model finishes
+   * loading.
+   *
+   * VRMAvatar loads its model via its own fetch()+GLTFLoader.parseAsync()
+   * (see useLoadVRM's file-header comment for why — bypassing drei's
+   * shared useGLTF cache to prevent two instances stealing the same parsed
+   * scene from each other), which means this load is INVISIBLE to drei's
+   * useProgress(): that hook only tracks resources loaded via
+   * useLoader/useGLTF/useFBX. A consumer combining an avatar with OTHER
+   * useProgress()-tracked assets (e.g. animation clips loaded via useFBX)
+   * would see `active: false, progress: 100` as soon as those OTHER
+   * assets finish — with the avatar model itself possibly still loading in
+   * the background (found live: a preview page's "model loaded" flag was
+   * driven entirely by useProgress() and went true as soon as several
+   * large animation FBX files finished, well before the avatar model
+   * itself had loaded — visitors saw the AI's greeting play with no avatar
+   * on screen yet). Use this callback, not useProgress(), to know when
+   * THIS avatar specifically is ready.
+   */
+  onLoad?: () => void;
 }
 
 /**
@@ -333,6 +355,7 @@ export function VRMAvatar({
   toneMapping,
   autoLighting = true,
   smoothShading = false,
+  onLoad,
   ...props
 }: VRMAvatarProps) {
   const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume, gestureHint, setGestureHint } =
@@ -351,6 +374,16 @@ export function VRMAvatar({
   const parsed = useLoadVRM(src);
   const scene = parsed?.scene;
   const currentVrm = parsed?.userData.vrm as VRM | undefined;
+
+  // Fires once per successful parse (including a re-fire if `src` changes
+  // and the new model finishes loading) — see onLoad's own doc comment on
+  // VRMAvatarProps for why this exists instead of relying on useProgress().
+  useEffect(() => {
+    if (parsed) {
+      onLoad?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed]);
 
   // Force renderer defaults (tone mapping + output color space) once on
   // mount. NOTE: this mutates the Canvas-shared `gl` (WebGLRenderer)

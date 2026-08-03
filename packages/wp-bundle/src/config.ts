@@ -43,19 +43,16 @@ export const IDLE_ANIMATION_URL = resolveBundledAnimationUrl("idle.fbx");
 
 // Clips lifted verbatim from khavee-app's public/animations/ (byte-identical
 // to idle.fbx's own copy there — same first-party asset set, not a new
-// license/source). Deliberately excludes khavee-app's idle2/idle3/talk2/
-// talk3/thinking2 variants (27-30MB EACH — meant for khavee-app's own
-// variant-picker UI, not something to ship in a WordPress plugin zip) and
-// test.fbx (a dev placeholder, not a real clip).
-//
-// STATUS_CLIP_PATTERNS (packages/react/src/animation/AnimationStateEngine.ts)
-// auto-selects a base clip per chatStatus by matching these EXACT key names
-// below against its regexes — talking/thinking/welcome are named
-// specifically so they auto-wire for speaking/thinking/starting with zero
-// engine changes. walk/dance/sad match no chatStatus pattern (there's no
-// "walking" or "dancing" status) — they're bundled for future tool-calling-
-// triggered gestures (packages/core/src/tools/animate.ts's
-// trigger_animation tool), not for anything that plays automatically today.
+// license/source). Scoped to exactly the chatStatus-relevant clips
+// (STATUS_CLIP_PATTERNS in AnimationStateEngine.ts auto-selects a base clip
+// per chatStatus by matching these EXACT key names against its regexes —
+// talking/thinking/welcome are named specifically so they auto-wire for
+// speaking/thinking/starting with zero engine changes). Deliberately
+// excludes walk.fbx/dance.fbx/sad.fbx (no matching chatStatus, would just
+// be dead-weight downloads with nothing wired to trigger them yet) and
+// khavee-app's idle2/idle3/talk2/talk3/thinking2 variants (27-30MB EACH —
+// meant for its own variant-picker UI, not something to ship in a
+// WordPress plugin zip) and test.fbx (a dev placeholder, not a real clip).
 export const TALKING_ANIMATION_URL = resolveBundledAnimationUrl("talk.fbx");
 export const THINKING_ANIMATION_URL = resolveBundledAnimationUrl("thinking.fbx");
 // Named "welcome", not "wave" — STATUS_CLIP_PATTERNS.starting matches
@@ -63,9 +60,6 @@ export const THINKING_ANIMATION_URL = resolveBundledAnimationUrl("thinking.fbx")
 // very first turn of a conversation) is exactly when a wave animation reads
 // naturally as a greeting.
 export const WELCOME_ANIMATION_URL = resolveBundledAnimationUrl("wave.fbx");
-export const WALK_ANIMATION_URL = resolveBundledAnimationUrl("walk.fbx");
-export const DANCE_ANIMATION_URL = resolveBundledAnimationUrl("dance.fbx");
-export const SAD_ANIMATION_URL = resolveBundledAnimationUrl("sad.fbx");
 
 // ── Camera presets ────────────────────────────────────────────────────────────
 

@@ -71,9 +71,6 @@ import {
   TALKING_ANIMATION_URL,
   THINKING_ANIMATION_URL,
   WELCOME_ANIMATION_URL,
-  WALK_ANIMATION_URL,
-  DANCE_ANIMATION_URL,
-  SAD_ANIMATION_URL,
 } from "./config";
 import type { KhaveeAvatarConfig } from "./config";
 import { FloatingWidget } from "./floating/FloatingWidget";
@@ -95,9 +92,6 @@ const BUNDLED_ANIMATIONS: Record<string, string> | undefined = (() => {
     talking: TALKING_ANIMATION_URL,
     thinking: THINKING_ANIMATION_URL,
     welcome: WELCOME_ANIMATION_URL,
-    walk: WALK_ANIMATION_URL,
-    dance: DANCE_ANIMATION_URL,
-    sad: SAD_ANIMATION_URL,
   }).filter((entry): entry is [string, string] => entry[1] !== undefined);
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 })();

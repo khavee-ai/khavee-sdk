@@ -65,13 +65,42 @@ import { ErrorOverlay } from "./ui/ErrorOverlay";
 import { ChatBox } from "./ui/ChatBox";
 import { ControlBar } from "./ui/ControlBar";
 import { AvatarErrorBoundary } from "./ui/AvatarErrorBoundary";
-import { resolveSceneDefaults, IDLE_ANIMATION_URL } from "./config";
+import {
+  resolveSceneDefaults,
+  IDLE_ANIMATION_URL,
+  TALKING_ANIMATION_URL,
+  THINKING_ANIMATION_URL,
+  WELCOME_ANIMATION_URL,
+  WALK_ANIMATION_URL,
+  DANCE_ANIMATION_URL,
+  SAD_ANIMATION_URL,
+} from "./config";
 import type { KhaveeAvatarConfig } from "./config";
 import { FloatingWidget } from "./floating/FloatingWidget";
 import { CameraController } from "./CameraController";
 
 // Re-export so index.ts:17 `import type { KhaveeAvatarConfig } from "./mount"` continues to work.
 export type { KhaveeAvatarConfig } from "./config";
+
+// Built once at module scope, not per-render inside AvatarScene — a fresh
+// object literal every render would give VRMAvatar's `animations` prop a
+// new reference each time for no reason (config.ts's URL constants never
+// change after module init). Only bundled clips that actually resolved
+// (non-undefined — see resolveBundledAnimationUrl's SSR/no-<script> guard)
+// are included; `undefined` when NONE resolved preserves the exact
+// pre-existing fallback behavior VRMAvatar's `animations` prop expects.
+const BUNDLED_ANIMATIONS: Record<string, string> | undefined = (() => {
+  const entries = Object.entries({
+    idle: IDLE_ANIMATION_URL,
+    talking: TALKING_ANIMATION_URL,
+    thinking: THINKING_ANIMATION_URL,
+    welcome: WELCOME_ANIMATION_URL,
+    walk: WALK_ANIMATION_URL,
+    dance: DANCE_ANIMATION_URL,
+    sad: SAD_ANIMATION_URL,
+  }).filter((entry): entry is [string, string] => entry[1] !== undefined);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+})();
 
 // ── AvatarScene ────────────────────────────────────────────────────────────────
 // Config-driven 3D scene. resolveSceneDefaults() provides all ?? fallbacks so
@@ -169,7 +198,7 @@ export function AvatarScene({ config }: { config: KhaveeAvatarConfig }) {
           src={avatarUrl}
           position={[scene.avatarOffsetX, scene.avatarOffsetY, 0]}
           scale={uniformScale}
-          animations={IDLE_ANIMATION_URL ? { idle: IDLE_ANIMATION_URL } : undefined}
+          animations={BUNDLED_ANIMATIONS}
         />
       ) : null}
     </Canvas>

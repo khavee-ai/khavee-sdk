@@ -17,25 +17,55 @@
 // ── Idle animation asset ──────────────────────────────────────────────────────
 
 /**
- * Absolute URL of the bundled idle animation (build/animations/idle.fbx),
- * resolved from the currently-executing <script> tag's own src rather than
- * a hardcoded/PHP-injected path — portable across install paths/domains
- * with zero PHP wiring, matching how the SAME bundle already self-locates
+ * Resolves a bundled animation clip's absolute URL (build/animations/<file>)
+ * from the currently-executing <script> tag's own src rather than a
+ * hardcoded/PHP-injected path — portable across install paths/domains with
+ * zero PHP wiring, matching how the SAME bundle already self-locates
  * relative to whichever plugins/ directory it was loaded from.
  *
  * `document.currentScript` is only valid synchronously during a script's
- * OWN initial evaluation, so this is captured once at module-init time
- * (this runs as part of the single esbuild IIFE's top-level pass, at the
- * same moment for every module in the bundle — safe to capture here).
+ * OWN initial evaluation, so every call site below evaluates this at
+ * module-init time (part of the single esbuild IIFE's top-level pass, the
+ * same moment for every module in the bundle — safe to call repeatedly
+ * here, same guarantee the single original IDLE_ANIMATION_URL relied on).
  *
  * Only VRMAvatar (MToon/VRM) takes an `animations` prop; GLBAvatar uses
  * animations embedded in the GLB file itself and needs no external URL
  * (see GLBAvatar.tsx's own docs).
  */
-export const IDLE_ANIMATION_URL: string | undefined =
-  typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
-    ? new URL("animations/idle.fbx", document.currentScript.src).href
+function resolveBundledAnimationUrl(filename: string): string | undefined {
+  return typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
+    ? new URL(`animations/${filename}`, document.currentScript.src).href
     : undefined;
+}
+
+export const IDLE_ANIMATION_URL = resolveBundledAnimationUrl("idle.fbx");
+
+// Clips lifted verbatim from khavee-app's public/animations/ (byte-identical
+// to idle.fbx's own copy there — same first-party asset set, not a new
+// license/source). Deliberately excludes khavee-app's idle2/idle3/talk2/
+// talk3/thinking2 variants (27-30MB EACH — meant for khavee-app's own
+// variant-picker UI, not something to ship in a WordPress plugin zip) and
+// test.fbx (a dev placeholder, not a real clip).
+//
+// STATUS_CLIP_PATTERNS (packages/react/src/animation/AnimationStateEngine.ts)
+// auto-selects a base clip per chatStatus by matching these EXACT key names
+// below against its regexes — talking/thinking/welcome are named
+// specifically so they auto-wire for speaking/thinking/starting with zero
+// engine changes. walk/dance/sad match no chatStatus pattern (there's no
+// "walking" or "dancing" status) — they're bundled for future tool-calling-
+// triggered gestures (packages/core/src/tools/animate.ts's
+// trigger_animation tool), not for anything that plays automatically today.
+export const TALKING_ANIMATION_URL = resolveBundledAnimationUrl("talk.fbx");
+export const THINKING_ANIMATION_URL = resolveBundledAnimationUrl("thinking.fbx");
+// Named "welcome", not "wave" — STATUS_CLIP_PATTERNS.starting matches
+// /welcome|greet|hello|intro/i; "wave" alone wouldn't, and starting (the
+// very first turn of a conversation) is exactly when a wave animation reads
+// naturally as a greeting.
+export const WELCOME_ANIMATION_URL = resolveBundledAnimationUrl("wave.fbx");
+export const WALK_ANIMATION_URL = resolveBundledAnimationUrl("walk.fbx");
+export const DANCE_ANIMATION_URL = resolveBundledAnimationUrl("dance.fbx");
+export const SAD_ANIMATION_URL = resolveBundledAnimationUrl("sad.fbx");
 
 // ── Camera presets ────────────────────────────────────────────────────────────
 

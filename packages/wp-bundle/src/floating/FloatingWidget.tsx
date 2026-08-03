@@ -405,7 +405,10 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
           {/* AI's current reply as a readable pill, above the mic/chat
               buttons — hidden while the chat sheet is open since the full
               transcript is already visible there. */}
-          <ResponseBubble hidden={isChatOpen} />
+          <ResponseBubble
+            hidden={isChatOpen}
+            onOpenChat={() => setIsChatOpen(true)}
+          />
 
           <ControlBar
             chatEnabled

@@ -744,7 +744,9 @@
    show/5s-hide timing that toggles the --visible modifier below — the
    element itself stays mounted (opacity:0, pointer-events:none) once the
    AI has said anything at all, so the fade-out transition has something
-   to animate instead of the node just vanishing. */
+   to animate instead of the node just vanishing. pointer-events stays
+   `none` until --visible so the invisible/faded-out node never eats a
+   click meant for the canvas or ControlBar underneath it. */
 .khaveeai-response-bubble {
   position: absolute;
   left: 50%;
@@ -766,11 +768,17 @@
   -webkit-box-orient: vertical;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 300ms ease;
+  cursor: pointer;
+  transition: opacity 300ms ease, background 160ms ease;
 }
 
 .khaveeai-response-bubble--visible {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.khaveeai-response-bubble--visible:hover {
+  background: #f2f3f5;
 }
 
 /* Floating panel's dual-button ControlBar (mic + chat sheet toggle):

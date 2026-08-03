@@ -5,6 +5,9 @@
  * buttons showing the AI's current reply, so a visitor can read along
  * without opening the chat sheet. Visible while chatStatus is "speaking";
  * stays up 5s after speaking ends, then fades out (300ms, styles.css).
+ * Tapping it opens the chat sheet (onOpenChat, same target as ControlBar's
+ * chat button) — role="button" rather than "status" since it's now an
+ * interactive control, not just a passive live-region readout.
  *
  * The element itself stays mounted (opacity:0, pointer-events:none) once
  * the AI has said anything at all — only the --visible class toggles.
@@ -31,7 +34,14 @@ import { useRealtime } from "@khaveeai/react";
 
 const HIDE_DELAY_MS = 5000;
 
-export function ResponseBubble({ hidden }: { hidden?: boolean }) {
+export function ResponseBubble({
+  hidden,
+  onOpenChat,
+}: {
+  hidden?: boolean;
+  /** Tapping the bubble opens the chat sheet — same target as ControlBar's chat button. */
+  onOpenChat?: () => void;
+}) {
   const { conversation, chatStatus } = useRealtime();
   const [isVisible, setIsVisible] = useState(false);
   const wasSpeakingRef = useRef(false);
@@ -79,7 +89,15 @@ export function ResponseBubble({ hidden }: { hidden?: boolean }) {
   return (
     <div
       className={`khaveeai-response-bubble${isVisible ? " khaveeai-response-bubble--visible" : ""}`}
-      role="status"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open chat. ${latestAssistantText}`}
+      onClick={onOpenChat}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onOpenChat?.();
+      }}
     >
       {latestAssistantText}
     </div>

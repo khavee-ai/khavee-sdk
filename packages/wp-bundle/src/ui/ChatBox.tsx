@@ -51,11 +51,30 @@ export function ChatBox({
   // scrollTo() directly on scrollRef.current — which IS the scrollable
   // element (.khaveeai-chat__transcript has overflow-y:auto) — never has
   // to resolve which ancestor scrolls, so it isn't exposed to that ambiguity.
+  //
+  // Depends on conversation.length, NOT conversation itself (found live,
+  // root cause of the fix above not actually fixing the report): both
+  // OpenAISTTTTSProvider and OpenAIRealtimeProvider append with
+  // this.conversation.push(entry) — mutating the SAME array in place,
+  // never reassigning this.conversation to a new one — and
+  // useRealtime.ts's onConversationUpdate/updateStates both call
+  // setConversation(provider.conversation) with that same mutated
+  // reference every time. React's effect-dependency comparison is
+  // Object.is (reference equality) for objects/arrays, so
+  // `conversation` here NEVER looks different across renders — this
+  // effect was silently never re-running on new messages, regardless of
+  // scrollIntoView vs scrollTo. conversation.length is a primitive that
+  // genuinely changes value each time a message is pushed, so it's
+  // exempt from that reference-stability trap. (Fixing this here rather
+  // than making the providers reassign a new array on every push, which
+  // would be the deeper fix but touches two provider classes' hot paths
+  // instead of one render-only effect.)
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [conversation, isThinking]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.length, isThinking]);
 
   // ── Send handler ─────────────────────────────────────────────────────────────
   // Guards against empty/whitespace messages and messages sent while disconnected.

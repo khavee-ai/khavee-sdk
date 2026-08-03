@@ -3,7 +3,7 @@
  * Plugin Name: Khavee AI Avatar
  * Plugin URI: https://khavee.ai
  * Description: Embed a self-configured, voice-chat VRM avatar on any WordPress page — no dependency on the hosted Khavee platform.
- * Version: 0.8.1
+ * Version: 0.9.0
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * Author: Khavee

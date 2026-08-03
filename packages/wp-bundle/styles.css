@@ -741,8 +741,10 @@
    spec, not the accent color — this is a passive readout, not a CTA.
    z-index below .khaveeai-controls (30) since it never needs to sit above
    the buttons, only above the canvas. See ResponseBubble.tsx for the
-   show/5s-hide timing this class is toggled by (plain mount/unmount, no
-   transition — nothing here asked for an animated fade). */
+   show/5s-hide timing that toggles the --visible modifier below — the
+   element itself stays mounted (opacity:0, pointer-events:none) once the
+   AI has said anything at all, so the fade-out transition has something
+   to animate instead of the node just vanishing. */
 .khaveeai-response-bubble {
   position: absolute;
   left: 50%;
@@ -756,12 +758,19 @@
   line-height: 1.4;
   padding: 10px 16px;
   border-radius: 16px;
-  border: 1px solid #dde1ea;
   overflow: hidden;
   text-overflow: ellipsis;
+  overflow-wrap: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+}
+
+.khaveeai-response-bubble--visible {
+  opacity: 1;
 }
 
 /* Floating panel's dual-button ControlBar (mic + chat sheet toggle):
@@ -1061,7 +1070,8 @@
   .khaveeai-floating-launcher svg,
   .khaveeai-floating-sheet,
   .khaveeai-floating-controls.khaveeai-floating-controls,
-  .khaveeai-floating-header-status {
+  .khaveeai-floating-header-status,
+  .khaveeai-response-bubble {
     transition: none !important;
   }
 

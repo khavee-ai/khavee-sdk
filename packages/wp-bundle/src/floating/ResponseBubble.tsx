@@ -4,7 +4,13 @@
  * Floating widget only: a plain white pill above ControlBar's mic/chat
  * buttons showing the AI's current reply, so a visitor can read along
  * without opening the chat sheet. Visible while chatStatus is "speaking";
- * stays up 5s after speaking ends, then disappears.
+ * stays up 5s after speaking ends, then fades out (300ms, styles.css).
+ *
+ * The element itself stays mounted (opacity:0, pointer-events:none) once
+ * the AI has said anything at all — only the --visible class toggles.
+ * Returning null on hide (the earlier version) would unmount the node
+ * with no fade to animate; a plain CSS opacity transition needs the node
+ * to still be there while it plays.
  *
  * Deliberately does NOT copy the assistant text into its own useState.
  * Both providers mutate the shared conversation array in place —
@@ -61,16 +67,20 @@ export function ResponseBubble({ hidden }: { hidden?: boolean }) {
     };
   }, []);
 
-  if (!isVisible || hidden) return null;
+  if (hidden) return null;
 
   const latestAssistantText = [...conversation]
     .reverse()
     .find((m) => m.role === "assistant")?.text;
 
+  // Nothing has ever been said yet — no bubble to fade in from.
   if (!latestAssistantText) return null;
 
   return (
-    <div className="khaveeai-response-bubble" role="status">
+    <div
+      className={`khaveeai-response-bubble${isVisible ? " khaveeai-response-bubble--visible" : ""}`}
+      role="status"
+    >
       {latestAssistantText}
     </div>
   );

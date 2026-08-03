@@ -1373,6 +1373,14 @@ JS;
 			self::PAGE_SLUG,
 			'khaveeai_main'
 		);
+
+		add_settings_field(
+			'floating_suggested_prompts',
+			__( 'Floating widget suggested prompts', 'khaveeai' ),
+			array( $this, 'render_floating_suggested_prompts_field' ),
+			self::PAGE_SLUG,
+			'khaveeai_main'
+		);
 	}
 
 	// ── Sanitize orchestrator + key sanitize logic ─────────────────────
@@ -1569,6 +1577,20 @@ JS;
 		// mb_substr fix as floating_widget_name above.
 		$sanitized['floating_greeting_text'] = isset( $input['floating_greeting_text'] )
 			? mb_substr( sanitize_text_field( (string) $input['floating_greeting_text'] ), 0, 150 )
+			: '';
+
+		// One prompt per line, raw newline-separated text — AvatarRenderer's
+		// render_floating() is what splits/trims/caps this to an array of at
+		// most 3 lines for the front end (ResponseBubble.tsx's own bubble
+		// uses the same "3" as its line-clamp ceiling); storage just needs
+		// the whole blob preserved and safe. sanitize_textarea_field(), not
+		// sanitize_text_field(), specifically because the latter collapses
+		// newlines — it's built for single-line inputs and would merge every
+		// prompt onto one line. '' = unset (no chips shown at all), same
+		// shape as floating_greeting_text above. mb_substr, not substr, for
+		// the same multi-byte-safety reason documented above it.
+		$sanitized['floating_suggested_prompts'] = isset( $input['floating_suggested_prompts'] )
+			? mb_substr( sanitize_textarea_field( (string) $input['floating_suggested_prompts'] ), 0, 600 )
 			: '';
 
 		return $sanitized;
@@ -2003,6 +2025,12 @@ JS;
 		// this follows floating_offset_y/floating_z_index's pattern, not
 		// floating_widget_name's own rebuild()-wired one just above it.
 		$this->render_form_table_row( __( 'Floating widget greeting', 'khaveeai' ), array( $this, 'render_floating_greeting_text_field' ) );
+		// Suggested prompt chips shown above the "Click to talk" button in
+		// the idle state (found empty/bare in review) — one per line, up to
+		// 3 shown (AvatarRenderer::render_floating() caps it). Same
+		// page-placement-style "nothing to render in the preview box"
+		// pattern as floating_greeting_text just above.
+		$this->render_form_table_row( __( 'Floating widget suggested prompts', 'khaveeai' ), array( $this, 'render_floating_suggested_prompts_field' ) );
 		echo '</tbody></table>';
 
 		// Quick task 260706-vf4: live-preview mount point, a SECOND consumer
@@ -3158,6 +3186,33 @@ JS;
 		);
 		echo '<p class="description">' .
 			esc_html__( 'Shown in the bubble that greets first-time visitors, before they open the chat. Leave blank to auto-generate one from the widget name above.', 'khaveeai' ) .
+			'</p>';
+	}
+
+	/**
+	 * Render the floating widget's suggested-prompts field — one prompt per
+	 * line, shown as tappable chips above the "Click to talk" button in the
+	 * idle state (found the idle state too bare in review). Empty string is
+	 * the "unset" sentinel (no chips at all), same shape as
+	 * render_floating_greeting_text_field() above. AvatarRenderer's
+	 * render_floating() does the actual line-split/trim/cap-to-3, not this
+	 * method — this only stores the raw textarea blob.
+	 *
+	 * @return void
+	 */
+	public function render_floating_suggested_prompts_field(): void {
+		$settings = get_option( self::OPTION_NAME, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$current  = isset( $settings['floating_suggested_prompts'] ) ? (string) $settings['floating_suggested_prompts'] : '';
+
+		printf(
+			'<textarea id="khaveeai_floating_suggested_prompts" name="%s[floating_suggested_prompts]" rows="3" style="width:400px;" placeholder="%s">%s</textarea>',
+			esc_attr( self::OPTION_NAME ),
+			esc_attr__( "What can you help with?\nTell me about your products\nHow do I contact support?", 'khaveeai' ),
+			esc_textarea( $current )
+		);
+		echo '<p class="description">' .
+			esc_html__( 'One prompt per line. Shown as tappable chips above the "Click to talk" button — tapping one starts the conversation and sends it immediately. Up to 3 are shown; leave blank to hide the chips entirely.', 'khaveeai' ) .
 			'</p>';
 	}
 

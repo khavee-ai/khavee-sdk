@@ -246,6 +246,15 @@ export interface KhaveeAvatarConfig {
    * the default" — FloatingWidget.tsx builds one from floatingWidgetName.
    */
   floatingGreetingText?: string;
+  /**
+   * Suggested-prompt chips shown above the "Click to talk" button in the
+   * idle state (found the idle state too bare in review). Already
+   * trimmed/filtered/capped to at most 3 by
+   * AvatarRenderer::render_floating() — [] (never undefined at the PHP
+   * boundary, but optional here since this type is also used by contexts
+   * with no PHP renderer at all) means "no chips, unchanged idle state".
+   */
+  floatingSuggestedPrompts?: string[];
 }
 
 // ── Camera orbit helper ───────────────────────────────────────────────────────

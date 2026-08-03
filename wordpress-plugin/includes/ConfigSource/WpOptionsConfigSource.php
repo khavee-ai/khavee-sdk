@@ -211,6 +211,10 @@ final class WpOptionsConfigSource implements ConfigSourceInterface {
 			'floating_z_index'      => isset( $settings['floating_z_index'] )      ? (int)    $settings['floating_z_index']      : 0,
 			'floating_widget_name'  => isset( $settings['floating_widget_name'] )  ? (string) $settings['floating_widget_name']  : '',
 			'floating_greeting_text' => isset( $settings['floating_greeting_text'] ) ? (string) $settings['floating_greeting_text'] : '',
+			// Raw newline-separated blob, same shape as floating_greeting_text
+			// above — AvatarRenderer::render_floating() is what splits this
+			// into an array of at most 3 prompts for the front end.
+			'floating_suggested_prompts' => isset( $settings['floating_suggested_prompts'] ) ? (string) $settings['floating_suggested_prompts'] : '',
 		];
 	}
 

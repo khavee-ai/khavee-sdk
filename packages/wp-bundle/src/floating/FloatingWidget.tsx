@@ -389,7 +389,7 @@ export function FloatingWidget({ config }: { config: KhaveeAvatarConfig }) {
               <AvatarScene config={floatingSceneConfig} />
             </AvatarErrorBoundary>
           ) : null}
-          <ClickToTalkOverlay />
+          <ClickToTalkOverlay suggestedPrompts={config.floatingSuggestedPrompts} />
           <ErrorOverlay />
           {/* Mic mute/unmute + chat sheet toggle — centered near the bottom
               of the always-visible avatar area, clear of the centered

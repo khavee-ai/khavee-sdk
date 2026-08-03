@@ -150,6 +150,20 @@ final class AvatarRenderer {
 		$config['floatingWidgetName'] = (string) $merged['floating_widget_name'];
 		$config['floatingGreetingText'] = (string) $merged['floating_greeting_text'];
 
+		// Suggested-prompt chips (idle state was found too bare in review):
+		// one prompt per line in the raw textarea blob -> trimmed, blank
+		// lines dropped, capped to 3 (ResponseBubble.tsx's own bubble uses
+		// the same "3" as its line-clamp ceiling, kept in sync on purpose).
+		// [] when unset, same as every other floating* field defaulting to
+		// its "no-op for existing installs" value.
+		$suggested_prompts = array_filter(
+			array_map( 'trim', explode( "\n", (string) $merged['floating_suggested_prompts'] ) ),
+			static function ( $line ) {
+				return '' !== $line;
+			}
+		);
+		$config['floatingSuggestedPrompts'] = array_values( array_slice( $suggested_prompts, 0, 3 ) );
+
 		return sprintf(
 			'<div id="khaveeai-floating" class="khaveeai-root" data-khaveeai-config="%s"></div>',
 			esc_attr( wp_json_encode( $config ) )
@@ -257,6 +271,9 @@ final class AvatarRenderer {
 		// floating_widget_name itself (`Hi, I'm ${widgetName} — ...`), same
 		// split as floating_widget_name's own fallback above.
 		$merged['floating_greeting_text'] = isset( $merged['floating_greeting_text'] ) ? (string) $merged['floating_greeting_text'] : '';
+		// Raw blob — same isset()-based defaulting as floating_greeting_text
+		// above; render_floating() below is what turns this into an array.
+		$merged['floating_suggested_prompts'] = isset( $merged['floating_suggested_prompts'] ) ? (string) $merged['floating_suggested_prompts'] : '';
 
 		return $merged;
 	}

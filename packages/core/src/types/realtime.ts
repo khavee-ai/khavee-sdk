@@ -59,6 +59,15 @@ export interface RealtimeConfig {
      * faster. Defaults to "auto". */
     eagerness?: "low" | "medium" | "high" | "auto";
   };
+  /**
+   * Controls whether the model is required to call a tool before replying.
+   * "auto" (default) lets the model decide — it can answer directly from
+   * its own judgment even when a matching tool (e.g. a knowledge-base
+   * search) is registered, which risks a confident wrong answer ("no such
+   * service") instead of checking first. "required" forces at least one
+   * tool call every turn. Only meaningful when `tools` is non-empty.
+   */
+  toolChoice?: "auto" | "required" | "none";
   /** When true, fetch an ephemeral token from the backend before connecting. */
   useProxy?: boolean;
   /**

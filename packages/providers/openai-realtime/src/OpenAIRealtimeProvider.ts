@@ -502,6 +502,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       });
 
       sessionConfig.tools = tools;
+      sessionConfig.tool_choice = this.config.toolChoice ?? "auto";
     }
 
     return sessionConfig;
@@ -551,7 +552,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         session: {
           type: "realtime",
           tools,
-          tool_choice: "auto",
+          tool_choice: this.config.toolChoice ?? "auto",
         },
       };
 

@@ -1,5 +1,4 @@
 packages:
   - 'packages/core'
   - 'packages/react'
-  - 'packages/wp-bundle'
   - 'packages/providers/*'

@@ -18,7 +18,8 @@ This repo is a pnpm monorepo containing the SDK packages plus a Next.js demo app
 | [`@khaveeai/providers-mock`](packages/providers/mock) | `MockLLM`/`MockTTS` — canned responses for offline testing. Implements an older, separate interface; doesn't plug into the avatar pipeline directly (see its README). |
 | [`@khaveeai/providers-pgvector`](packages/providers/pgvector) | Vector-store provider backed by Postgres + pgvector, for RAG. |
 | [`@khaveeai/providers-rag`](packages/providers/rag) | Composes a vector store + an LLM into retrieval-augmented generation, exposes a tool-calling-ready `createRAGTool()`. |
-| [`@khaveeai/wp-bundle`](packages/wp-bundle) | Internal-only. Bundles the avatar for embedding in WordPress. You don't need this unless you're working on the WordPress plugin. |
+
+The WordPress plugin (and its `wp-bundle` embed package) has moved to its own repo: [`khavee-ai/khavee-wp-plugin`](https://github.com/khavee-ai/khavee-wp-plugin).
 
 Each package's own README has the full API reference, config options, and gotchas — this file is the map and the fastest path to a working "hello world."
 

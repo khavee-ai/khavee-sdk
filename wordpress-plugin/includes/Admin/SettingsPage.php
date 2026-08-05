@@ -273,20 +273,26 @@ final class SettingsPage {
 	}
 
 	/**
-	 * WP core renders a custom add_menu_page() icon URL as a plain CSS
-	 * `background-image` on `.wp-menu-image`, with NO `background-size` of
-	 * its own — historically it expected a source image pre-cropped to
-	 * the exact rendered container size. Any other source size shows as an
-	 * unscaled, off-center crop (found live: even a 60x60 source still
-	 * looked "zoomed in", since the real container renders at ~20px).
-	 * Forcing background-size here makes the icon scale correctly
-	 * regardless of the source file's actual pixel dimensions.
+	 * A custom add_menu_page() icon URL renders as a plain <img> inside
+	 * .wp-menu-image, with no width/height WordPress core lets a plugin
+	 * set on that tag directly (add_menu_page() only accepts a URL string).
+	 * Confirmed live via browser inspect: `<div class="wp-menu-image ...">
+	 * <img src=".../khaveeai-logo.png" alt=""></div>` — no size attributes,
+	 * so it rendered at native resolution. (An earlier attempt forced
+	 * `background-size` assuming a CSS background-image, which is not
+	 * what WordPress actually generates here — had no effect.)
+	 *
+	 * Forcing the display size via CSS also sidesteps a real second issue:
+	 * the URL is identical across every plugin version, so browsers can
+	 * (and did) keep serving an already-cached copy of an old, larger
+	 * source file after the file on disk was replaced. Constraining the
+	 * rendered size in CSS makes that irrelevant either way.
 	 *
 	 * @return void
 	 */
 	public function print_menu_icon_style(): void {
 		printf(
-			'<style>#adminmenu .toplevel_page_%1$s .wp-menu-image { background-size: 20px 20px !important; background-position: center !important; }</style>',
+			'<style>#adminmenu .toplevel_page_%1$s .wp-menu-image img { width: 20px !important; height: 20px !important; padding: 0 !important; }</style>',
 			esc_attr( self::PAGE_SLUG )
 		);
 	}

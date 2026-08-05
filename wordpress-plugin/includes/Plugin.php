@@ -82,6 +82,35 @@ final class Plugin {
 		);
 		$update_checker->getVcsApi()->enableReleaseAssets();
 
+		// This repo also publishes the JS SDK's npm packages as GitHub
+		// Releases under bare `vX.Y.Z` tags (see .github/workflows/publish.yml)
+		// — a completely separate release stream from this plugin's own
+		// `wordpress-plugin-vX.Y.Z` tags. With no custom filter, PUC's
+		// "latest release" check hits GitHub's `/releases/latest`, which
+		// returns the single most recently published release for the whole
+		// repo, regardless of tag pattern. Found live: an SDK release
+		// published a day after a plugin release made PUC check the SDK's
+		// release (no WordPress zip asset at all) and silently report
+		// "up to date" even though a real plugin update existed. Restricting
+		// to this plugin's own tag namespace forces PUC onto the
+		// list-and-filter code path instead of the single-latest shortcut.
+		$update_checker->getVcsApi()->setReleaseVersionFilter( '/^wordpress-plugin-v/' );
+
+		// ltrim($tag, 'v') (PUC's own version-extraction) only strips a
+		// literal leading "v" — "wordpress-plugin-v0.9.1" starts with "w",
+		// so nothing gets stripped and the raw tag string would otherwise be
+		// compared against the plugin's clean "0.9.0"-style Version header.
+		// Strip the rest of the prefix here so version_compare() sees "0.9.1".
+		add_filter(
+			$update_checker->getUniqueName( 'request_info_result' ),
+			static function ( $info ) {
+				if ( $info && isset( $info->version ) ) {
+					$info->version = preg_replace( '/^wordpress-plugin-v/', '', $info->version );
+				}
+				return $info;
+			}
+		);
+
 		// Quick-260703-slv: PlatformConfigSource wraps WpOptionsConfigSource
 		// so a configured Khavee Platform API key overlays mapped fields
 		// (voice, instructions, avatar_url, light_intensity, background)

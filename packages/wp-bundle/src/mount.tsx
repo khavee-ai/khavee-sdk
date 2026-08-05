@@ -315,10 +315,12 @@ export function mountAvatarInstance(root: Root, config: KhaveeAvatarConfig): voi
     voice: config.voice,
     instructions: config.instructions,
     model: config.model,
-    tools:
-      config.knowledgeBaseEnabled && config.knowledgeSearchUrl
-        ? [createKnowledgeSearchTool(config.knowledgeSearchUrl)]
-        : undefined,
+    ...(config.knowledgeBaseEnabled && config.knowledgeSearchUrl
+      ? {
+          tools: [createKnowledgeSearchTool(config.knowledgeSearchUrl)],
+          toolChoice: "required" as const,
+        }
+      : {}),
   });
 
   // ── Container styles ─────────────────────────────────────────────────────────

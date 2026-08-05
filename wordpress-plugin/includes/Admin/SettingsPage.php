@@ -3406,12 +3406,18 @@ JS;
 		// still 360px from when the real panel was itself 360px wide;
 		// styles.css moved on to 400px without this being updated to
 		// match, so the header text and avatar were getting cut off).
+		// No border/border-radius here — .khaveeai-floating-panel already
+		// draws its own #dde1ea border + 20px radius, so a matching border
+		// on this mount div doubled up right on top of it (found live: a
+		// thin second border line hugging the panel's edge). overflow:hidden
+		// stays as a safety clip only; margin-right gives the box breathing
+		// room from the settings page's own edge/sidebar.
 		printf(
 			// position:relative — the real .khaveeai-floating-widget is
 			// position:fixed against the whole viewport; scoped inside this
 			// preview it's overridden to position:absolute (styles.css) so
 			// it anchors to THIS box instead of the real wp-admin page.
-			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:428px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;position:relative;"></div>',
+			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:428px;height:520px;overflow:hidden;position:relative;margin-right:24px;"></div>',
 			esc_attr( wp_json_encode( $config ) )
 		);
 	}

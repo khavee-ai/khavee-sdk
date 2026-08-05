@@ -638,6 +638,18 @@
   font-family: inherit;
 }
 
+/* Settings page's live preview (PreviewFloatingWidget.tsx) reuses this
+   exact class so the preview can never visually drift from the real
+   widget — but position:fixed there would anchor against the whole
+   wp-admin viewport instead of the ~360x520 preview box, and float loose
+   over the rest of the admin UI. #khaveeai-floating-preview (the preview's
+   own mount div, SettingsPage.php) is position:relative + overflow:hidden,
+   so switching to position:absolute here anchors bottom/right to THAT box
+   instead, with the same visual result otherwise. */
+#khaveeai-floating-preview .khaveeai-floating-widget {
+  position: absolute;
+}
+
 /* Default anchor is bottom-right (rule above); this is the only other
    supported corner (260715-75r) — flips the fixed-position edge and the
    panel/launcher's own internal alignment (they're right-aligned by

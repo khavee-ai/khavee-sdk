@@ -288,11 +288,19 @@ final class SettingsPage {
 	 * source file after the file on disk was replaced. Constraining the
 	 * rendered size in CSS makes that irrelevant either way.
 	 *
+	 * .wp-menu-image itself is centered via flexbox rather than a fixed
+	 * padding-top guess — WP's own row height for this container isn't
+	 * something a plugin should hardcode against, and flex centering holds
+	 * regardless of what that height actually is.
+	 *
 	 * @return void
 	 */
 	public function print_menu_icon_style(): void {
 		printf(
-			'<style>#adminmenu .toplevel_page_%1$s .wp-menu-image img { width: 20px !important; height: 20px !important; padding: 0 !important; }</style>',
+			'<style>' .
+				'#adminmenu .toplevel_page_%1$s .wp-menu-image { display: flex !important; align-items: center !important; justify-content: center !important; }' .
+				'#adminmenu .toplevel_page_%1$s .wp-menu-image img { width: 20px !important; height: 20px !important; padding: 0 !important; }' .
+			'</style>',
 			esc_attr( self::PAGE_SLUG )
 		);
 	}
@@ -3395,7 +3403,11 @@ JS;
 		// (styles.css: width:360px;height:520px) so the preview is a
 		// faithful representation of the actual floating widget.
 		printf(
-			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:360px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;"></div>',
+			// position:relative — the real .khaveeai-floating-widget is
+			// position:fixed against the whole viewport; scoped inside this
+			// preview it's overridden to position:absolute (styles.css) so
+			// it anchors to THIS box instead of the real wp-admin page.
+			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:360px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;position:relative;"></div>',
 			esc_attr( wp_json_encode( $config ) )
 		);
 	}

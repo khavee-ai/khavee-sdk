@@ -1,35 +1,40 @@
 /**
  * packages/wp-bundle/src/preview/PreviewFloatingWidget.tsx — STUDIO-02 safe
- * floating-widget preview (quick task 260708-1ws).
+ * floating-widget preview (quick task 260708-1ws; interactive launcher +
+ * chat sheet added later per direct request — the previous always-expanded,
+ * no-launcher version didn't actually look like the real site).
  *
  * Mirrors the real front-end floating widget's (../floating/FloatingWidget.tsx)
- * panel structure/CSS classes verbatim — `.khaveeai-floating-panel` /
- * `-header` / `-avatar-area` / `-chat` — so the Settings page's live preview
- * can never visually drift from the real widget: any future style change to
- * those classes in styles.css automatically applies to both.
+ * DOM structure/CSS classes verbatim — `.khaveeai-floating-widget` /
+ * `-panel` / `-header` / `-avatar-area` / `-launcher` / `-sheet` — so the
+ * Settings page's live preview can never visually drift from the real
+ * widget: any future style change to those classes in styles.css
+ * automatically applies to both. `#khaveeai-floating-preview .khaveeai-floating-widget`
+ * (styles.css) overrides `position: fixed` to `position: absolute` so this
+ * renders inside the ~360x520 preview box instead of floating loose over
+ * the rest of wp-admin.
  *
  * Preview-safe by construction: this file deliberately avoids importing the
  * live-session hook the front-end widget relies on to start/manage a real
  * voice connection, the browser microphone-capture API, the front-end's
  * WebRTC session-provider class, or any of the front-end's session-dependent
- * overlay/control components — all of those depend on that live-session
- * hook, which throws given the preview's null-provider KhaveeProvider
- * (STUDIO-02). Instead:
+ * overlay/control components (ControlBar, ClickToTalkOverlay, ResponseBubble,
+ * GreetingBubble all call useRealtime(), which throws given the preview's
+ * null-provider KhaveeProvider — STUDIO-02). Instead:
+ *   - isOpen/isChatOpen/isMicMuted are local, ephemeral UI state — same
+ *     shape as FloatingWidget.tsx's own isOpen/isChatOpen, just not wired
+ *     to a real connection.
  *   - The avatar area uses the shared, preview-safe PreviewAvatarCanvas.
- *     (No "Click to talk" CTA — removed per user request; the preview
+ *     (No "Click to talk" CTA — removed per earlier request; the preview
  *     shows only the avatar, not the front-end's session-start affordance.)
+ *   - The mic/chat control row and launcher/close icons are re-declared
+ *     inline here (not imported from ControlBar.tsx/FloatingWidget.tsx)
+ *     specifically to avoid pulling in useRealtime() at all, even
+ *     transitively — same reasoning as the rest of this file.
  *   - The chat slot uses PreviewChatBox with a static example transcript
  *     (no live session hook, no live conversation).
- *
- * Always-expanded, no launcher (locked CONTEXT decision): unlike the real
- * FloatingWidget.tsx, this component renders ONLY `.khaveeai-floating-panel`
- * — no `.khaveeai-floating-widget` wrapper, no `data-open` toggle, no
- * `.khaveeai-floating-launcher` button. Admins configuring the floating
- * widget want to see the expanded panel state directly. The header's close
- * (X) button is rendered for visual fidelity only (no onClick) since there
- * is no collapsed state to return to in this preview context.
  */
-import type { CSSProperties as PreviewStyle } from "react";
+import { useState, type CSSProperties as PreviewStyle } from "react";
 import { PreviewAvatarCanvas } from "./PreviewAvatarCanvas";
 import { PreviewChatBox, type PreviewExampleMessage } from "./PreviewChatBox";
 import type { PreviewAvatarConfig } from "./PreviewScene";
@@ -51,73 +56,222 @@ export function PreviewFloatingWidget({
   config: PreviewAvatarConfig;
   onCameraAngleChange?: (deg: number, tiltDeg: number) => void;
 }) {
+  // Starts closed, same as the real widget's first-visit state — an admin
+  // configuring the widget should see exactly what a visitor sees before
+  // ever clicking anything.
+  const [isOpen, setIsOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(false);
+
+  const widgetStyle = config.primaryColor
+    ? ({ "--khaveeai-primary": config.primaryColor } as PreviewStyle)
+    : undefined;
+
   return (
     <div
-      className="khaveeai-floating-panel"
-      style={
-        config.primaryColor
-          ? ({ "--khaveeai-primary": config.primaryColor } as PreviewStyle)
-          : undefined
-      }
+      className="khaveeai-floating-widget"
+      data-open={isOpen ? "true" : "false"}
+      data-position="bottom-right"
+      style={widgetStyle}
     >
-      {/* ── Header ────────────────────────────────────────────────────── */}
-      <div className="khaveeai-floating-header">
-        <div className="khaveeai-floating-header-identity">
-          {/* Status dot omitted here (unlike the real FloatingWidget.tsx) —
-              there is no live connection in a preview-safe mount, so an
-              "online" dot would always read false and just be noise. */}
-          <div className="khaveeai-floating-header-title">
-            {config.floatingWidgetName || "AI Assistant"}
+      <div className="khaveeai-floating-panel">
+        {/* ── Header ────────────────────────────────────────────────────── */}
+        <div className="khaveeai-floating-header">
+          <div className="khaveeai-floating-header-identity">
+            {/* Status dot omitted here (unlike the real FloatingWidget.tsx) —
+                there is no live connection in a preview-safe mount, so an
+                "online" dot would always read false and just be noise. */}
+            <div className="khaveeai-floating-header-title">
+              {config.floatingWidgetName || "AI Assistant"}
+            </div>
           </div>
+          <button
+            type="button"
+            className="khaveeai-floating-close"
+            aria-label="Minimize"
+            onClick={() => setIsOpen(false)}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden="true"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-        <button
-          type="button"
-          className="khaveeai-floating-close"
-          aria-label="Minimize"
-          onClick={() => {
-            /* no-op: always-expanded preview has no collapsed state to
-               return to (locked CONTEXT decision) */
+
+        {/* ── Avatar area ───────────────────────────────────────────────── */}
+        {/* SettingsPage.php's render_floating_preview_mount() maps its five
+            floating_ settings onto the GENERIC config keys PreviewAvatarCanvas
+            and resolveSceneDefaults actually read (bgColor, bgTransparent,
+            avatarScale, etc), not the floatingBgColor/floatingAvatarScale-style
+            keys the real FloatingWidget.tsx reads from the published-page
+            config — read the same generic keys here to match what PHP emits. */}
+        <div
+          className="khaveeai-floating-avatar-area"
+          style={{
+            // `||`, not `??`: rebuild()'s cfg.bgColor is always a string
+            // ('#6929ff' fallback baked in there too, but kept here for
+            // parity with the real front-end's same-shaped fallback chain).
+            background: config.bgTransparent
+              ? "transparent"
+              : config.bgColor || config.primaryColor || "#6929ff",
           }}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            aria-hidden="true"
+          <PreviewAvatarCanvas config={config} onCameraAngleChange={onCameraAngleChange} />
+
+          {/* Mic mute/unmute + chat sheet toggle — mirrors ControlBar.tsx's
+              markup/classes exactly (not imported, see file header) so it's
+              visually identical without pulling in useRealtime(). Mic button
+              is decorative (local isMicMuted only, no real mic anywhere in
+              a preview). */}
+          <div
+            className={`khaveeai-controls khaveeai-floating-controls${isChatOpen ? " khaveeai-floating-controls--sheet-open" : ""}`}
           >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
+            <button
+              type="button"
+              className="khaveeai-control-btn khaveeai-control-btn--mic"
+              onClick={() => setIsMicMuted((v) => !v)}
+              aria-label={isMicMuted ? "Unmute microphone" : "Mute microphone"}
+              aria-pressed={isMicMuted}
+            >
+              {isMicMuted ? <MicOffIcon /> : <MicIcon />}
+            </button>
+            <button
+              type="button"
+              className="khaveeai-control-btn khaveeai-control-btn--chat"
+              onClick={() => setIsChatOpen((v) => !v)}
+              aria-label={isChatOpen ? "Hide chat" : "Show chat"}
+              aria-pressed={isChatOpen}
+            >
+              <ChatIcon />
+            </button>
+          </div>
+
+          {/* ── Chat sheet ──────────────────────────────────────────────── */}
+          <div
+            className="khaveeai-floating-sheet"
+            data-chat-open={isChatOpen ? "true" : "false"}
+          >
+            <div
+              className="khaveeai-floating-sheet-handle"
+              onClick={() => setIsChatOpen(false)}
+              role="button"
+              aria-label="Close chat"
+            >
+              <span className="khaveeai-floating-sheet-grip" />
+            </div>
+            <PreviewChatBox placement="below" exampleMessages={FLOATING_EXAMPLE_MESSAGES} />
+          </div>
+        </div>
       </div>
 
-      {/* ── Avatar area ───────────────────────────────────────────────── */}
-      {/* SettingsPage.php's render_floating_preview_mount() maps its five
-          floating_ settings onto the GENERIC config keys PreviewAvatarCanvas
-          and resolveSceneDefaults actually read (bgColor, bgTransparent,
-          avatarScale, etc), not the floatingBgColor/floatingAvatarScale-style
-          keys the real FloatingWidget.tsx reads from the published-page
-          config — read the same generic keys here to match what PHP emits. */}
-      <div
-        className="khaveeai-floating-avatar-area"
-        style={{
-          // `||`, not `??`: rebuild()'s cfg.bgColor is always a string
-          // ('#6929ff' fallback baked in there too, but kept here for
-          // parity with the real front-end's same-shaped fallback chain).
-          background: config.bgTransparent
-            ? "transparent"
-            : config.bgColor || config.primaryColor || "#6929ff",
-        }}
+      {/* ── Launcher ──────────────────────────────────────────────────────
+          Same markup/classes as FloatingWidget.tsx's own launcher button —
+          toggles the panel open/closed, exactly like a real visitor would. */}
+      <button
+        type="button"
+        className="khaveeai-floating-launcher"
+        aria-label={isOpen ? "Close chat" : "Open chat"}
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((v) => !v)}
       >
-        <PreviewAvatarCanvas config={config} onCameraAngleChange={onCameraAngleChange} />
-      </div>
-
-      {/* ── Chat ──────────────────────────────────────────────────────── */}
-      <div className="khaveeai-floating-chat">
-        <PreviewChatBox placement="below" exampleMessages={FLOATING_EXAMPLE_MESSAGES} />
-      </div>
+        <svg
+          className="khaveeai-floating-icon-chat"
+          width="26"
+          height="26"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+        <svg
+          className="khaveeai-floating-icon-close"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
     </div>
+  );
+}
+
+// Re-declared rather than imported from ControlBar.tsx (see file header) —
+// identical markup, no useRealtime() dependency.
+function MicIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function MicOffIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="1" y1="1" x2="23" y2="23" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 4.34V4a3 3 0 0 0-5.94-.6" />
+      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a6.98 6.98 0 0 1-.11 1.23" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
   );
 }

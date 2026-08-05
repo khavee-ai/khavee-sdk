@@ -266,6 +266,29 @@ final class SettingsPage {
 		// fires on EVERY admin page; enqueue_settings_assets() early-returns
 		// unless $hook_suffix matches $this->hook_suffix (set in add_menu_page()).
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_settings_assets' ) );
+		// admin_head (not enqueue_settings_assets, which is scoped to only
+		// fire on THIS plugin's own page) — the sidebar menu icon renders on
+		// EVERY wp-admin page, so its style fix needs to too.
+		add_action( 'admin_head', array( $this, 'print_menu_icon_style' ) );
+	}
+
+	/**
+	 * WP core renders a custom add_menu_page() icon URL as a plain CSS
+	 * `background-image` on `.wp-menu-image`, with NO `background-size` of
+	 * its own — historically it expected a source image pre-cropped to
+	 * the exact rendered container size. Any other source size shows as an
+	 * unscaled, off-center crop (found live: even a 60x60 source still
+	 * looked "zoomed in", since the real container renders at ~20px).
+	 * Forcing background-size here makes the icon scale correctly
+	 * regardless of the source file's actual pixel dimensions.
+	 *
+	 * @return void
+	 */
+	public function print_menu_icon_style(): void {
+		printf(
+			'<style>#adminmenu .toplevel_page_%1$s .wp-menu-image { background-size: 20px 20px !important; background-position: center !important; }</style>',
+			esc_attr( self::PAGE_SLUG )
+		);
 	}
 
 	// ── Menu + settings registration ───────────────────────────────────

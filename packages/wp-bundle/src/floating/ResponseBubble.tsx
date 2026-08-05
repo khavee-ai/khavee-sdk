@@ -29,10 +29,12 @@
  * produces while the AI is speaking, so the visible text stays live
  * without needing its own change-detection.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRealtime } from "@khaveeai/react";
 
 const HIDE_DELAY_MS = 5000;
+const MAX_LINES = 2;
+const TRUNCATION_SUFFIX = "....";
 
 export function ResponseBubble({
   hidden,
@@ -46,6 +48,8 @@ export function ResponseBubble({
   const [isVisible, setIsVisible] = useState(false);
   const wasSpeakingRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [displayText, setDisplayText] = useState("");
 
   // chatStatus is a plain string primitive (unlike conversation), so it's
   // safe to depend on directly — show instantly on speaking start, and on
@@ -77,17 +81,56 @@ export function ResponseBubble({
     };
   }, []);
 
-  if (hidden) return null;
-
   const latestAssistantText = [...conversation]
     .reverse()
     .find((m) => m.role === "assistant")?.text;
+
+  // Truncates to MAX_LINES by measuring the bubble's own rendered box
+  // (same font-size/width it'll actually display at, including the
+  // clamp()'d responsive font-size — no separate hidden clone to keep in
+  // sync) rather than relying on CSS line-clamp's single-glyph "…", which
+  // can't be swapped for a custom multi-character suffix.
+  useLayoutEffect(() => {
+    const el = bubbleRef.current;
+    if (!el || !latestAssistantText) {
+      setDisplayText("");
+      return;
+    }
+
+    el.textContent = latestAssistantText;
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+    const maxHeight = lineHeight * MAX_LINES + 1; // +1px rounding slack
+
+    if (el.scrollHeight <= maxHeight) {
+      setDisplayText(latestAssistantText);
+      return;
+    }
+
+    // Binary search for the longest prefix that still fits alongside the
+    // suffix, rather than shrinking one character at a time.
+    let low = 0;
+    let high = latestAssistantText.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      el.textContent = latestAssistantText.slice(0, mid) + TRUNCATION_SUFFIX;
+      if (el.scrollHeight <= maxHeight) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    setDisplayText(latestAssistantText.slice(0, low).trimEnd() + TRUNCATION_SUFFIX);
+  }, [latestAssistantText]);
+
+  if (hidden) return null;
 
   // Nothing has ever been said yet — no bubble to fade in from.
   if (!latestAssistantText) return null;
 
   return (
     <div
+      ref={bubbleRef}
       className={`khaveeai-response-bubble${isVisible ? " khaveeai-response-bubble--visible" : ""}`}
       role="button"
       tabIndex={0}
@@ -99,7 +142,7 @@ export function ResponseBubble({
         onOpenChat?.();
       }}
     >
-      {latestAssistantText}
+      {displayText}
     </div>
   );
 }

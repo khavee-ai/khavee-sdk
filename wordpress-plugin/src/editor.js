@@ -560,7 +560,7 @@ function Edit( { attributes, setAttributes } ) {
 					label: __( 'Vertical offset', 'khaveeai' ),
 					help: __( 'Move the avatar up or down.', 'khaveeai' ),
 					value: live.avatarOffsetY,
-					min: -1.0,
+					min: -2.0,
 					max: 1.0,
 					step: 0.05,
 					onChange: ( value ) => debouncedAttr( 'avatarOffsetY', value ),

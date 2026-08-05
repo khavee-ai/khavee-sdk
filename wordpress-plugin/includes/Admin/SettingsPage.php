@@ -287,7 +287,7 @@ final class SettingsPage {
 			'manage_options', // D-02/SET-05: capability gate at registration.
 			self::PAGE_SLUG,
 			array( $this, 'render_page' ),
-			'dashicons-microphone'
+			plugins_url( 'assets/khaveeai-logo.png', KHAVEEAI_PLUGIN_FILE )
 		);
 	}
 
@@ -2872,7 +2872,7 @@ JS;
 		// avatarOffsetY RangeControl, lines 540-548) paired with an editable
 		// number input. Same id/name as before — sanitize_settings() and the
 		// persisted option shape are unaffected.
-		$this->render_range_with_number_field( 'khaveeai_floating_avatar_offset_y', 'floating_avatar_offset_y', '-1', '1', '0.05', (string) $current );
+		$this->render_range_with_number_field( 'khaveeai_floating_avatar_offset_y', 'floating_avatar_offset_y', '-2', '1', '0.05', (string) $current );
 		echo '<p class="description">' .
 			esc_html__( 'Vertical avatar offset for the floating widget only. 0 = centred.', 'khaveeai' ) .
 			'</p>';

@@ -3399,15 +3399,19 @@ JS;
 		echo '<p class="description" style="margin-top:-6px;margin-bottom:10px;">' .
 			esc_html__( 'Drag to rotate the camera view. Use the sliders on the left to reposition and resize the avatar itself.', 'khaveeai' ) .
 			'</p>';
-		// ~360x520 matches the real .khaveeai-floating-panel proportions
-		// (styles.css: width:360px;height:520px) so the preview is a
-		// faithful representation of the actual floating widget.
+		// 428x520 — the real panel is 400px wide (styles.css
+		// --khaveeai-floating-width) plus a 24px right-inset from its
+		// right-anchored position:absolute, so anything narrower than
+		// 424px clips the panel's left edge (found live: this box was
+		// still 360px from when the real panel was itself 360px wide;
+		// styles.css moved on to 400px without this being updated to
+		// match, so the header text and avatar were getting cut off).
 		printf(
 			// position:relative — the real .khaveeai-floating-widget is
 			// position:fixed against the whole viewport; scoped inside this
 			// preview it's overridden to position:absolute (styles.css) so
 			// it anchors to THIS box instead of the real wp-admin page.
-			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:360px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;position:relative;"></div>',
+			'<div id="khaveeai-floating-preview" class="khaveeai-root" data-khaveeai-preview-config="%s" style="width:428px;height:520px;border:1px solid #dde1ea;border-radius:20px;overflow:hidden;position:relative;"></div>',
 			esc_attr( wp_json_encode( $config ) )
 		);
 	}

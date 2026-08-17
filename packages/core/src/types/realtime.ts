@@ -111,11 +111,24 @@ export interface RealtimeEvents {
 }
 
 /**
+ * Options for RealtimeProvider.connect().
+ */
+export interface RealtimeConnectOptions {
+  /**
+   * Skip the opening greeting and mark the session ready immediately once
+   * connected, instead of waiting on greeting audio to finish. For silent
+   * reconnects (e.g. idle-session resets) where replaying the greeting
+   * would be jarring. Default: false.
+   */
+  skipGreeting?: boolean;
+}
+
+/**
  * Main realtime provider interface
  */
 export interface RealtimeProvider extends RealtimeEvents {
   // Connection management
-  connect(): Promise<void>;
+  connect(options?: RealtimeConnectOptions): Promise<void>;
   disconnect(): Promise<void>;
 
   // Messaging

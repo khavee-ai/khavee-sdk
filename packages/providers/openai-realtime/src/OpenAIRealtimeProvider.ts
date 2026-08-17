@@ -6,6 +6,7 @@
 import {
   RealtimeProvider,
   RealtimeConfig,
+  RealtimeConnectOptions,
   RealtimeTool,
   UsageReport,
   Conversation,
@@ -55,6 +56,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   private ephemeralUserMessageId: string | null = null;
   private micEnabled = false;
   private hasHeardFirstGreeting = false;
+  private skipGreeting = false;
   private _warnedTemperatureDropped = false;
   private _temperatureExplicitlySet = false;
   private audioOutputElement: HTMLAudioElement | null = null;
@@ -105,10 +107,11 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   /**
    * Start the realtime session
    */
-  async connect(): Promise<void> {
+  async connect(options?: RealtimeConnectOptions): Promise<void> {
     try {
       this.setChatStatus("starting");
       this.hasHeardFirstGreeting = false;
+      this.skipGreeting = options?.skipGreeting ?? false;
 
       // Request microphone access. Denied/unavailable mics no longer abort the
       // whole session — the user can still type. `enableMicrophone()` re-prompts
@@ -557,6 +560,19 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       };
 
       this.dataChannel.send(JSON.stringify(sessionUpdate));
+    }
+
+    if (this.skipGreeting) {
+      // Silent reconnect (e.g. idle-session reset): skip the greeting
+      // entirely rather than just suppressing audio, since a suppressed
+      // greeting still consumes a response and reads oddly in the
+      // transcript. Manually perform what the greeting's completion
+      // (output_audio_buffer.stopped) would normally do, since that event
+      // never fires here.
+      this.enableMic();
+      this.hasHeardFirstGreeting = true;
+      this.setChatStatus("ready");
+      return;
     }
 
     // Anchor the greeting as a cold open (T-COLDOPEN-01): response.create

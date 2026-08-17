@@ -559,6 +559,31 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       this.dataChannel.send(JSON.stringify(sessionUpdate));
     }
 
+    // Anchor the greeting as a cold open (T-COLDOPEN-01): response.create
+    // below has zero conversation history, so without this the model infers
+    // "start of conversation" purely from `instructions` — which describe
+    // ongoing-conversation behavior (e.g. tool-use conditionals), not what a
+    // first line should sound like. Left unanchored, the greeting can read
+    // like a reply to a question the user never asked. A "system" item (not
+    // "user" — this must never look like real user speech) makes the cold
+    // open explicit without overriding the session's real instructions, the
+    // way response.create's own `response.instructions` override would.
+    this.dataChannel.send(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: "This is the very start of the conversation — the user has not spoken or typed anything yet. Deliver your opening greeting now, exactly as instructed, without referencing or responding to anything as if the user had said something.",
+            },
+          ],
+        },
+      }),
+    );
+
     this.dataChannel.send(JSON.stringify({ type: "response.create" }));
     // Do NOT setChatStatus("ready") here — the greeting response requested
     // above hasn't started streaming yet. Setting "ready" prematurely

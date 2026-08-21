@@ -408,7 +408,15 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type { ChatStatus } from "@khaveeai/core";
-import { beginCrossfade, stepCrossfade, easeInOutCubic, type BlendState } from "./crossfade";
+import {
+  beginCrossfade,
+  stepCrossfade,
+  easeInOutCubic,
+  beginOrphanFade,
+  stepOrphanFade,
+  type BlendState,
+  type OrphanFade,
+} from "./crossfade";
 import { useBlink } from "./blink";
 import { useBreathing } from "./breathing";
 import { useSway } from "./sway";
@@ -902,6 +910,14 @@ export function useAnimationController(params: {
   // them). See `resetToRestPoseIfNotDriven` and the file-header 11-11
   // diagnosis block.
   const restPoseRef = useRef<RestPoseAnchor | null>(null);
+  // T-pose/bind-pose snap fix, part 3 (see crossfade.ts's beginOrphanFade/
+  // stepOrphanFade doc comments and .planning/debug/tpose-snap-speak-toggle.md):
+  // actions orphaned by a 3+-deep interruption chain are ramped down to 0
+  // here instead of being `.stop()`-ed immediately, so their weight
+  // contribution never drops off the mixer in a single frame. Never
+  // useState — mutated every frame by `update()`'s orphan-fade step, same
+  // per-frame-state convention as blendRef/settleRampRef above.
+  const orphanFadesRef = useRef<OrphanFade[]>([]);
   // 11-11 GATE_DEBUG bookkeeping only — accumulates seconds since the last
   // debug log so it fires at most once per second per instance. Inert (never
   // read) when GATE_DEBUG is false.
@@ -925,8 +941,22 @@ export function useAnimationController(params: {
 
     // T-pose/bind-pose snap fix, part 2 — see resolveOrphanedBlendAction's
     // doc comment for the full mechanism (and crossfade.ts's beginCrossfade
-    // doc comment for part 1).
-    resolveOrphanedBlendAction(blendRef.current, toAction)?.stop();
+    // doc comment for part 1). Determine (but do not yet act on) any action
+    // about to be orphaned by this switch.
+    const orphan = resolveOrphanedBlendAction(blendRef.current, toAction);
+
+    // If `toAction` is itself mid-orphan-fade (a rapid switch back to a
+    // clip that was still ramping down toward 0 from an earlier
+    // interruption), stop tracking it as an orphan now — the new crossfade
+    // below is about to take over driving its weight via beginCrossfade's
+    // own start-weight seeding (which reads its ACTUAL current weight, so
+    // continuity is preserved either way). Without this, both the new
+    // BlendState's stepCrossfade AND the stale OrphanFade's stepOrphanFade
+    // would call setEffectiveWeight on the same action every frame, fighting
+    // each other.
+    if (orphanFadesRef.current.length > 0) {
+      orphanFadesRef.current = orphanFadesRef.current.filter((fade) => fade.action !== toAction);
+    }
 
     // TRANS-01/02: starting/stopped get a ~1.2s minimum-duration floor on
     // top of the 0.3-0.9s pose-gap-adaptive range, so the transition into/
@@ -937,7 +967,24 @@ export function useAnimationController(params: {
     // pose-gap-adaptive range like any other clip switch.
     const floor = chatStatus === "starting" || chatStatus === "stopped" ? 1.2 : undefined;
 
-    blendRef.current = beginCrossfade(currentActionRef.current, toAction, root, floor);
+    const newBlend = beginCrossfade(currentActionRef.current, toAction, root, floor);
+
+    // T-pose/bind-pose snap fix, part 3 (see crossfade.ts's beginOrphanFade
+    // doc comment for the full rationale): ramp the orphan down to 0 over
+    // the SAME duration as this new crossfade instead of calling `.stop()`
+    // on it immediately. An immediate `.stop()` deactivates the orphan's
+    // bindings and removes its weight contribution from the mixer THIS
+    // FRAME with no ramp — if the orphan hadn't yet settled at weight 0
+    // (which is exactly when an orphan exists at all: its own fade-out was
+    // itself interrupted before reaching t>=1), that abrupt removal
+    // reproduces the same under-1-total-weight T-pose flash this whole fix
+    // exists to prevent, just relocated from beginCrossfade to this
+    // orphan-stop call.
+    if (orphan) {
+      orphanFadesRef.current.push(beginOrphanFade(orphan, newBlend.duration));
+    }
+
+    blendRef.current = newBlend;
     currentActionRef.current = toAction;
     currentClipNameRef.current = name;
   }
@@ -1031,6 +1078,18 @@ export function useAnimationController(params: {
     // 1. Advance the in-progress base-clip crossfade, if any (existing).
     if (blendRef.current.active) {
       stepCrossfade(blendRef.current);
+    }
+
+    // 1b. T-pose/bind-pose snap fix, part 3: advance any orphaned actions'
+    // fade-outs (see switchToClip's comment above and crossfade.ts's
+    // beginOrphanFade/stepOrphanFade doc comments). stepOrphanFade returns
+    // true once a fade completes (and has already called .stop() on that
+    // action) — filter those out so this list only ever holds in-flight
+    // fades. Runs every frame unconditionally, same pattern as step 1;
+    // no-ops (empty array, no allocation beyond the filter) in the
+    // overwhelmingly common case of zero in-flight orphans.
+    if (orphanFadesRef.current.length > 0) {
+      orphanFadesRef.current = orphanFadesRef.current.filter((fade) => !stepOrphanFade(fade));
     }
 
     // 2. Blink procedural delta (existing) — expression-only, no bone

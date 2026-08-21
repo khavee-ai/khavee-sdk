@@ -9,10 +9,12 @@ import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import {
   beginCrossfade,
+  beginOrphanFade,
   computePoseGapAngle,
   easeInOutCubic,
   poseGapToDuration,
   stepCrossfade,
+  stepOrphanFade,
   type BlendState,
 } from "./crossfade";
 
@@ -287,5 +289,121 @@ describe("interrupted crossfade preserves total accumulated weight (T-pose/bind-
     expect(blend2.duration).toBeGreaterThan(0);
 
     nowSpy.mockRestore();
+  });
+});
+
+describe("beginOrphanFade / stepOrphanFade (T-pose/bind-pose snap fix, part 3)", () => {
+  // Debug session follow-up: .planning/debug/tpose-snap-speak-toggle.md
+  // ("Follow-up (2026-08-21): part 3"). A stateful stub is required here for
+  // the same reason as the "interrupted crossfade" describe block above --
+  // these functions read back setEffectiveWeight/isRunning state, not just
+  // call args.
+  function makeStatefulStubAction(clip: THREE.AnimationClip) {
+    let weight = 1;
+    let running = false;
+    const action = {
+      reset: vi.fn().mockReturnThis(),
+      enabled: false,
+      play: vi.fn(() => {
+        running = true;
+        return action;
+      }),
+      stop: vi.fn(() => {
+        running = false;
+        return action;
+      }),
+      setEffectiveWeight: vi.fn((w: number) => {
+        weight = w;
+      }),
+      getEffectiveWeight: () => weight,
+      isRunning: () => running,
+      getClip: () => clip,
+    };
+    return action as unknown as THREE.AnimationAction;
+  }
+
+  it("beginOrphanFade captures the orphan's ACTUAL current weight, not an assumed 1", () => {
+    const action = makeStatefulStubAction(new THREE.AnimationClip("orphan", -1, []));
+    action.play();
+    action.setEffectiveWeight(0.42); // mid-ramp from an earlier interrupted blend
+
+    const fade = beginOrphanFade(action, 0.5);
+    expect(fade.startWeight).toBeCloseTo(0.42, 5);
+    expect(fade.action).toBe(action);
+    expect(fade.duration).toBe(0.5);
+  });
+
+  it("beginOrphanFade captures 0 for an action that is not running", () => {
+    const action = makeStatefulStubAction(new THREE.AnimationClip("orphan", -1, []));
+    const fade = beginOrphanFade(action, 0.5);
+    expect(fade.startWeight).toBe(0);
+  });
+
+  it("stepOrphanFade ramps weight to 0 with easeInOutCubic and stops the action only at completion, not before", () => {
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValue(0);
+
+    const action = makeStatefulStubAction(new THREE.AnimationClip("orphan", -1, []));
+    action.play();
+    action.setEffectiveWeight(0.89);
+
+    const fade = beginOrphanFade(action, 0.4);
+
+    // Partway through the fade: weight decays smoothly, action NOT yet stopped.
+    nowSpy.mockReturnValue(120); // t = 0.3 of a 0.4s fade
+    let done = stepOrphanFade(fade);
+    expect(done).toBe(false);
+    expect(action.stop).not.toHaveBeenCalled();
+    const eased = easeInOutCubic(0.3);
+    expect(action.getEffectiveWeight()).toBeCloseTo(0.89 * (1 - eased), 5);
+    expect(action.getEffectiveWeight()).toBeGreaterThan(0);
+
+    // Past the end of the fade: weight reaches 0, action IS stopped, and the
+    // fade reports itself complete so the caller can discard it.
+    nowSpy.mockReturnValue(500);
+    done = stepOrphanFade(fade);
+    expect(done).toBe(true);
+    expect(action.getEffectiveWeight()).toBe(0);
+    expect(action.stop).toHaveBeenCalledTimes(1);
+
+    nowSpy.mockRestore();
+  });
+
+  it("3+-deep interruption chain: the orphan's weight decays smoothly instead of dropping to 0 in one frame", () => {
+    // Mirrors AnimationStateEngine.test.ts's "3+-deep interruption chain"
+    // scenario at the exact instant the SECOND interruption identifies an
+    // orphan (talkAction, at ~0.89 weight, blend2 only 30% through) -- this
+    // is precisely the frame where the OLD `.stop()`-immediately approach
+    // dropped total mixer weight to ~0.11 (talk1Action's weight alone),
+    // reproducing the T-pose flash. With this fix, talkAction should still
+    // be contributing real, non-zero weight to the mixer this same frame.
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValue(0);
+
+    const scene = new THREE.Object3D();
+    const talkAction = makeStatefulStubAction(new THREE.AnimationClip("talking", -1, []));
+    const talk1Action = makeStatefulStubAction(new THREE.AnimationClip("talking1", -1, []));
+
+    // talkAction is blend2's settled `from`, mid-fade-out at ~0.89 (t=0.3 of
+    // a blend2 that started at fromStartWeight=1).
+    talkAction.play();
+    talkAction.setEffectiveWeight(0.89);
+    // talk1Action is blend2's `to`, correspondingly at ~0.11.
+    talk1Action.play();
+    talk1Action.setEffectiveWeight(0.11);
+
+    // The third switch orphans talkAction and starts its fade-out over the
+    // new (idle-bound) blend's duration -- 0.3s here for simplicity.
+    const fade = beginOrphanFade(talkAction, 0.3);
+
+    // Read weights EXACTLY as they stand the instant beginOrphanFade
+    // returns, before any stepOrphanFade call -- this is what the very next
+    // mixer.update() renders.
+    expect(talkAction.getEffectiveWeight()).toBeCloseTo(0.89, 5); // NOT dropped to 0
+    const totalAfterOrphaning = talkAction.getEffectiveWeight() + talk1Action.getEffectiveWeight();
+    expect(totalAfterOrphaning).toBeCloseTo(1, 5);
+
+    nowSpy.mockRestore();
+    void fade;
   });
 });

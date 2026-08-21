@@ -39,7 +39,14 @@ import {
 } from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
 import { createSwayState, stepSway } from "./sway";
-import { beginCrossfade, stepCrossfade, easeInOutCubic, type BlendState } from "./crossfade";
+import {
+  beginCrossfade,
+  stepCrossfade,
+  easeInOutCubic,
+  beginOrphanFade,
+  stepOrphanFade,
+  type BlendState,
+} from "./crossfade";
 import type { AvatarFormatAdapter } from "./types";
 
 vi.mock("react", async (importOriginal) => {
@@ -1095,13 +1102,21 @@ describe("resolveOrphanedBlendAction (T-pose/bind-pose snap fix, part 2)", () =>
   });
 });
 
-describe("3+-deep interruption chain: orphaned action is stopped, never left dangling at stale weight (T-pose/bind-pose snap fix)", () => {
-  // Mirrors switchToClip's real call sequence -- beginCrossfade, then (this
-  // fix) resolveOrphanedBlendAction(prevBlend, toAction)?.stop() -- across
-  // consecutive interrupted switches (idle -> talking -> talking1 -> idle),
-  // where the LAST switch interrupts a blend that itself interrupted an
-  // earlier one, matching a fast real-world talk-cycle-variant-switch-
-  // then-speaking-ends sequence (TALK-01 + this fix).
+describe("3+-deep interruption chain: orphaned action fades out smoothly, never left dangling at stale weight AND never dropped to 0 in one frame (T-pose/bind-pose snap fix, parts 2+3)", () => {
+  // Mirrors switchToClip's real call sequence -- beginCrossfade, then (part 2)
+  // resolveOrphanedBlendAction(prevBlend, toAction), then (part 3, 2026-08-21
+  // follow-up -- see .planning/debug/tpose-snap-speak-toggle.md)
+  // beginOrphanFade(orphan, newBlend.duration) instead of an immediate
+  // `.stop()` -- across consecutive interrupted switches (idle -> talking ->
+  // talking1 -> idle), where the LAST switch interrupts a blend that itself
+  // interrupted an earlier one, matching a fast real-world talk-cycle-
+  // variant-switch-then-speaking-ends sequence (TALK-01 + this fix).
+  //
+  // Part 3 exists because part 2's immediate `.stop()` reintroduced the
+  // exact bug class it was fixing: `.stop()` removes an action's weight
+  // contribution from the mixer with no ramp, and an orphan -- by
+  // construction -- often still holds real weight the instant it's
+  // identified (its own fade-out was itself interrupted before t>=1).
   function makeStatefulStubAction(clip: THREE.AnimationClip) {
     let weight = 1;
     let running = false;
@@ -1126,7 +1141,7 @@ describe("3+-deep interruption chain: orphaned action is stopped, never left dan
     return action as unknown as THREE.AnimationAction;
   }
 
-  it("stops the orphaned action instead of leaving it contributing stale weight forever", () => {
+  it("fades the orphaned action's weight smoothly to 0 (no one-frame drop) and stops it once settled, instead of either leaving it dangling forever or cutting it off abruptly", () => {
     const nowSpy = vi.spyOn(performance, "now");
     nowSpy.mockReturnValue(0);
 
@@ -1147,22 +1162,44 @@ describe("3+-deep interruption chain: orphaned action is stopped, never left dan
     // Switch 2 (talk-cycle variant switch): talking -> talking1.
     const switch2Start = blend1.duration * 1000 + 50;
     nowSpy.mockReturnValue(switch2Start);
-    resolveOrphanedBlendAction(blend1, talk1Action)?.stop(); // no-op: blend1 already settled
+    expect(resolveOrphanedBlendAction(blend1, talk1Action)).toBeNull(); // blend1 already settled, nothing to orphan
     const blend2 = beginCrossfade(talkAction, talk1Action, scene);
 
     // Advance blend2 PARTWAY -- it never reaches t>=1 before switch 3 below.
     nowSpy.mockReturnValue(switch2Start + blend2.duration * 1000 * 0.3);
     stepCrossfade(blend2);
     expect(talkAction.stop).not.toHaveBeenCalled(); // blend2 still active; talking is its live `from`
+    const talkWeightBeforeOrphaning = talkAction.getEffectiveWeight();
+    const talk1WeightBeforeOrphaning = talk1Action.getEffectiveWeight();
+    expect(talkWeightBeforeOrphaning).toBeGreaterThan(0);
 
-    // Switch 3: interrupted again, back to idle. Without this fix, "talking"
-    // (blend2's `from`) would be silently orphaned here -- referenced by no
-    // BlendState from this point on, left contributing whatever weight
-    // blend2's last stepCrossfade call set forever.
+    // Switch 3: interrupted again, back to idle. "talking" (blend2's `from`)
+    // is about to be orphaned -- referenced by no BlendState from this point
+    // on. switchToClip's real sequence (part 3, 2026-08-21 follow-up) starts
+    // an OrphanFade for it instead of calling `.stop()` immediately.
     const orphan = resolveOrphanedBlendAction(blend2, idleAction);
     expect(orphan).toBe(talkAction);
-    orphan?.stop();
+    const blend3 = beginCrossfade(talk1Action, idleAction, scene);
+    const orphanFade = beginOrphanFade(orphan!, blend3.duration);
 
+    // The instant the orphan fade starts, its weight must be UNCHANGED from
+    // what it was the frame before -- not dropped to 0. This is the part-3
+    // regression check: total weight across talkAction + talk1Action +
+    // idleAction must stay close to what it was pre-interruption (~1), not
+    // collapse to just talk1Action's small share.
+    expect(talkAction.getEffectiveWeight()).toBeCloseTo(talkWeightBeforeOrphaning, 5);
+    expect(talkAction.stop).not.toHaveBeenCalled();
+    const totalRightAfterInterrupt =
+      talkAction.getEffectiveWeight() + talk1Action.getEffectiveWeight() + idleAction.getEffectiveWeight();
+    expect(totalRightAfterInterrupt).toBeCloseTo(talkWeightBeforeOrphaning + talk1WeightBeforeOrphaning, 5);
+    expect(totalRightAfterInterrupt).toBeGreaterThan(0.5); // nowhere near the old ~0.11 cliff
+
+    // Eventually (once the fade completes), the orphan IS stopped -- it does
+    // not linger forever either.
+    nowSpy.mockReturnValue(switch2Start + blend2.duration * 1000 * 0.3 + blend3.duration * 1000 + 50);
+    const faded = stepOrphanFade(orphanFade);
+    expect(faded).toBe(true);
+    expect(talkAction.getEffectiveWeight()).toBe(0);
     expect(talkAction.stop).toHaveBeenCalledTimes(1);
   });
 });

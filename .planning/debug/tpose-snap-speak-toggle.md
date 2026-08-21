@@ -19,7 +19,69 @@ reasoning_checkpoint:
   fix_rationale: "Seed `toAction`'s starting weight in beginCrossfade from its OWN current effective weight (via `isRunning()`/`getEffectiveWeight()`) instead of a hardcoded 0, and generalize stepCrossfade's ramp math to interpolate from each action's ACTUAL captured start weight (stored on BlendState) toward its target (1 for `to`, 0 for `from`) instead of assuming to-starts-at-0/from-starts-at-1. This preserves total accumulated weight continuity across an interruption instead of introducing a one-frame weight-sum cliff. Additionally, switchToClip must explicitly `.stop()` the PREVIOUS blend's `from` action when it is about to be orphaned (i.e. not reused as the new toAction) — otherwise, in 3+-deep interruption chains (idle->talking->talking1->[interrupt to idle]), the original blend's `from` (e.g. plain 'talking') is never referenced by the new blend and never completes/stops, so it keeps contributing its last weight to the mixer forever, uncoordinated with the new blend. This addresses the root cause (an unconditional-weight-reset assumption baked into the crossfade engine that was never wrong until interruption became likely) rather than a symptom (e.g. papering over it with an extra rest-pose reset, which would just trade an under-driven flash for a different discontinuity, as 11-09's whole-block-skip approach already proved for a related case)."
   blind_spots: "Have not yet run this in a real browser against khavee-app's actual PreviewModel.tsx animation config to visually confirm the flash disappears end-to-end (that requires the human checkpoint). Have not measured whether THREE's PropertyMixer literally blends toward the bind pose when total weight <1 versus some other THREE-internal behavior (this is documented THREE PropertyMixer behavior — accumulated weight <1 is filled from `_originalValue` — but not independently re-derived from source in this session; treating it as established for this investigation). Have not fully ruled out whether resetToRestPoseIfNotDriven (11-11/11-13's gate) ALSO fires during the exact interrupted-crossfade frame and independently contributes to the flash (isBaseActionMeaningfullyDriving checks blendRef.current.from !== null, which would be true here since a blend IS active with a real `from` — so that gate should already correctly treat this as 'driving' and NOT reset to the anchor; this is consistent with the weight-sum defect being the sole mechanism, but not independently instrumented/logged in a live run)."
 
-next_action: "Fix implemented and self-verified via unit tests + typecheck + build (see Resolution below). Awaiting human verification in khavee-app's live Preview page: quickly toggle speaking on/off during a live chat (short utterances, and letting talk-cycle vary between talking/talking1/talking2) and confirm no T-pose/bind-pose flash is visible."
+next_action: "Fix implemented and self-verified via unit tests + typecheck + build (see Resolution below, including the 2026-08-21 part-3 follow-up). Awaiting human verification in khavee-app's live Preview page: quickly toggle speaking on/off during a live chat (short utterances, and letting talk-cycle vary between talking/talking1/talking2) and confirm no T-pose/bind-pose flash is visible."
+
+## Follow-up (2026-08-21): part 3 — orphaned action's own `.stop()` reintroduced the bug
+
+status: still awaiting_human_verify (fix extended, not yet live-verified)
+
+While re-reviewing this fix against a still-open end-user report ("when
+animation switch (during conversation) sometime i see jiggle (the vrm model
+swap to T-Pose in a brief moment)"), found that the existing
+`AnimationStateEngine.test.ts` test for the 3+-deep interruption chain
+("stops the orphaned action instead of leaving it contributing stale weight
+forever") only asserted `talkAction.stop` was called — it never asserted
+anything about total mixer weight at that instant. Re-deriving the weight
+math for that exact scenario (idle -> talking [settles] -> talking1
+[interrupted at t=0.3, i.e. `talking` still at ~0.89 weight] ->
+[interrupted back to idle]) showed: at the moment `resolveOrphanedBlendAction
+(blend2, idleAction)?.stop()` fires, `talkAction` (the orphan) is abruptly
+deactivated while still holding ~0.89 real weight, and the concurrently
+active `talk1Action` (blend2's `to`, carried into blend3's `from`) is only at
+~0.11 weight. Total contributing mixer weight for that frame: ~0.11 — the
+same class of under-1-total-weight cliff this whole fix exists to prevent,
+just relocated from `beginCrossfade`'s old hardcoded-`toAction.
+setEffectiveWeight(0)` to the orphan's `.stop()` call.
+
+root_cause (addendum): `.stop()` on a THREE.AnimationAction deactivates its
+property bindings and removes its weight contribution from the mixer
+immediately, with no ramp. Calling it synchronously on an orphaned action
+the instant it's identified (as `switchToClip` did) is only safe if that
+orphan has ALREADY settled at weight 0 — but an orphan only exists in the
+first place because the blend that was fading it out was itself interrupted
+before reaching `t>=1`, i.e. it is, by construction, likely to still hold
+nonzero weight at the exact moment it's stopped.
+
+fix (addendum): `crossfade.ts` gained `beginOrphanFade`/`stepOrphanFade` (an
+`OrphanFade` record paralleling `BlendState`) — instead of `.stop()`-ing an
+orphan immediately, `switchToClip` now starts a fade-out that ramps the
+orphan's ACTUAL current weight down to 0 over the same duration as the new
+crossfade that orphaned it, via the same `easeInOutCubic` curve, and only
+calls `.stop()` once that ramp completes. `update()` advances all in-flight
+orphan fades every frame (`orphanFadesRef`, a list rather than a single slot,
+so arbitrarily deep interruption chains each get their own independent
+fade-out record). `switchToClip` also now clears any pending orphan fade for
+an action that becomes a new `toAction` again (a rapid switch back to a clip
+that hadn't finished fading out), so `stepCrossfade` and `stepOrphanFade`
+never fight over the same action's weight.
+
+verification (addendum): existing `crossfade.test.ts` /
+`AnimationStateEngine.test.ts` suites re-run green after the change; added
+new tests asserting (1) `beginOrphanFade`/`stepOrphanFade` ramp a stateful
+stub action's weight to 0 over the given duration and call `.stop()` exactly
+once, at completion, not before; (2) the 3+-deep interruption chain scenario
+now keeps `talkAction` (the orphan) contributing a smoothly-decaying weight
+alongside `talk1Action` and `idleAction` instead of dropping to 0 in one
+frame — i.e. total weight across all three actions stays close to 1
+throughout, not just at the endpoints. `npx tsc --noEmit` clean. NOT YET
+verified live in khavee-app's browser Preview page — requires a human
+checkpoint, same as the original fix.
+
+files_changed (addendum):
+  - "packages/react/src/animation/crossfade.ts"
+  - "packages/react/src/animation/crossfade.test.ts"
+  - "packages/react/src/animation/AnimationStateEngine.ts"
+  - "packages/react/src/animation/AnimationStateEngine.test.ts"
 
 ## Symptoms
 

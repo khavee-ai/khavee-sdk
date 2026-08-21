@@ -203,3 +203,78 @@ export function stepCrossfade(blend: BlendState): void {
     blend.active = false;
   }
 }
+
+// ── Orphaned-action fade-out (T-pose/bind-pose snap fix, part 3) ──────────
+
+/**
+ * Tracks a single action ramping down to weight 0 after being ORPHANED by
+ * an interrupted crossfade — see
+ * `AnimationStateEngine.ts`'s `resolveOrphanedBlendAction` doc comment for
+ * the full mechanism, and .planning/debug/tpose-snap-speak-toggle.md for the
+ * original diagnosis.
+ *
+ * Background: on a 3+-deep interruption chain (e.g. idle -> talking ->
+ * talking1 -> [interrupted back to idle]), the middle blend's outgoing
+ * action ("talking") is referenced by no `BlendState` going forward once the
+ * third switch starts a fresh blend between "talking1" and "idle". Parts 1-2
+ * of this fix (`beginCrossfade`'s start-weight seeding, plus
+ * `resolveOrphanedBlendAction` identifying the orphan) closed the "left
+ * dangling at stale weight forever" defect by having the caller
+ * (`switchToClip`) call `.stop()` on the orphan immediately. That reintroduced
+ * the SAME bug class it was fixing: `.stop()` deactivates an action's
+ * bindings and removes its weight contribution from the mixer THIS FRAME,
+ * with no ramp — if the orphan hadn't yet settled at weight 0 (i.e. the
+ * blend that was fading it out was itself interrupted before reaching
+ * `t>=1`, which is exactly when an orphan exists at all), that abrupt
+ * removal drops the mixer's total accumulated weight for that frame just
+ * like the original defect, only relocated to the orphan-stop call instead
+ * of `beginCrossfade`'s old hardcoded-0 assignment.
+ *
+ * Fix: instead of stopping the orphan immediately, ramp it down to weight 0
+ * over the SAME duration as the crossfade that orphaned it (so its fade-out
+ * tracks the same eased curve the new from/to pair uses, preserving the
+ * "total weight ~= 1" invariant those three actions collectively held the
+ * instant before interruption), and only call `.stop()` once that ramp
+ * actually completes.
+ */
+export interface OrphanFade {
+  action: THREE.AnimationAction;
+  startWeight: number;
+  startTime: number;
+  duration: number;
+}
+
+/**
+ * Starts an orphan's fade-out, capturing its ACTUAL current effective
+ * weight (mirroring `beginCrossfade`'s own start-weight seeding) rather than
+ * assuming any particular value — the orphan may itself be mid-ramp from an
+ * earlier interrupted blend.
+ *
+ * @param action - The orphaned action (see `resolveOrphanedBlendAction`).
+ * @param duration - Fade-out duration in seconds; callers pass the new
+ *   crossfade's own `duration` so the orphan's ramp-down tracks the same
+ *   timing as the from/to pair that orphaned it.
+ */
+export function beginOrphanFade(action: THREE.AnimationAction, duration: number): OrphanFade {
+  const startWeight = action.isRunning() ? action.getEffectiveWeight() : 0;
+  return { action, startWeight, startTime: performance.now(), duration };
+}
+
+/**
+ * Advances an orphan's fade-out by one frame. Call every frame (alongside
+ * `stepCrossfade`) while the fade hasn't completed. Returns `true` once the
+ * fade has reached its end and `.stop()` has been called on the action (the
+ * caller should then discard this `OrphanFade`, e.g. by filtering it out of
+ * whatever list is tracking in-flight fades); returns `false` otherwise.
+ */
+export function stepOrphanFade(fade: OrphanFade): boolean {
+  const elapsed = (performance.now() - fade.startTime) / 1000;
+  const t = Math.min(elapsed / fade.duration, 1);
+  const eased = easeInOutCubic(t);
+  fade.action.setEffectiveWeight(fade.startWeight * (1 - eased));
+  if (t >= 1) {
+    fade.action.stop();
+    return true;
+  }
+  return false;
+}

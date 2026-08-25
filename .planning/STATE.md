@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Natural Avatar Animation
-status: executing
-stopped_at: 12-10 landed CR-01 gaze re-clamp fix + real-asset diagnosis; GAZE-02 human-verify checkpoint deferred by user (explicitly not urgent) -- GAZE-02 remains an open, low-priority gap and Phase 12 has not been closed
-last_updated: "2026-07-19T00:35:00.000Z"
-last_activity: 2026-07-19 -- 12-10 executed (Tasks 1-2 autonomous, Task 3 human-verify deferred by user decision)
+status: verifying
+stopped_at: 12-10 landed CR-01 gaze re-clamp fix + real-asset diagnosis; GAZE-02 human-verify checkpoint deferred by user (not urgent) -- GAZE-02 remains an open, low-priority gap
+last_updated: "2026-08-25T16:55:01.611Z"
+last_activity: 2026-08-25
 progress:
   total_phases: 13
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 68
   completed_plans: 68
-  percent: 77
+  percent: 85
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-11)
 
 **Core value (v2.2):** Replace `VRMAvatar`/`GLBAvatar`'s robotic chatStatus-driven animation switching with a unified, natural-feeling state architecture — shared internal module, procedural motion layer, and a zero-config public API.
-**Current focus:** Phase 12 — gaze-gesture
+**Current focus:** Phase 14 — xai-realtime-provider
 
 ## Current Position
 
-Phase: 12 (gaze-gesture) — OPEN (GAZE-02 deferred, low priority)
-Plan: 10 of 10
-Status: All 10 plans have SUMMARY.md; phase not closed (GAZE-02 requirement open, deprioritized by user)
-Last activity: 2026-07-19 -- 12-10 executed, GAZE-02 checkpoint deferred by user
+Phase: 14 (xai-realtime-provider) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-08-25
 
 Plan 12-06 result: Objective code-level gates G-1..G-9 all PASS. Live human verification confirmed GEST-01 and GEST-02 ("approved" on both). GAZE-01 and GAZE-02 FAILED: gaze snapped directly to its target instead of smoothly transitioning (Gap 1), and the GLB avatar additionally showed a GLB-only idle-animation spin regression (Gap 2). Full detail in `12-06-VERIFICATION.md`.
 
@@ -42,7 +42,7 @@ Plan 12-10 result: Task 1 (autonomous, TDD) added a final-delta re-clamp to `ste
 
 Phase 12 is NOT complete — GAZE-02 is an open, deprioritized gap (user-deferred, not urgent). Requirements GEST-01, GEST-02, and GAZE-01 are confirmed PASS; GAZE-02 remains open with a confirmed-but-unverified root-cause hypothesis (happy.glb's own idle-clip loop seam).
 
-Progress: [████████░░] 77% (10/13 roadmap phases fully closed; Phase 12's 10 plans all have SUMMARY.md on disk, but the phase itself has a deferred open gap (GAZE-02) and is not closed)
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -129,6 +129,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T00:35:00.000Z
+Last session: 2026-08-25T16:55:01.603Z
 Stopped at: 12-10 landed CR-01 gaze re-clamp fix + real-asset diagnosis; GAZE-02 human-verify checkpoint deferred by user (not urgent) -- GAZE-02 remains an open, low-priority gap
-Resume file: .planning/phases/12-gaze-gesture/12-10-SUMMARY.md
+Resume file: None

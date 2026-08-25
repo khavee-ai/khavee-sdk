@@ -6,6 +6,7 @@
 - ✅ **v2.0 WordPress Plugin (Custom Mode)** - Phases 6-8 (complete)
 - 🚧 **v2.1 Block Studio (Visual Config, Chat & Lip-Sync)** - Phase 9 (in progress)
 - 🚧 **v2.2 Natural Avatar Animation** - Phases 10-13 (planning; started alongside v2.1 per explicit user direction)
+- 🚧 **v3.0 Multi-Provider Voice** - Phase 14 (xAI/Grok realtime provider)
 
 ## Phases
 
@@ -460,10 +461,33 @@ Plans:
 
 **Plans**: TBD
 
+### v3.0 Multi-Provider Voice
+
+- [x] **Phase 14: xAI Realtime Provider** - New `@khaveeai/providers-xai-realtime` package implementing `RealtimeProvider` over xAI's WebSocket-based Realtime API, with full lip-sync and tool-calling parity to `OpenAIRealtimeProvider` (completed 2026-08-25)
+
+### Phase 14: xAI Realtime Provider
+
+**Goal**: A developer can swap `OpenAIRealtimeProvider` for `XAIRealtimeProvider` in `KhaveeProvider` and get identical behavior (lip-sync, tool calling, mic control, conversation state) using xAI/Grok's WebSocket-based Realtime API instead of OpenAI's WebRTC-based one
+**Depends on**: Nothing (standalone new provider; uses existing `RealtimeProvider` interface from Phase 1)
+**Requirements**: XAI-01 (WebSocket transport), XAI-02 (lip-sync parity), XAI-03 (tool calling), XAI-04 (mic capture), XAI-05 (ephemeral auth)
+**Success Criteria** (what must be TRUE):
+
+  1. `XAIRealtimeProvider` implements the full `RealtimeProvider` interface and is accepted by `KhaveeProvider` as a drop-in replacement for `OpenAIRealtimeProvider`
+  2. `getAudioAnalyser()` returns an `AnalyserNode` with `fftSize=2048` and `smoothingTimeConstant=0.6`, and `onAudioData` fires exactly once when TTS audio begins — so the React layer's MFCC/DTW phoneme detection drives lip-sync identically
+  3. The `chatStatus` lifecycle ("ready" → "listening" → "thinking" → "speaking" → "ready") fires `onChatStatusChange` at the same transition points as `OpenAIRealtimeProvider`
+  4. Registering a tool via `registerFunction()` and triggering it from the LLM executes the handler and sends the result back, following the same flow as the OpenAI provider
+  5. Microphone capture produces base64 PCM16 frames sent as `input_audio_buffer.append` over WebSocket, with server-side VAD handling turn detection
+
+**Plans**: 1 plan
+Plans:
+**Wave 1**
+
+- [x] 14-01-PLAN.md — Full xAI Realtime Provider implementation (package scaffold + WebSocket transport + audio playback engine + mic capture + tool calling + session management)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
 
 (Phase 2 may be planned/executed in parallel with Phase 3 once Phase 1 is complete, per research — both depend only on Phase 1, not on each other. Phase 8's frontend bundle work can start once Phase 6's REST contract shape is fixed, in parallel with Phase 7, per v2.0 research. Phase 10 (v2.2) is independent of Phase 9 (v2.1) and may run concurrently with it, per explicit user direction to start v2.2 alongside the still-in-progress v2.1.)
 
@@ -482,3 +506,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 11. Idle, Transition & Talking States | 18/18 | Complete   | 2026-07-17 |
 | 12. Gaze & Gesture | 10/10 | Gap deferred |  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |
+| 14. xAI Realtime Provider | 1/1 | Complete   | 2026-08-25 |

@@ -1,0 +1,52 @@
+{
+  "name": "@khaveeai/providers-xai-realtime",
+  "version": "0.1.0",
+  "description": "xAI Realtime API provider for Khavee AI SDK",
+  "keywords": [
+    "xai",
+    "grok",
+    "realtime",
+    "provider",
+    "ai",
+    "streaming",
+    "websocket"
+  ],
+  "homepage": "https://github.com/khavee-ai/khavee-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khavee-ai/khavee-sdk.git",
+    "directory": "packages/providers/xai-realtime"
+  },
+  "bugs": {
+    "url": "https://github.com/khavee-ai/khavee-sdk/issues"
+  },
+  "author": "KhaveeAI <support@khaveeai.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/**/*",
+    "package.json",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@khaveeai/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

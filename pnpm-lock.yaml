@@ -251,6 +251,16 @@ importers:
         specifier: ^5.0.0
         version: 5.9.2
 
+  packages/providers/xai-realtime:
+    dependencies:
+      '@khaveeai/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
   packages/react:
     dependencies:
       '@khaveeai/core':

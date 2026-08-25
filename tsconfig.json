@@ -24,7 +24,8 @@
       "@khaveeai/react": ["./packages/react/src/index.ts"],
       "@khaveeai/providers-mock": ["./packages/providers/mock/src/index.ts"],
       "@khaveeai/providers-openai-realtime": ["./packages/providers/openai-realtime/src/index.ts"],
-      "@khaveeai/providers-rag": ["./packages/providers/rag/src/index.ts"]
+      "@khaveeai/providers-rag": ["./packages/providers/rag/src/index.ts"],
+      "@khaveeai/providers-xai-realtime": ["./packages/providers/xai-realtime/src/index.ts"]
     },
     "baseUrl": "."
   },

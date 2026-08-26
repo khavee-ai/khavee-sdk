@@ -78,7 +78,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
   constructor(config: XAIRealtimeConfig) {
     this.config = {
-      model: "grok-voice-latest",
+      model: "grok-voice-think-fast-1.0",
       baseUrl: "wss://api.x.ai/v1/realtime",
       inputAudioFormat: "pcm16",
       outputAudioFormat: "pcm16",
@@ -86,6 +86,13 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       ...config,
     };
     this.toolExecutor = new ToolExecutor();
+
+    // Register tools supplied via config so they reach session.update.
+    // Without this the model is told about tools in `instructions` but has
+    // none actually declared, and speaks the function-call syntax aloud.
+    if (config.tools) {
+      config.tools.forEach((tool) => this.registerFunction(tool));
+    }
   }
 
   // ── Connection Lifecycle ───────────────────────────────────────────────────

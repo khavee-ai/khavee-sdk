@@ -25,6 +25,7 @@ export class AudioPlaybackEngine {
   private sampleRate: number;
   private _isPlaying = false;
   private pendingBufferCount = 0;
+  private endDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Fires when the first audio chunk is scheduled for playback. */
   public onPlaybackStart?: () => void;
@@ -92,10 +93,22 @@ export class AudioPlaybackEngine {
       if (idx !== -1) this.scheduledSources.splice(idx, 1);
 
       if (this.pendingBufferCount <= 0 && this._isPlaying) {
-        this._isPlaying = false;
-        this.onPlaybackEnd?.();
+        // Debounce: wait briefly for next chunk before declaring end
+        if (this.endDebounceTimer) clearTimeout(this.endDebounceTimer);
+        this.endDebounceTimer = setTimeout(() => {
+          if (this.pendingBufferCount <= 0 && this._isPlaying) {
+            this._isPlaying = false;
+            this.onPlaybackEnd?.();
+          }
+        }, 150);
       }
     };
+
+    // Cancel any pending end-debounce since new audio arrived
+    if (this.endDebounceTimer) {
+      clearTimeout(this.endDebounceTimer);
+      this.endDebounceTimer = null;
+    }
 
     // Fire playback start on first chunk
     if (!this._isPlaying) {
@@ -109,6 +122,11 @@ export class AudioPlaybackEngine {
    * Resets the scheduling queue.
    */
   cancel(): void {
+    if (this.endDebounceTimer) {
+      clearTimeout(this.endDebounceTimer);
+      this.endDebounceTimer = null;
+    }
+
     for (const source of this.scheduledSources) {
       try {
         source.stop();

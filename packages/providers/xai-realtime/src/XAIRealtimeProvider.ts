@@ -52,6 +52,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private tools: RealtimeTool[] = [];
   private pendingToolArgs: Map<string, { name: string; args: string }> =
     new Map();
+  private sessionId?: string;
 
   // ── Event Callbacks (RealtimeEvents interface) ─────────────────────────────
 
@@ -98,12 +99,14 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       // Resolve authentication token
       let token = this.config.apiKey;
       if (this.config.tokenEndpoint) {
-        token = await this.fetchEphemeralToken(this.config.tokenEndpoint);
+        const result = await this.fetchEphemeralToken(this.config.tokenEndpoint);
+        token = result.token;
+        this.sessionId = result.sessionId;
       }
 
       // Build WebSocket URL
       const baseUrl = this.config.baseUrl ?? "wss://api.x.ai/v1/realtime";
-      const model = this.config.model ?? "grok-voice-latest";
+      const model = this.config.model ?? "grok-voice-think-fast-1.0";
       const url = `${baseUrl}?model=${encodeURIComponent(model)}`;
 
       // Connect with auth — xAI uses WebSocket subprotocol for ephemeral tokens
@@ -165,16 +168,22 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       // Send session.update with initial configuration
       this.sendSessionUpdate();
 
-      // Handle skipGreeting option
+      // Trigger initial greeting (cold-open pattern matching OpenAI provider)
       if (!options?.skipGreeting && this.config.instructions) {
-        // Trigger initial greeting
         this.sendEvent({
-          type: "response.create",
-          response: {
-            instructions:
-              "This is the very start of the conversation. The user has not spoken or typed anything yet. Deliver your opening greeting now.",
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: "This is the very start of the conversation — the user has not spoken or typed anything yet. Deliver your opening greeting now, exactly as instructed, without referencing or responding to anything as if the user had said something.",
+              },
+            ],
           },
         });
+        this.sendEvent({ type: "response.create" });
       }
     } catch (error) {
       this.onError?.(
@@ -218,6 +227,13 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.onError?.(new Error("Cannot send message: not connected"));
       return;
+    }
+
+    // Interrupt if assistant is mid-response (speaking or thinking)
+    if (this.chatStatus === "speaking" || this.chatStatus === "thinking") {
+      this.playbackEngine?.cancel();
+      this.sendEvent({ type: "response.cancel" });
+      this.finalizeAssistantText();
     }
 
     // Create user conversation item
@@ -360,6 +376,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private async handleServerEvent(event: MessageEvent): Promise<void> {
     try {
       const data = JSON.parse(event.data as string) as XAIServerEvent;
+      console.log("[xAI event]", data.type);
 
       switch (data.type) {
         case "session.created":
@@ -368,7 +385,22 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "input_audio_buffer.speech_started":
+          // Barge-in: stop playback if assistant is speaking
+          if (this.chatStatus === "speaking") {
+            this.playbackEngine?.cancel();
+            this.sendEvent({ type: "response.cancel" });
+          }
           this.setChatStatus("listening");
+          // Create a placeholder user message for this utterance
+          this.conversation.push({
+            id: this.generateId(),
+            role: "user",
+            text: "",
+            timestamp: new Date().toISOString(),
+            isFinal: false,
+            status: "speaking",
+          });
+          this.onConversationUpdate?.(this.conversation);
           break;
 
         case "input_audio_buffer.speech_stopped":
@@ -376,6 +408,20 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "input_audio_buffer.committed":
+          // Finalize the pending user message, or remove if empty
+          for (let i = this.conversation.length - 1; i >= 0; i--) {
+            if (this.conversation[i].role === "user" && !this.conversation[i].isFinal) {
+              if (this.conversation[i].text) {
+                this.conversation[i].isFinal = true;
+                this.conversation[i].status = "final";
+              } else {
+                // Remove empty placeholder (no transcript arrived)
+                this.conversation.splice(i, 1);
+              }
+              break;
+            }
+          }
+          this.onConversationUpdate?.(this.conversation);
           this.setChatStatus("thinking");
           break;
 
@@ -414,6 +460,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.text.done":
+        case "response.output_text.done":
           this.finalizeAssistantText(data.text);
           break;
 
@@ -430,18 +477,24 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.audio_transcript.delta":
+        case "response.output_audio_transcript.delta":
           this.handleAssistantTextDelta(data.delta);
           break;
 
         case "response.audio_transcript.done":
-          this.finalizeAssistantText(data.transcript);
+        case "response.output_audio_transcript.done":
+          this.finalizeAssistantText(
+            data.transcript ?? (data as { text?: string }).text ?? "",
+          );
           break;
 
         case "response.function_call_arguments.delta":
+          console.log("[xAI] Tool args delta:", data.call_id, data.delta);
           this.accumulateToolArgs(data.call_id, data.delta, data.item_id);
           break;
 
         case "response.function_call_arguments.done":
+          console.log("[xAI] Tool args done:", data.call_id, data.name, data.arguments);
           await this.executeToolCall(data.call_id, data.name, data.arguments);
           break;
 
@@ -527,21 +580,24 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   /**
    * Finalize the last assistant message with complete text.
    */
-  private finalizeAssistantText(text: string): void {
+  private finalizeAssistantText(text?: string): void {
     const lastMsg = this.conversation[this.conversation.length - 1];
     if (lastMsg && lastMsg.role === "assistant") {
-      lastMsg.text = text;
+      // Only overwrite text if provided; on interrupt, keep accumulated text
+      if (text) {
+        lastMsg.text = text;
+      }
       lastMsg.isFinal = true;
       lastMsg.status = "final";
     }
     this.onConversationUpdate?.(this.conversation);
 
     // Fire onMessage with the final assistant text
-    if (lastMsg) {
+    if (lastMsg && lastMsg.role === "assistant") {
       this.onMessage?.({
         id: lastMsg.id,
         role: "assistant",
-        text,
+        text: lastMsg.text,
         timestamp: lastMsg.timestamp,
         isFinal: true,
         status: "final",
@@ -601,10 +657,12 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     argsJson: string,
   ): Promise<void> {
     this.setChatStatus("thinking");
+    console.log("[xAI] Tool call received:", name, argsJson);
 
     try {
       const args = JSON.parse(argsJson);
       const result = await this.toolExecutor.execute(name, args);
+      console.log("[xAI] Tool result:", name, result);
 
       this.onToolCall?.(name, args, result);
 
@@ -638,6 +696,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private handleResponseDone(response: {
     id: string;
     usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
       input_token_details?: {
         text_tokens?: number;
         audio_tokens?: number;
@@ -652,13 +713,19 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     // Report usage if available
     if (response.usage && this.onUsageReport) {
       const u = response.usage;
+      // xAI may only provide top-level input_tokens/output_tokens without breakdown
+      const inputText = u.input_token_details?.text_tokens ?? 0;
+      const inputAudio = u.input_token_details?.audio_tokens ?? 0;
+      const outputText = u.output_token_details?.text_tokens ?? 0;
+      const outputAudio = u.output_token_details?.audio_tokens ?? 0;
+
       this.onUsageReport({
-        sessionId: response.id,
-        inputTextTokens: u.input_token_details?.text_tokens ?? 0,
-        inputAudioTokens: u.input_token_details?.audio_tokens ?? 0,
+        sessionId: this.sessionId ?? response.id,
+        inputTextTokens: inputText || (u.input_tokens ?? 0),
+        inputAudioTokens: inputAudio,
         inputCachedTokens: u.input_token_details?.cached_tokens ?? 0,
-        outputTextTokens: u.output_token_details?.text_tokens ?? 0,
-        outputAudioTokens: u.output_token_details?.audio_tokens ?? 0,
+        outputTextTokens: outputText || (u.output_tokens ?? 0),
+        outputAudioTokens: outputAudio,
       });
     }
 
@@ -696,20 +763,34 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       session.turn_detection = { type: "server_vad" };
     }
 
+    // Enable input audio transcription so user speech appears in conversation
+    session.input_audio_transcription = { model: "whisper-1" };
+
     // Include registered tools
     if (this.tools.length > 0) {
-      session.tools = this.tools.map((tool) => ({
-        type: "function",
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-          type: "object",
-          properties: tool.parameters,
-          required: Object.entries(tool.parameters)
-            .filter(([, v]) => v.required)
-            .map(([k]) => k),
-        },
-      }));
+      session.tools = this.tools.map((tool) => {
+        const properties: Record<string, unknown> = {};
+        const requiredFields: string[] = [];
+
+        Object.entries(tool.parameters).forEach(
+          ([key, param]: [string, { required?: boolean; [k: string]: unknown }]) => {
+            const { required, ...paramSchema } = param;
+            properties[key] = paramSchema;
+            if (required === true) requiredFields.push(key);
+          },
+        );
+
+        return {
+          type: "function",
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: "object",
+            properties,
+            required: requiredFields,
+          },
+        };
+      });
     }
 
     // Tool choice
@@ -767,7 +848,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   /**
    * Fetch an ephemeral token from the configured backend endpoint.
    */
-  private async fetchEphemeralToken(endpoint: string): Promise<string> {
+  private async fetchEphemeralToken(
+    endpoint: string,
+  ): Promise<{ token: string; sessionId?: string }> {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -781,19 +864,24 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
     const data = (await response.json()) as {
       client_secret?: { value?: string };
-      data?: { ephemeralToken?: string; value?: string };
+      data?: { ephemeralToken?: string; value?: string; sessionId?: string };
+      ephemeralToken?: string;
+      sessionId?: string;
     };
 
     // Support multiple response shapes
     const token =
       data.client_secret?.value ??
       data.data?.ephemeralToken ??
-      data.data?.value;
+      data.data?.value ??
+      data.ephemeralToken;
 
     if (!token) {
       throw new Error("Token endpoint did not return a valid token");
     }
-    return token;
+
+    const sessionId = data.data?.sessionId ?? data.sessionId;
+    return { token, sessionId };
   }
 
   /**

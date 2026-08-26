@@ -104,10 +104,29 @@ export class MicCaptureEngine {
   }
 
   /**
-   * Stop emitting audio frames (mic stays connected for fast re-enable).
+   * Stop emitting audio frames and release mic tracks.
    */
   disable(): void {
     this._isEnabled = false;
+
+    if (this.workletNode) {
+      this.workletNode.disconnect();
+      this.workletNode = null;
+    }
+    if (this.sourceNode) {
+      this.sourceNode.disconnect();
+      this.sourceNode = null;
+    }
+    if (this.mediaStream) {
+      for (const track of this.mediaStream.getTracks()) {
+        track.stop();
+      }
+      this.mediaStream = null;
+    }
+    if (this.audioContext && this.audioContext.state !== "closed") {
+      void this.audioContext.close();
+    }
+    this.audioContext = null;
   }
 
   /**

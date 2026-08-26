@@ -10,14 +10,14 @@ import { RealtimeConfig } from "@khaveeai/core";
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-export interface XAIRealtimeConfig extends RealtimeConfig {
+export interface XAIRealtimeConfig extends Omit<RealtimeConfig, "voice"> {
   /** Ephemeral token (browser) or API key (server-side). */
   apiKey?: string;
   /** Model identifier. Default: "grok-voice-latest" */
   model?: string;
   /** WebSocket endpoint. Default: "wss://api.x.ai/v1/realtime" */
   baseUrl?: string;
-  /** xAI voice name for TTS output. */
+  /** xAI voice name for TTS output (e.g. "sage", "ember"). */
   voice?: string;
   /** System prompt / session instructions. */
   instructions?: string;
@@ -74,6 +74,7 @@ export type XAIServerEvent =
     }
   | { type: "response.text.delta"; item_id: string; delta: string }
   | { type: "response.text.done"; item_id: string; text: string }
+  | { type: "response.output_text.done"; item_id: string; text: string }
   | {
       type: "response.audio.delta";
       item_id: string;
@@ -92,9 +93,21 @@ export type XAIServerEvent =
       delta: string;
     }
   | {
+      type: "response.output_audio_transcript.delta";
+      item_id: string;
+      delta: string;
+    }
+  | {
       type: "response.audio_transcript.done";
       item_id: string;
       transcript: string;
+      text?: string;
+    }
+  | {
+      type: "response.output_audio_transcript.done";
+      item_id: string;
+      transcript: string;
+      text?: string;
     }
   | {
       type: "response.function_call_arguments.delta";
@@ -114,6 +127,9 @@ export type XAIServerEvent =
       response: {
         id: string;
         usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          total_tokens?: number;
           input_token_details?: {
             text_tokens?: number;
             audio_tokens?: number;

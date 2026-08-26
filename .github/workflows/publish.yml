@@ -70,6 +70,7 @@ jobs:
             ["packages/providers/mock"]="@khaveeai/providers-mock"
             ["packages/providers/pgvector"]="@khaveeai/providers-pgvector"
             ["packages/providers/rag"]="@khaveeai/providers-rag"
+            ["packages/providers/xai-realtime"]="@khaveeai/providers-xai-realtime"
           )
 
           if git rev-parse sdk-published >/dev/null 2>&1; then

@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@types/react": "^19",
+    "@types/react-dom": "^19.1.9",
     "@types/three": "^0.180.0",
     "@vitest/coverage-v8": "^2.0.0",
     "react": "^19.1.0",

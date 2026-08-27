@@ -19,7 +19,7 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 ## Technology Stack
 
 ## Languages
-- TypeScript 5.x - All packages (`packages/core`, `packages/react`, `packages/providers/*`) and the Next.js demo app (`src/app`)
+- TypeScript 5.x - All packages (`packages/core`, `packages/react`, `packages/providers/*`) and the Next.js demo app (`apps/playground/src/app`)
 - PHP - Scaffolded but empty WordPress plugin (`wordpress-plugin/includes`, `wordpress-plugin/src` contain no files yet)
 - SQL - Raw SQL embedded in `packages/providers/pgvector/src/PgVectorProvider.ts` (DDL for pgvector schema/HNSW index)
 ## Runtime
@@ -27,20 +27,20 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 - Browser runtime required for SDK packages (`@khaveeai/core`, `@khaveeai/react`, realtime/STT-TTS providers use `navigator.mediaDevices`, `RTCPeerConnection`, `AudioContext`, WebGL via three.js)
 - pnpm 10.12.1 (observed), workspace-driven monorepo
 - Lockfile: present — `pnpm-lock.yaml` (lockfileVersion 9.0)
-- Workspaces declared in `pnpm-workspace.yaml`: `packages/core`, `packages/react`, `packages/providers/*`
+- Workspaces declared in `pnpm-workspace.yaml`: `apps/*`, `packages/core`, `packages/react`, `packages/providers/*`
 ## Frameworks
-- Next.js 15.5.3 (App Router, Turbopack) - demo/playground app at repo root, entry `src/app/`
+- Next.js 15.5.3 (App Router, Turbopack) - demo/playground app at `apps/playground`, entry `apps/playground/src/app/`
 - React 19.1.0 / React DOM 19.1.0 - UI layer for demo app and `@khaveeai/react` package
 - Three.js ^0.180.0 + `@pixiv/three-vrm` ^3.4.2 - 3D rendering and VRM avatar model loading
-- `@react-three/fiber` ^9.3.0, `@react-three/drei` ^10.7.6, `@react-three/postprocessing` ^3.0.4 - React bindings/helpers for three.js scenes (`src/app/components/Experience.tsx`, `src/app/components/VRMAvatarRef.tsx`)
+- `@react-three/fiber` ^9.3.0, `@react-three/drei` ^10.7.6, `@react-three/postprocessing` ^3.0.4 - React bindings/helpers for three.js scenes (`apps/playground/src/app/components/Experience.tsx`, `apps/playground/src/app/components/VRMAvatarRef.tsx`)
 - Tailwind CSS ^4 (via `@tailwindcss/postcss`) - styling for demo app, configured in `postcss.config.mjs`
 - Vitest ^2.0.0 + `@vitest/coverage-v8` - `packages/providers/openai-stt-tts` (`src/__tests__/*.test.ts`)
 - Jest ^29.0.0 - `packages/providers/qdrant` (configured via `package.json` script `"test": "jest"`, no committed jest.config found)
 - No test framework configured at repo root or in `packages/core`, `packages/react`, `packages/providers/{mock,openai,openai-realtime,pgvector,rag}`
 - TypeScript compiler (`tsc`) - build tool for `packages/core`, `packages/react`, and most providers (`"build": "tsc"` in each package.json)
 - tsup ^8.0.0 - build tool for `packages/providers/qdrant` only (dual ESM/CJS + `.d.ts` output)
-- Turbopack - Next.js dev/build acceleration (`next dev --turbopack`, `next build --turbopack` in root `package.json`)
-- ESLint 9 (flat config) - `eslint.config.mjs`, extends `next/core-web-vitals` and `next/typescript` via `FlatCompat`
+- Turbopack - Next.js dev/build acceleration (`next dev --turbopack`, `next build --turbopack` in `apps/playground/package.json`; the root delegates via `pnpm --filter`)
+- ESLint 9 (flat config) - `apps/playground/eslint.config.mjs`, extends `next/core-web-vitals` and `next/typescript` via `FlatCompat`
 - drizzle-kit ^0.31.9 - present as a devDependency at repo root but **no `drizzle.config.ts` or drizzle schema/migrations found** — appears to be an unused/leftover dependency
 ## Key Dependencies
 - `openai` (root ^6.24.0; providers use ^4.x — see version note below) - OpenAI SDK client for embeddings, chat completions, Whisper STT, TTS, and Realtime API token/session handling
@@ -53,15 +53,15 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 - `pgvector` ^0.2.1 - Node helper types/utilities for pgvector at root (actual SQL vector extension calls are raw SQL in `PgVectorProvider.ts`)
 - `@qdrant/js-client-rest` ^1.9–1.11 - Qdrant vector DB REST client used by `packages/providers/qdrant` and `packages/providers/rag`
 - `axios` ^1.12.2 - HTTP client used in `packages/core/src/client/khavee-client.ts` for calling the hosted Khavee platform API
-- `csv-parse` ^6.1.0 - CSV bulk-import parsing for pgvector document ingestion (`src/app/pgvector/actions.ts` flow)
+- `csv-parse` ^6.1.0 - CSV bulk-import parsing for pgvector document ingestion (`apps/playground/src/app/pgvector/actions.ts` flow)
 - `drizzle-orm` ^0.45.1 - Declared at root but **not imported anywhere in source** (`grep` for `drizzle` in `src/` and `packages/` returns no hits) — dead/unused dependency, candidate for removal
 - Root `package.json` pins `openai ^6.24.0`, but `packages/providers/openai` pins `openai ^4.0.0`, `pgvector` pins `^4.0.0`, `rag` and `qdrant` pin `^4.20–4.73`, and `openai-stt-tts` pins `^4.73.0`. Multiple major versions of the `openai` SDK coexist across the workspace (pnpm hoists per-package via the lockfile) — be aware of API differences between v4 and v6 when modifying providers.
 ## Configuration
 - No `.env*` files committed (`.gitignore` excludes `.env*`); environment variables are read via `process.env` at runtime, not validated by a schema library
 - Key vars read in code: `OPENAI_API_KEY`, `DATABASE_URL`, `QDRANT_HOST`, `QDRANT_API_KEY` (see INTEGRATIONS.md for full list and call sites)
-- `tsconfig.json` (root) — strict mode, ES2017 target, bundler module resolution, path aliases for `@/*` and all `@khaveeai/*` workspace packages mapped to their `src/index.ts`
+- `apps/playground/tsconfig.json` — strict mode, ES2017 target, bundler module resolution, path aliases for `@/*` and all `@khaveeai/*` workspace packages mapped to their `src/index.ts`
 - `tsconfig.packages.json` — shared base config referenced by individual package `tsconfig.json` files
-- `next.config.ts` — minimal, no custom Next.js config options set
+- `apps/playground/next.config.ts` — minimal, no custom Next.js config options set
 - `postcss.config.mjs` — Tailwind v4 plugin only
 - `eslint.config.mjs` — flat config, ignores `node_modules`, `.next`, `out`, `build`, `next-env.d.ts`
 ## Platform Requirements
@@ -98,12 +98,12 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 - No Prettier config detected (`.prettierrc*` absent). Formatting is enforced only by ESLint + TypeScript strictness; indentation is consistently 2 spaces and double quotes are used for string literals in newer provider code (`packages/providers/openai-stt-tts/src/*.ts`), while some older app/hook code mixes single quotes (`packages/providers/mock/src/index.ts`).
 - Semicolons are used consistently.
 - Trailing commas appear in multi-line function calls/object literals in newer files (`packages/providers/openai-stt-tts/src/OpenAISTTTTSProvider.ts`).
-- ESLint flat config at `eslint.config.mjs` extends `next/core-web-vitals` and `next/typescript` via `FlatCompat`. No custom rule overrides beyond `ignores` for `node_modules`, `.next`, `out`, `build`, `next-env.d.ts`.
-- Workspace packages under `packages/*` do not have their own eslint config; only the root `eslint.config.mjs` applies, and it is Next.js-oriented (primarily lints `src/app/**`). Treat ESLint as best-effort for SDK packages, not authoritative.
-- TypeScript `strict: true` is set in both `tsconfig.json` (Next app) and `tsconfig.packages.json` (SDK packages) — write strict-mode-safe code (no implicit `any`, exhaustive null checks) even though some legacy files (`OpenAIRealtimeProvider.ts`, `useAudioLipSync.ts`) still use explicit `any` for OpenAI/Meyda payloads.
+- ESLint flat config at `apps/playground/eslint.config.mjs` extends `next/core-web-vitals` and `next/typescript` via `FlatCompat`. No custom rule overrides beyond `ignores` for `node_modules`, `.next`, `out`, `build`, `next-env.d.ts`.
+- Workspace packages under `packages/*` do not have their own eslint config; only `apps/playground/eslint.config.mjs` applies, and it is Next.js-oriented (primarily lints `apps/playground/src/app/**`). Treat ESLint as best-effort for SDK packages, not authoritative.
+- TypeScript `strict: true` is set in both `apps/playground/tsconfig.json` (Next app) and `tsconfig.packages.json` (SDK packages) — write strict-mode-safe code (no implicit `any`, exhaustive null checks) even though some legacy files (`OpenAIRealtimeProvider.ts`, `useAudioLipSync.ts`) still use explicit `any` for OpenAI/Meyda payloads.
 ## Import Organization
-- The Next.js app (`src/app/**`) uses `@/*` mapped to `./src/*` (`tsconfig.json`).
-- SDK packages reference each other via published-style workspace package names (`@khaveeai/core`, `@khaveeai/react`, `@khaveeai/providers-*`), resolved through `tsconfig.json`'s `paths` map during development and through `workspace:*` / semver ranges in each package's `package.json` for build/publish.
+- The Next.js app (`apps/playground/src/app/**`) uses `@/*` mapped to `./src/*` (`apps/playground/tsconfig.json`).
+- SDK packages reference each other via published-style workspace package names (`@khaveeai/core`, `@khaveeai/react`, `@khaveeai/providers-*`), resolved through `apps/playground/tsconfig.json`'s `paths` map during development and through `workspace:*` / semver ranges in each package's `package.json` for build/publish.
 - Packages never import across sibling packages via relative `../../` paths — always via the `@khaveeai/*` package name, even within the monorepo.
 ## Error Handling
 - Async lifecycle methods (`connect`, `disconnect`, `runTurn`, `runTurnFromText`) wrap their body in `try { ... } catch (error) { this.onError?.(error instanceof Error ? error : new Error(String(error))); ... }` — always normalize unknown `catch` values to `Error` before passing to `onError` (`packages/providers/openai-stt-tts/src/OpenAISTTTTSProvider.ts:281-285`, `:375-380`, `:476-482`).
@@ -152,7 +152,7 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 | `KhaveeProvider` | React context holding exactly one `RealtimeProvider` instance plus VRM/animation/expression state; the SDK has no concept of multiple simultaneous providers | `packages/react/src/KhaveeProvider.tsx` |
 | `useRealtime` | The single hook that wires a `RealtimeProvider`'s callbacks into React state, and also contains a large embedded MFCC/DTW phoneme-detection class (`RealtimeAudioAnalyzer`) used for lip-sync | `packages/react/src/hooks/useRealtime.ts` |
 | `VRMAvatar` / `GLBAvatar` | Render layer; consumes `chatStatus` from `KhaveeProvider` context to trigger talking animations | `packages/react/src/VRMAvatar.tsx`, `packages/react/src/GLBAvatar.tsx` |
-| Example app (`src/app/openai/page.tsx`) | Only wires `OpenAIRealtimeProvider`; there is currently **no example wiring `OpenAISTTTTSProvider`** in the Next.js demo app — it is only exercised by its own unit tests | `src/app/openai/page.tsx`, `packages/providers/openai-stt-tts/src/__tests__/` |
+| Example app (`apps/playground/src/app/openai/page.tsx`) | Only wires `OpenAIRealtimeProvider`; there is currently **no example wiring `OpenAISTTTTSProvider`** in the Next.js demo app — it is only exercised by its own unit tests | `apps/playground/src/app/openai/page.tsx`, `packages/providers/openai-stt-tts/src/__tests__/` |
 ## Pattern Overview
 - One interface (`RealtimeProvider`) is the only seam the rest of the SDK (React layer) depends on. Anything implementing it is fully interchangeable from `KhaveeProvider`'s point of view.
 - Internally, `OpenAISTTTTSProvider` already decomposes its pipeline into 4 single-purpose helper classes (`AudioRecorder`, `STTClient`, `ChatClient`, `TTSPlayer`) — this is the natural seam to generalize into independent STT/LLM/TTS provider interfaces (pipecat-style), but today those helpers are concrete, OpenAI-specific classes, not interfaces.
@@ -171,14 +171,14 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 - Location: `packages/providers/{openai-realtime,openai-stt-tts,openai,mock,azure,pgvector,qdrant,rag}`
 - Contains: One main class per package implementing a core interface, plus package-private helper classes not exported from `index.ts`.
 - Depends on: `@khaveeai/core` types only (no dependency on `@khaveeai/react` or other provider packages).
-- Used by: Application code (e.g. `src/app/openai/page.tsx`) and `@khaveeai/react` (structurally, via the interface — `@khaveeai/react` never imports a concrete provider package directly).
+- Used by: Application code (e.g. `apps/playground/src/app/openai/page.tsx`) and `@khaveeai/react` (structurally, via the interface — `@khaveeai/react` never imports a concrete provider package directly).
 - Purpose: Bridge a `RealtimeProvider` instance into React state/hooks, render the VRM/GLB avatar, and drive lip-sync animation from whatever `AnalyserNode` the active provider exposes.
 - Location: `packages/react/src`
 - Contains: `KhaveeProvider.tsx` (context), `VRMAvatar.tsx`/`GLBAvatar.tsx` (3D rendering + animation), `hooks/useRealtime.ts` (event wiring + embedded phoneme analyzer), `hooks/useAudioLipSync.ts`.
 - Depends on: `@khaveeai/core` types, `three`/`@pixiv/three-vrm`/`@react-three/fiber`, `meyda` (MFCC feature extraction).
-- Used by: Application code (`src/app/*`) and the WordPress plugin (`wordpress-plugin/src`).
-- Purpose: Next.js app demonstrating SDK usage (`src/app`), plus a WordPress embed (`wordpress-plugin`).
-- Location: `src/app`, `wordpress-plugin`
+- Used by: Application code (`apps/playground/src/app/*`) and the WordPress plugin (`wordpress-plugin/src`).
+- Purpose: Next.js app demonstrating SDK usage (`apps/playground/src/app`), plus a WordPress embed (`wordpress-plugin`).
+- Location: `apps/playground/src/app`, `wordpress-plugin`
 - Contains: Page components that instantiate one provider, wrap it in `KhaveeProvider`, and render `VRMAvatar`/`GLBAvatar` plus chat UI.
 - Depends on: `@khaveeai/react`, `@khaveeai/providers-*`, `@khaveeai/core`.
 - Used by: End users / nothing internal depends on this layer.
@@ -213,9 +213,9 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 - Location: `packages/react/src/hooks/useRealtime.ts`
 - Triggers: Called from any component needing chat state/actions (`connect`, `disconnect`, `sendMessage`, `interrupt`, mic toggles).
 - Responsibilities: Subscribe to the active provider's event callbacks, mirror them into React state, own the lip-sync `RealtimeAudioAnalyzer` lifecycle.
-- Location: `src/app/openai/page.tsx`, `src/app/glb/page.tsx`, `src/app/pgvector/page.tsx`, `src/app/rag-realtime/page.tsx`
+- Location: `apps/playground/src/app/openai/page.tsx`, `apps/playground/src/app/glb/page.tsx`, `apps/playground/src/app/pgvector/page.tsx`, `apps/playground/src/app/rag-realtime/page.tsx`
 - Triggers: Direct navigation in the demo app.
-- Responsibilities: Construct one concrete provider, wrap in `KhaveeProvider`, render `VRMAvatar`/`GLBAvatar` + chat UI. `src/app/api/negotiate/route.ts` is the backend proxy endpoint the realtime provider's `useProxy` mode (or direct SDP relay) calls into.
+- Responsibilities: Construct one concrete provider, wrap in `KhaveeProvider`, render `VRMAvatar`/`GLBAvatar` + chat UI. `apps/playground/src/app/api/negotiate/route.ts` is the backend proxy endpoint the realtime provider's `useProxy` mode (or direct SDP relay) calls into.
 ## Architectural Constraints
 - **Threading:** Single-threaded browser/event-loop model throughout; no workers. Audio processing (`AudioContext`, `AnalyserNode`, MicVAD's audio worklet) runs in the browser's audio thread/worklet under the hood but is not something this codebase manages explicitly beyond `AudioContext` lifecycle.
 - **Global state:** None at module scope — all state is instance-scoped on provider classes or React context state. No singletons observed in `packages/core` or `packages/providers`.

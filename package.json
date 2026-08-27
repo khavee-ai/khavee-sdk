@@ -1,88 +1,22 @@
 {
   "name": "@khaveeai/sdk",
   "version": "0.1.0",
-  "description": "KhaveeAI VRM Avatar SDK - A comprehensive toolkit for creating interactive AI-powered avatars",
-  "keywords": [
-    "vrm",
-    "avatar",
-    "ai",
-    "3d",
-    "animation",
-    "realtime",
-    "sdk"
-  ],
-  "homepage": "https://github.com/SolveServeSolution/khaveeai-sdk#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/SolveServeSolution/khaveeai-sdk.git"
-  },
-  "bugs": {
-    "url": "https://github.com/SolveServeSolution/khaveeai-sdk/issues"
-  },
-  "author": "KhaveeAI <support@khaveeai.com>",
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
-  "workspaces": [
-    "packages/core",
-    "packages/react",
-    "packages/providers/*"
-  ],
+  "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
-    "lint": "eslint",
-    "build:packages": "pnpm -r build",
-    "dev:packages": "pnpm -r dev",
-    "clean": "pnpm -r clean",
+    "build": "pnpm --filter @khaveeai/playground build",
+    "build:packages": "pnpm --filter './packages/**' build",
+    "clean": "pnpm --filter './packages/**' clean",
+    "dev": "pnpm --filter @khaveeai/playground dev",
+    "dev:packages": "pnpm --filter './packages/**' dev",
+    "lint": "pnpm --filter @khaveeai/playground lint",
     "prepublishOnly": "pnpm run clean && pnpm run build:packages",
-    "publish:all": "pnpm run prepublishOnly && pnpm -r publish --access public",
-    "version:patch": "pnpm -r exec npm version patch",
-    "version:minor": "pnpm -r exec npm version minor",
-    "version:major": "pnpm -r exec npm version major"
-  },
-  "dependencies": {
-    "@khaveeai/core": "workspace:*",
-    "@khaveeai/providers-mock": "workspace:*",
-    "@khaveeai/providers-openai-realtime": "workspace:*",
-    "@khaveeai/providers-generic-stt-tts": "workspace:*",
-    "@khaveeai/providers-pgvector": "workspace:*",
-    "@khaveeai/react": "workspace:*",
-    "@pixiv/three-vrm": "^3.4.2",
-    "@react-three/drei": "^10.7.6",
-    "@react-three/fiber": "^9.3.0",
-    "@react-three/postprocessing": "^3.0.4",
-    "@types/three": "^0.180.0",
-    "csv-parse": "^6.1.0",
-    "drizzle-orm": "^0.45.1",
-    "leva": "^0.10.0",
-    "meyda": "^5.6.3",
-    "next": "15.5.3",
-    "openai": "^6.24.0",
-    "pg": "^8.18.0",
-    "pgvector": "^0.2.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "three": "^0.180.0"
+    "publish:all": "pnpm run prepublishOnly && pnpm --filter './packages/**' publish --access public",
+    "version:major": "pnpm --filter './packages/**' exec npm version major",
+    "version:minor": "pnpm --filter './packages/**' exec npm version minor",
+    "version:patch": "pnpm --filter './packages/**' exec npm version patch"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20.19.14",
-    "@types/pg": "^8.16.0",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "drizzle-kit": "^0.31.9",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.3",
-    "tailwindcss": "^4",
     "typescript": "^5"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
-  }
+  "packageManager": "pnpm@10.12.1"
 }

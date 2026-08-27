@@ -102,7 +102,7 @@ Never embed a real API key directly in browser code (`apiKey` config fields exis
 
 ## See a real cross-vendor pipeline running
 
-`src/app/generic-demo/page.tsx` in this repo is a complete working example that mixes vendors in one pipeline: OpenAI for VAD and the LLM, plus two custom HTTP adapters — `ThonburianSTTAdapter` (a local Thai Whisper STT service) and `JaiTTSAdapter` (a local Thai voice-cloning TTS service) — both implementing the plain `STTProvider`/`TTSProvider` interfaces from `@khaveeai/core` in well under 100 lines each. See `src/app/generic-demo/README.md` for how to run the two local backend services and try it yourself.
+`apps/playground/src/app/generic-demo/page.tsx` in this repo is a complete working example that mixes vendors in one pipeline: OpenAI for VAD and the LLM, plus two custom HTTP adapters — `ThonburianSTTAdapter` (a local Thai Whisper STT service) and `JaiTTSAdapter` (a local Thai voice-cloning TTS service) — both implementing the plain `STTProvider`/`TTSProvider` interfaces from `@khaveeai/core` in well under 100 lines each. See `apps/playground/src/app/generic-demo/README.md` for how to run the two local backend services and try it yourself.
 
 ## Avatar rendering: VRM vs GLB
 
@@ -128,7 +128,7 @@ This works the same way across `OpenAIRealtimeProvider`, `OpenAISTTTTSProvider`,
 
 ## Known issues
 
-- **`@khaveeai/providers-openai-realtime`'s proxy contract.** The provider's `connect()` expects a proxy endpoint that returns an ephemeral session token; the example negotiate route in this repo (`src/app/api/negotiate/route.ts`) predates that contract and returns a different shape. If you copy the demo route as-is, verify it against the provider's actual `connect()` implementation first.
+- **`@khaveeai/providers-openai-realtime`'s proxy contract.** The provider's `connect()` expects a proxy endpoint that returns an ephemeral session token; the example negotiate route in this repo (`apps/playground/src/app/api/negotiate/route.ts`) predates that contract and returns a different shape. If you copy the demo route as-is, verify it against the provider's actual `connect()` implementation first.
 
 ## Development
 

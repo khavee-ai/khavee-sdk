@@ -47,13 +47,13 @@ const openaiProvider = new OpenAIRealtimeProvider({
 // picks (no dedicated greet/farewell clip exists yet, D-01/issue #17) reusing
 // wave.fbx/sad.fbx; swap freely once real clips land.
 const VRM_ANIMATIONS: AnimationConfig = {
-  idle: '/models/animations/idle.fbx', // ready (/idle|ready|rest/i)
-  talking: '/models/animations/talk.fbx', // speaking (/talk|gesture|speak|taking/i)
-  talking1: '/models/animations/talk2.fbx', // TALK-01 variant cycling
-  talking2: '/models/animations/talk3.fbx', // TALK-01 variant cycling
-  thinking: '/models/animations/thinking.fbx', // thinking (/think/i)
-  welcome: '/models/animations/wave.fbx', // starting (/welcome|greet|hello|intro/i)
-  listening: '/models/animations/thinking2.fbx', // listening (/listen|hear/i)
+  idle: '/models/animations/mk.fbx', // ready (/idle|ready|rest/i)
+  // talking: '/models/animations/talk.fbx', // speaking (/talk|gesture|speak|taking/i)
+  // talking1: '/models/animations/talk2.fbx', // TALK-01 variant cycling
+  // talking2: '/models/animations/talk3.fbx', // TALK-01 variant cycling
+  // thinking: '/models/animations/thinking.fbx', // thinking (/think/i)
+  // welcome: '/models/animations/wave.fbx', // starting (/welcome|greet|hello|intro/i)
+  // listening: '/models/animations/thinking2.fbx', // listening (/listen|hear/i)
   // goodbye: '/models/animations/sad.fbx', // stopped (/stop|bye|goodbye|outro/i)
 };
 

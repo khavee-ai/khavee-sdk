@@ -13,11 +13,17 @@ import { RealtimeConfig } from "@khaveeai/core";
 export interface XAIRealtimeConfig extends Omit<RealtimeConfig, "voice"> {
   /** Ephemeral token (browser) or API key (server-side). */
   apiKey?: string;
-  /** Model identifier. Default: "grok-voice-latest" */
+  /**
+   * Model identifier. Default: "grok-voice-think-fast-1.0".
+   *
+   * Prefer an explicit version over the "grok-voice-latest" alias: xAI
+   * bills voice per minute of audio and the alias resolves to
+   * think-fast-2.0 at $0.08/min, vs $0.05/min for think-fast-1.0.
+   */
   model?: string;
   /** WebSocket endpoint. Default: "wss://api.x.ai/v1/realtime" */
   baseUrl?: string;
-  /** xAI voice name for TTS output (e.g. "sage", "ember"). */
+  /** Lowercase xAI voice id, e.g. "eve", "ara", "leo". Default: "eve". */
   voice?: string;
   /** System prompt / session instructions. */
   instructions?: string;

@@ -149,11 +149,20 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         this.onError?.(error);
       };
 
-      // Start mic capture
+      // Start mic capture. On a silent reconnect (idle-session reset,
+      // skipGreeting=true), restore the mic to exactly what it was before
+      // disconnect() tore it down instead of always turning it on — found
+      // live: idle reset always re-enabled a mic the visitor had
+      // deliberately muted. `this.micEnabled` survives disconnect()
+      // untouched specifically so this read reflects the pre-reconnect
+      // state (see disconnect() below).
       try {
         await this.micEngine.initialize();
-        await this.micEngine.enable();
-        this.micEnabled = true;
+        const shouldEnableMic = options?.skipGreeting ? this.micEnabled : true;
+        if (shouldEnableMic) {
+          await this.micEngine.enable();
+        }
+        this.micEnabled = shouldEnableMic;
       } catch (micError) {
         // Mic permission denied is non-fatal — text input still works
         console.warn("Mic capture initialization failed:", micError);
@@ -212,7 +221,10 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
       this.micEngine?.destroy();
       this.micEngine = null;
-      this.micEnabled = false;
+      // micEnabled is intentionally NOT reset here — the hardware capture
+      // is torn down, but the flag must survive disconnect() so a silent
+      // reconnect (idle-session reset) can read it in connect() to restore
+      // the mic to exactly this state instead of defaulting it back on.
 
       this.playbackEngine?.destroy();
       this.playbackEngine = null;

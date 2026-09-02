@@ -8,6 +8,7 @@
 import {
   RealtimeProvider,
   RealtimeConfig,
+  RealtimeConnectOptions,
   RealtimeTool,
   UsageReport,
   Conversation,
@@ -233,7 +234,7 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
    *
    * On any error: fires onError, sets status "stopped", then calls disconnect().
    */
-  async connect(): Promise<void> {
+  async connect(options?: RealtimeConnectOptions): Promise<void> {
     try {
       this.setChatStatus("starting");
 
@@ -275,7 +276,20 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
       });
 
       this.isConnected = true;
-      this.micEnabled = true;
+      // On a silent reconnect (idle-session reset, skipGreeting=true),
+      // restore the mic to exactly what it was before disconnect() tore it
+      // down instead of always turning it on — found live: idle reset
+      // always re-enabled a mic the visitor had deliberately muted.
+      // `this.micEnabled` survives disconnect() untouched specifically so
+      // this read reflects the pre-reconnect state. audioRecorder.connect()
+      // above always starts the VAD actively listening, so restoring
+      // "disabled" needs an explicit pause() here too — mirroring what
+      // disableMicrophone() itself does — not just the flag.
+      const shouldEnableMic = options?.skipGreeting ? this.micEnabled : true;
+      if (!shouldEnableMic) {
+        await this.audioRecorder.pause();
+      }
+      this.micEnabled = shouldEnableMic;
       this.setChatStatus("ready");
       this.onConnect?.();
     } catch (error) {

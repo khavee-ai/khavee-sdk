@@ -569,7 +569,22 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       // transcript. Manually perform what the greeting's completion
       // (output_audio_buffer.stopped) would normally do, since that event
       // never fires here.
-      this.enableMic();
+      //
+      // The mic must end up exactly as it was before this reconnect, never
+      // forced back on (found live: idle-session reset always re-enabled a
+      // mic the visitor had deliberately muted). `this.micEnabled` still
+      // holds that pre-reconnect value here — nothing between the top of
+      // connect() and this point touches it — but the brand-new audioStream
+      // acquired in connect() was unconditionally muted, so the two are out
+      // of sync and must be resynced directly rather than via enableMic()
+      // (its `!this.micEnabled` guard is for "first enable this session,"
+      // not "restore after reconnect," and would wrongly no-op here,
+      // leaving an should-be-enabled mic silently muted).
+      if (this.micEnabled && this.audioStream) {
+        this.audioStream
+          .getAudioTracks()
+          .forEach((track) => (track.enabled = true));
+      }
       this.hasHeardFirstGreeting = true;
       this.setChatStatus("ready");
       return;

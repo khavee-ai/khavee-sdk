@@ -39,6 +39,13 @@ export interface RealtimeConfig {
     | "marin"
     | "cedar";
   instructions?: string;
+  /**
+   * Fixed opening line. When set, providers speak it verbatim (in the
+   * language it is written in) as the very first assistant turn instead of
+   * improvising one from `instructions`. Ignored when connecting with
+   * `connect({ skipGreeting: true })`. Blank/whitespace counts as unset.
+   */
+  greeting?: string;
   temperature?: number;
   tools?: RealtimeTool[];
   turnServers?: RTCIceServer[];

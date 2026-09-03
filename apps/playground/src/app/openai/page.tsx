@@ -8,6 +8,9 @@ const openaiProvider = new OpenAIRealtimeProvider({
   proxyEndpoint: '/api/negotiate',
   voice: 'shimmer',
   instructions: 'You are a helpful AI assistant. Be conversational and friendly.',
+  // Fixed opening line — spoken word for word on connect. Remove it to hear
+  // the improvised greeting instead.
+  greeting: 'Hi there! Welcome to the Khavee playground. What can I help you with today?',
 });
 
 function OpenAIChat() {

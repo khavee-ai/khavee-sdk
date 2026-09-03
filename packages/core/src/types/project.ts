@@ -49,6 +49,8 @@ export interface ProjectPersonalityDetails {
   description: string;
   traits: string[];
   backgroundStory?: string;
+  /** Fixed opening line spoken verbatim at session start (see RealtimeConfig.greeting). */
+  greeting?: string;
   formality: string;
   includeEmojis: boolean;
   responseLength: string;

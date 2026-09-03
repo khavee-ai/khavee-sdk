@@ -92,6 +92,10 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
   // Prevents concurrent runTurn invocations from VAD double-fire
   private _isTurnActive = false;
 
+  // Resolves when the configured greeting has finished playing (or was
+  // cancelled). Non-null only while a greeting is in flight after connect().
+  protected greetingInFlight: Promise<void> | null = null;
+
   // ── Public interface state ───────────────────────────────────────────────
 
   public isConnected = false;
@@ -290,6 +294,21 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
         await this.audioRecorder.pause();
       }
       this.micEnabled = shouldEnableMic;
+
+      const greeting = this.config.greeting?.trim();
+      if (greeting && !options?.skipGreeting) {
+        // Speak the fixed greeting as the first assistant turn. Not awaited:
+        // connect() resolves once the session is usable, matching the realtime
+        // providers where the greeting streams after connect() returns.
+        // chatStatus stays "starting" until audio begins ("speaking"), then
+        // settles to "ready" when playback ends.
+        this.onConnect?.();
+        this.greetingInFlight = this.runGreeting(greeting).finally(() => {
+          this.greetingInFlight = null;
+        });
+        return;
+      }
+
       this.setChatStatus("ready");
       this.onConnect?.();
     } catch (error) {
@@ -357,10 +376,89 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
    * Send a text message (skips STT — text is already known) and play TTS response.
    */
   async sendMessage(text: string): Promise<void> {
+    // A typed message during the greeting cuts it short (the realtime
+    // providers likewise interrupt a speaking bot) and waits for the mic /
+    // status restore before the turn runs, so the two never overlap.
+    if (this.greetingInFlight) {
+      this.ttsPlayer.cancel();
+      await this.greetingInFlight;
+    }
     await this.runTurnFromText(text);
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────
+
+  /** TTS request options shared by normal turns and the greeting. */
+  private buildSpeakConfig() {
+    return {
+      endpoint: this.config.ttsProxyEndpoint ?? "",
+      authToken: this.resolveAuthToken(),
+      voice: this.config.voice ?? "alloy",
+      speed: this.config.speed ?? 1.0,
+      model: this.config.ttsModel ?? "gpt-4o-mini-tts",
+      instructions: this.config.ttsInstructions,
+    };
+  }
+
+  /**
+   * Speak the configured greeting as the assistant's first turn.
+   *
+   * The mic stays paused for the whole playback (the VAD must not hear the
+   * bot), the greeting is recorded in `messages` so later Chat Completions
+   * calls know it was already said, and `disconnect()` mid-greeting wins:
+   * it cancels TTS, tears the VAD down and sets "stopped" — nothing here may
+   * resurrect the mic or the status after that, hence the isConnected guards.
+   * No Chat Completions call is made, so no usage report fires for it.
+   */
+  private async runGreeting(text: string): Promise<void> {
+    try {
+      await this.audioRecorder.pause();
+      this.micEnabled = false;
+
+      this.messages.push({ role: "assistant", content: text });
+      const greetingEntry: Conversation = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text,
+        timestamp: new Date().toISOString(),
+        isFinal: true,
+        status: "final",
+      };
+      this.conversation.push(greetingEntry);
+      this.onConversationUpdate?.(this.conversation);
+
+      let speakingStatusSet = false;
+      await this.ttsPlayer.speak(
+        text,
+        this.buildSpeakConfig(),
+        this.audioOutputContext ?? new AudioContext(),
+        (analyser: AnalyserNode, ctx: AudioContext) => {
+          if (!speakingStatusSet) {
+            speakingStatusSet = true;
+            this.setChatStatus("speaking");
+          }
+          this.audioOutputAnalyser = analyser;
+          this.onAudioData?.(analyser, ctx);
+        },
+      );
+    } catch (error) {
+      // An aborted fetch / closed AudioContext after disconnect() is expected.
+      if (this.isConnected) {
+        this.onError?.(error instanceof Error ? error : new Error(String(error)));
+      }
+    } finally {
+      if (this.isConnected) {
+        // Same post-playback sequence as a normal turn: resume the VAD, then
+        // a short cooldown so any TTS echo the mic picks up is discarded.
+        await this.audioRecorder.resume();
+        this.micEnabled = true;
+        await new Promise<void>((resolve) => setTimeout(resolve, 500));
+        if (this.isConnected) {
+          this.setChatStatus("ready");
+        }
+      }
+    }
+  }
 
   /**
    * Full turn pipeline driven by a WAV blob from the VAD.
@@ -459,14 +557,7 @@ export class OpenAISTTTTSProvider implements RealtimeProvider {
       let speakingStatusSet = false;
       await this.ttsPlayer.speak(
         result.text,
-        {
-          endpoint: this.config.ttsProxyEndpoint ?? "",
-          authToken: this.resolveAuthToken(),
-          voice: this.config.voice ?? "alloy",
-          speed: this.config.speed ?? 1.0,
-          model: this.config.ttsModel ?? "gpt-4o-mini-tts",
-          instructions: this.config.ttsInstructions,
-        },
+        this.buildSpeakConfig(),
         // Use a fallback AudioContext if somehow called before connect()
         this.audioOutputContext ?? new AudioContext(),
         (analyser: AnalyserNode, ctx: AudioContext) => {

@@ -118,7 +118,8 @@ A working example lives at `apps/playground/src/app/xai/page.tsx` in this monore
 |---|---|---|---|
 | `model` | `string` | `"grok-voice-think-fast-1.0"` | Prefer an explicit version over `grok-voice-latest` — see Billing |
 | `voice` | `string` | *(xAI server default)* | Lowercase xAI voice id. Omitted from `session.update` when unset. **Not** an OpenAI voice name |
-| `instructions` | `string` | — | System prompt. Also gates the greeting: no instructions, no greeting |
+| `instructions` | `string` | — | System prompt. Gates the greeting together with `greeting`: with neither set, no greeting is sent |
+| `greeting` | `string` | — | Fixed opening line, spoken word for word (in the language it is written in) as the first turn instead of an improvised greeting. Blank counts as unset |
 | `tokenEndpoint` | `string` | — | Backend route that mints an ephemeral token. Strongly preferred over `apiKey` |
 | `apiKey` | `string` | — | Direct mode. Server-side or local development only |
 | `baseUrl` | `string` | `"wss://api.x.ai/v1/realtime"` | |

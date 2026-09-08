@@ -484,6 +484,38 @@ Plans:
 
 - [x] 14-01-PLAN.md — Full xAI Realtime Provider implementation (package scaffold + WebSocket transport + audio playback engine + mic capture + tool calling + session management)
 
+### v3.1 Avatar Render Quality
+
+- [ ] **Phase 15: MToon Material Repair & Tone Mapping** - Zero-config correction of broken authored MToon values plus a toon-appropriate tone curve, so every VRM avatar renders with correct toon shading without touching the character assets
+
+### Phase 15: MToon Material Repair & Tone Mapping
+
+**Goal**: Every VRM avatar renders with correct toon shading out of the box — MToon values an artist got wrong are repaired automatically, well-authored models are left untouched, and the renderer's tone curve stops eating the saturation toon shading depends on
+**Depends on**: Spikes 001-003 (`.planning/spikes/`) — rule set, thresholds and tone curve are all spike-validated
+**Requirements**: MTOON-01, MTOON-02, MTOON-03, MTOON-04, MTOON-05, TONE-01, TEST-01
+**Success Criteria** (what must be TRUE):
+
+  1. `male.vrm` mounted as `<VRMAvatar src="..." />` with no extra props renders with its hair receiving shading (today it is permanently 100% lit), a visible rim on body surfaces, and a toon-width shading ramp rather than a Lambert-width one
+  2. `3636451243928341470.vrm` — a well-authored VRM 1.0 model the pass DOES modify (7 of its 21 materials) — is judged unchanged by a human reviewer
+  3. No material matching the face-detail classifier (eyes, irises, highlights, lashes, eyelines, brows, mouth interiors) is ever modified, proven by an automated test against real `.vrm` assets, not by inspection
+  4. An injected rim carries the material's own hue rather than grey: with repair ON, measured mean saturation is not lower than with repair OFF on `male.vrm` (spike 003 measured a drop, caused by deriving rim from `litFactor` which VRoid models leave white)
+  5. `materialPreset="off"` restores the authored values at runtime without a reload, and `materialPreset` defaults to `"repair"`
+  6. Default renderer tone mapping is `THREE.CineonToneMapping`, and passing the existing `toneMapping` prop still overrides it
+  7. `debugShading` renders MToon's `litShadeRate` view, so shading boundaries can be tuned visually
+  8. The existing `openai-stt-tts` provider and every current `VRMAvatar`/`GLBAvatar` consumer continue to work unchanged
+
+**Plans**: 4 plans in 3 waves
+Plans:
+**Wave 1**
+- [ ] 15-01-PLAN.md — Graduate the MToon repair pass into `@khaveeai/react` + fix the R1 rim-tint bug (MTOON-01/02/03)
+
+**Wave 2** (parallel)
+- [ ] 15-02-PLAN.md — Headless real-asset vitest suite proving the repair invariants (TEST-01)
+- [ ] 15-03-PLAN.md — `materialPreset`, `debugShading` and the CineonToneMapping default on VRMAvatar (MTOON-04/05, TONE-01)
+
+**Wave 3**
+- [ ] 15-04-PLAN.md — Repoint the spike harness at the SDK, live prop controls, human verification of criteria 1/2/4/5/7
+
 ## Progress
 
 **Execution Order:**
@@ -507,3 +539,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 12. Gaze & Gesture | 10/10 | Gap deferred |  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |
 | 14. xAI Realtime Provider | 1/1 | Complete   | 2026-08-25 |
+| 15. MToon Material Repair & Tone Mapping | 0/4 | Planned | - |

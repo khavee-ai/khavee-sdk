@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.2
-milestone_name: Natural Avatar Animation
-status: verifying
-stopped_at: 12-10 landed CR-01 gaze re-clamp fix + real-asset diagnosis; GAZE-02 human-verify checkpoint deferred by user (not urgent) -- GAZE-02 remains an open, low-priority gap
-last_updated: "2026-08-25T16:55:01.611Z"
-last_activity: 2026-08-25
+milestone: v3.1
+milestone_name: Avatar Render Quality
+status: planned
+stopped_at: Phase 15 planned and plan-checker PASSED (4 plans, 3 waves) -- ready for /gsd:execute-phase 15
+last_updated: "2026-09-09T00:00:00.000Z"
+last_activity: 2026-09-09
 progress:
-  total_phases: 13
-  completed_phases: 11
-  total_plans: 68
+  total_phases: 18
+  completed_phases: 13
+  total_plans: 72
   completed_plans: 68
-  percent: 85
+  percent: 72
 ---
 
 # Project State
@@ -20,15 +20,42 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-07-11)
 
-**Core value (v2.2):** Replace `VRMAvatar`/`GLBAvatar`'s robotic chatStatus-driven animation switching with a unified, natural-feeling state architecture — shared internal module, procedural motion layer, and a zero-config public API.
-**Current focus:** Phase 14 — xai-realtime-provider
+**Core value (v3.1):** Close the avatar render-quality gap against consumer companion apps
+(benchmark: Animates / Animation Inc) without touching the character assets or the animation
+system — the bottleneck is shading, lighting, composition and facial performance, not animation.
+See `.planning/ROADMAP.md` -> "### v3.1 Avatar Render Quality" for the full rationale and the
+Phase 16-18 scope outlines, plus the deferred asset/product tracks.
+**Current focus:** Phase 15 — mtoon-material-repair-tone-mapping
 
 ## Current Position
 
-Phase: 14 (xai-realtime-provider) — EXECUTING
-Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-08-25
+Phase: 15 (mtoon-material-repair-tone-mapping) — PLANNED, not yet executed
+Plan: 0 of 4
+Status: plan-checker VERIFICATION PASSED (no blockers, no warnings) — ready for `/gsd:execute-phase 15`
+Branch: `feat/mtoon-render-quality` (branched off `main`; nothing merged yet)
+Last activity: 2026-09-09
+
+### How Phase 15 was grounded
+
+Three spikes ran before planning and are the source of every threshold in the plans —
+`.planning/spikes/` (MANIFEST.md, CONVENTIONS.md, 001/002/003 READMEs), all VALIDATED:
+
+- **001 mtoon-runtime-audit** — measured real MToon values at runtime. Killed two drafted repair
+  rules (one had 0 hits across 78 materials; the other's 7/7 hits were deliberately-flat face
+  details where "repair" would paint shadows across irises). Also found the full
+  `VRMLoaderPlugin` DOES load headless in Node — Phase 11 concluded otherwise, but the blocker is
+  texture decoding only. That unlock is what makes Phase 15's TEST-01 possible.
+- **002 mtoon-repair-pass** — human-verified at `/mtoon-spike`: badly-authored model improves,
+  well-authored control does not regress despite the pass modifying 7 of its 21 materials.
+- **003 tonemapping-toon** — measured six tone curves. Cineon chosen (+35% saturation vs
+  ACESFilmic at near-equal contrast). `NoToneMapping` refuted as a "flat look" option. Surfaced
+  the open rim-tint bug that Phase 15's MTOON-03 fixes.
+
+### Note on Phase 15's blocking checkpoint
+
+Plan 15-04 ends in a `checkpoint:human-verify` with `gate="blocking"` — roadmap success criteria
+1 and 2 are visual judgements and are deliberately not automated. It needs a dev server and a
+human at `apps/playground` `/mtoon-spike`.
 
 Plan 12-06 result: Objective code-level gates G-1..G-9 all PASS. Live human verification confirmed GEST-01 and GEST-02 ("approved" on both). GAZE-01 and GAZE-02 FAILED: gaze snapped directly to its target instead of smoothly transitioning (Gap 1), and the GLB avatar additionally showed a GLB-only idle-animation spin regression (Gap 2). Full detail in `12-06-VERIFICATION.md`.
 
@@ -129,6 +156,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-25T16:55:01.603Z
-Stopped at: 12-10 landed CR-01 gaze re-clamp fix + real-asset diagnosis; GAZE-02 human-verify checkpoint deferred by user (not urgent) -- GAZE-02 remains an open, low-priority gap
+Last session: 2026-08-25T17:01:34.057Z
+Stopped at: context exhaustion at 75% (2026-08-25)
 Resume file: None

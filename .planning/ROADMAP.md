@@ -486,7 +486,21 @@ Plans:
 
 ### v3.1 Avatar Render Quality
 
+**Why this milestone exists.** Benchmarked against Animates (Animation Inc — the studio behind
+Grok's companion avatars), whose reviewers single out art and animation quality. A gap analysis
+of this SDK found the bottleneck is NOT the animation system — `packages/react/src/animation/`
+already ships blink, breathing, sway, gaze, gesture, talk-cycle, expression drift and a
+pose-gap-adaptive crossfade engine, which is ahead of most competing SDKs. The gap is in
+**shading, lighting, composition and facial performance**, plus asset quality. Production today
+(`khavee-app`'s `PreviewModel.tsx`) renders with one ambient light, one untuned directional
+light, no post-processing, a filmic tone curve fighting toon materials, and a CSS background the
+avatar is never lit by. Phases 15-18 close the code half of that gap in dependency order; the
+asset half is tracked separately below.
+
 - [ ] **Phase 15: MToon Material Repair & Tone Mapping** - Zero-config correction of broken authored MToon values plus a toon-appropriate tone curve, so every VRM avatar renders with correct toon shading without touching the character assets
+- [ ] **Phase 16: Lighting, Shadows & Post-Processing** - A real light rig with rim/back light, soft contact shadows, and an opt-in post chain (DOF, vignette, grading) so the avatar reads as lit and composed rather than pasted onto its background
+- [ ] **Phase 17: Camera Direction & Scene Composition** - Curated framing, subtle camera life, and state-driven reframing, replacing free orbit that lets a viewer land on an unflattering angle
+- [ ] **Phase 18: Facial Performance — Eyes, Visemes & Emotion** - Real eye movement, TTS-timed visemes instead of guessed-from-audio phonemes, and an LLM-driven emotion channel wired to expression, gesture and gaze
 
 ### Phase 15: MToon Material Repair & Tone Mapping
 
@@ -516,6 +530,71 @@ Plans:
 **Wave 3**
 - [ ] 15-04-PLAN.md — Repoint the spike harness at the SDK, live prop controls, human verification of criteria 1/2/4/5/7
 
+### Phase 16: Lighting, Shadows & Post-Processing
+
+**Goal**: An avatar reads as a lit, grounded subject rather than a flat cut-out pasted on a background — a proper light rig with a rim/back light, soft contact shadows, and an opt-in post-processing chain that separates subject from background
+**Depends on**: Phase 15 (materials must be correct before lighting them is meaningful; Phase 15 also trades away contrast that this phase is expected to give back)
+**Requirements**: TBD
+**Scope outline** (not yet decomposed):
+
+  1. **Three-point light rig** replacing `AvatarLightRig`'s ambient + single directional — key, cool fill, and a **rim/back light**, which is the signature of premium anime rendering. Phase 15 moved the default tone curve from ACESFilmic to Cineon, measurably trading ~0.014 of contrast (spike 003) — that contrast is meant to be recovered here, from lighting, not from the tone curve.
+  2. **`ContactShadows`** (drei) in place of the plain `shadowMaterial` `ShadowFloor`, so the avatar has believable ground contact instead of appearing to float.
+  3. **Opt-in post chain** extending `AvatarPostFX`: depth of field (the single biggest "this looks cinematic" lever — it separates subject from background), vignette, and colour grading. Today production mounts `<AvatarPostFX bloom={false} />`, i.e. SMAA only.
+  4. **Background / IBL integration** — production composites the avatar over a CSS `background-image` on a transparent canvas, so the character is never lit by, or colour-matched to, its own scene. Options include a subtle `<Environment>` and deriving a fill-light tint from the background image.
+  5. **MToon outlines** — deferred here from Phase 15 for cost reasons: an outline is an extra draw pass per material (19 materials on `male.vrm`), so it must be gated by the performance tiers in Phase 13.
+
+**Plans**: TBD
+
+### Phase 17: Camera Direction & Scene Composition
+
+**Goal**: The avatar is always framed deliberately — a viewer cannot land on an unflattering angle, and the camera has enough life that the scene does not read as a static render
+**Depends on**: Phase 16 (framing decisions depend on the lighting and depth-of-field the scene actually has)
+**Requirements**: TBD
+**Scope outline** (not yet decomposed):
+
+  1. **Framing presets** (e.g. medium close-up) replacing unconstrained `CameraControls` orbit, which today lets a viewer rotate to arbitrary bad angles.
+  2. **Subtle camera life** — very low-amplitude handheld drift, so the shot is not perfectly static.
+  3. **State-driven reframing** — a slow push-in on `speaking`, easing back on `listening`/`ready`, driven from the same `chatStatus` the animation layer already consumes.
+
+**Plans**: TBD
+
+### Phase 18: Facial Performance — Eyes, Visemes & Emotion
+
+**Goal**: The face carries the performance — the avatar makes real eye contact, its mouth matches what is actually being said, and its expression follows the emotional content of the reply rather than drifting at random
+**Depends on**: Phase 15 (expression work on correct materials), Phase 12 (gaze layer already exists)
+**Requirements**: TBD
+**Scope outline** (not yet decomposed):
+
+  1. **Real eye movement** — `packages/react/src/animation/gaze.ts` moves the head bone only and never drives `vrm.lookAt`. Add eye-bone gaze plus micro-saccades and blink coupling.
+  2. **Viseme lip-sync from TTS timing** replacing the MFCC/formant classifier in `useRealtime.ts` and `useAudioLipSync.ts`, which guesses phonemes from the audio spectrum and is inherently jittery. Add coarticulation smoothing and additive jaw-bone motion rather than blendshapes alone.
+  3. **Emotion channel** — have the LLM emit emotion tags and drive expression, gesture and gaze from them. Today `expressionDrift.ts` is random drift with no relationship to what is being said. This is the capability Animates markets as "emotional range".
+
+**Plans**: TBD
+
+## Deferred Tracks (v3.1, not scheduled as phases)
+
+**Asset quality — art investment, not an engineering phase.** This is the competitor's actual
+moat and no amount of shader work substitutes for it. Tracked here so it is not mistaken for
+something the code phases will fix:
+
+- Character art quality — topology, hair cards, texture density, and an **ARKit 52 / Perfect Sync
+  blendshape set** rather than the handful of VRM preset expressions.
+- **Replace the Mixamo clip library.** `khavee-app`'s `PreviewModel.tsx` loads
+  `idle.fbx` / `talk.fbx` / `talk2` / `talk3` / `thinking` / `thinking2` / `wave` from Mixamo —
+  clips with no finger articulation, no character, and shared with every other product using
+  them. Bespoke mocap plus an additive layer is the fix.
+- **Spring-bone (hair/cloth) tuning.** `vrm.update(delta)` already runs the physics, but the SDK
+  exposes no configuration, so secondary motion is whatever the model author happened to set.
+
+**Product-level, belongs to a different milestone:**
+
+- Voice latency budget per pipeline stage — the turn-based `generic-stt-tts` path is
+  structurally slower than the realtime providers.
+- Persistent memory and proactive re-engagement (Animates processes conversations while the app
+  is closed). The SDK has `trimHistory()` and nothing else.
+- Performance tiers are already scoped as **Phase 13** — Phase 16's outlines and post chain
+  depend on that work landing.
+
 ## Progress
 
 **Execution Order:**
@@ -540,3 +619,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |
 | 14. xAI Realtime Provider | 1/1 | Complete   | 2026-08-25 |
 | 15. MToon Material Repair & Tone Mapping | 0/4 | Planned | - |
+| 16. Lighting, Shadows & Post-Processing | 0/TBD | Not started | - |
+| 17. Camera Direction & Scene Composition | 0/TBD | Not started | - |
+| 18. Facial Performance — Eyes, Visemes & Emotion | 0/TBD | Not started | - |

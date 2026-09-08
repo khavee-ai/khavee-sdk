@@ -1,0 +1,2170 @@
+{
+  "male.vrm": [
+    {
+      "name": "M00_000_00_FaceBrow_00_FACE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.111,
+        0.058,
+        0.056
+      ],
+      "shade": [
+        0.111,
+        0.058,
+        0.056
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00193,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_000_00_FaceMouth_00_FACE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00165,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_000_00_EyeIris_00_EYE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00165,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_000_00_EyeHighlight_00_EYE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00165,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_000_00_EyeWhite_00_EYE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00165,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_000_00_Face_00_SKIN",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": -0.1447,
+      "shift": -0.1447,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": true,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M00_000_00_FaceEyelash_00_FACE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.111,
+        0.058,
+        0.056
+      ],
+      "shade": [
+        0.111,
+        0.058,
+        0.056
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00165,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_000_00_FaceEyeline_00_FACE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.111,
+        0.058,
+        0.056
+      ],
+      "shade": [
+        0.111,
+        0.058,
+        0.056
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00165,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_000_00_EyeExtra_01_EYE",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00193,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M00_001_01_Body_00_SKIN",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M00_001_01_Tops_01_CLOTH",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M00_001_01_Bottoms_01_CLOTH",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M00_001_01_AccessoryNeck_01_CLOTH",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M00_001_01_Shoes_01_CLOTH",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.1507,
+      "shift": -0.1507,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M00_000_HairBack_00_HAIR",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.852,
+        0.901,
+        0.302
+      ],
+      "shade": [
+        0.074,
+        0.258,
+        0.313
+      ],
+      "toony": 1,
+      "shift": 1,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00165,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": true,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "F00_000_Hair_00_HAIR_01",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.852,
+        0.901,
+        0.302
+      ],
+      "shade": [
+        0.074,
+        0.258,
+        0.313
+      ],
+      "toony": 1,
+      "shift": 1,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": true,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "F00_000_Hair_00_HAIR_02",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.065,
+        0.82,
+        0.5
+      ],
+      "shade": [
+        0.074,
+        0.258,
+        0.313
+      ],
+      "toony": 1,
+      "shift": 1,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": true,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "F00_000_Hair_00_HAIR_03",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.82,
+        0.19,
+        0.006
+      ],
+      "shade": [
+        0.043,
+        0.053,
+        0.306
+      ],
+      "toony": 1,
+      "shift": 1,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": true,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "F00_000_Hair_00_HAIR_04",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        0.028,
+        0.782,
+        0.871
+      ],
+      "shade": [
+        0.074,
+        0.258,
+        0.313
+      ],
+      "toony": 1,
+      "shift": 1,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": true,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    }
+  ],
+  "3636451243928341470.vrm": [
+    {
+      "name": "M_lapan_head",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.955,
+        0.552,
+        0.514
+      ],
+      "toony": 0.5,
+      "shift": -0.5,
+      "gi": 0.9,
+      "rimColor": [
+        0.815,
+        0.093,
+        0.082
+      ],
+      "rimMix": 1,
+      "rimFresnel": 6,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_face",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.955,
+        0.705,
+        0.644
+      ],
+      "toony": 0,
+      "shift": 0,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 0,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_face_inside",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_face_blows",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.955,
+        0.703,
+        0.641
+      ],
+      "toony": 0,
+      "shift": 0,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_face_eyes",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M_lapan_eyes_hiligit",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M_lapan_eyes_shadow",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M_lapan_face_e_a",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "M_lapan_body",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.955,
+        0.552,
+        0.514
+      ],
+      "toony": 0.5,
+      "shift": -0.5,
+      "gi": 0.9,
+      "rimColor": [
+        0.965,
+        0.552,
+        0.515
+      ],
+      "rimMix": 1,
+      "rimFresnel": 10,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_body_tail",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.319,
+        0.326,
+        0.604
+      ],
+      "toony": 0.5,
+      "shift": -0.5,
+      "gi": 0.9,
+      "rimColor": [
+        0.533,
+        0.539,
+        0.863
+      ],
+      "rimMix": 1,
+      "rimFresnel": 10,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_cloth_blouse",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.56,
+        0.519,
+        0.674
+      ],
+      "toony": 0.25,
+      "shift": -0.5,
+      "gi": 0.9,
+      "rimColor": [
+        1,
+        1,
+        1
+      ],
+      "rimMix": 1,
+      "rimFresnel": 7.5,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_cloth_bustier",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.564,
+        0.411,
+        0.807
+      ],
+      "toony": 0.2575,
+      "shift": -0.2425,
+      "gi": 0.9,
+      "rimColor": [
+        0.413,
+        0.73,
+        0.871
+      ],
+      "rimMix": 1,
+      "rimFresnel": 7.5,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": true,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_cloth_spants",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.104,
+        0.257,
+        0.587
+      ],
+      "toony": 0.4375,
+      "shift": -0.0625,
+      "gi": 0.9,
+      "rimColor": [
+        0.009,
+        0.03,
+        0.141
+      ],
+      "rimMix": 1,
+      "rimFresnel": 7.5,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_cloth_spants_lining",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.223,
+        0.257,
+        0.406
+      ],
+      "toony": 0.6875,
+      "shift": -0.0625,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_cloth_sneaker",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.54,
+        0.545,
+        0.869
+      ],
+      "toony": 0.625,
+      "shift": -0.375,
+      "gi": 0.9,
+      "rimColor": [
+        0.533,
+        0.539,
+        0.863
+      ],
+      "rimMix": 1,
+      "rimFresnel": 7.5,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_hair_front",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.462,
+        0.422,
+        0.462
+      ],
+      "toony": 0.75,
+      "shift": -0.25,
+      "gi": 0.9,
+      "rimColor": [
+        0.533,
+        0.539,
+        0.863
+      ],
+      "rimMix": 1,
+      "rimFresnel": 10,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_hair_back",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.462,
+        0.422,
+        0.462
+      ],
+      "toony": 0.75,
+      "shift": -0.25,
+      "gi": 0.9,
+      "rimColor": [
+        0.533,
+        0.539,
+        0.863
+      ],
+      "rimMix": 1,
+      "rimFresnel": 10,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_hair_accent",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        1,
+        1,
+        1
+      ],
+      "rimMix": 1,
+      "rimFresnel": 5,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_hair_earfur_e",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        1,
+        1,
+        1
+      ],
+      "rimMix": 1,
+      "rimFresnel": 6,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_hair_earfur",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.685,
+        0.69,
+        0.869
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 1,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "M_lapan_hair_acce",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.54,
+        0.545,
+        0.869
+      ],
+      "toony": 0.75,
+      "shift": -0.25,
+      "gi": 0.9,
+      "rimColor": [
+        0.533,
+        0.539,
+        0.863
+      ],
+      "rimMix": 1,
+      "rimFresnel": 10,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    }
+  ],
+  "262410318834873893.vrm": [
+    {
+      "name": "N00_000_00_FaceMouth_00_FACE (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "N00_000_00_EyeIris_00_EYE (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "N00_000_00_EyeHighlight_00_EYE (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "N00_000_00_Face_00_SKIN (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        0.864,
+        0.83
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_000_00_Face_00_SKIN (Instance) (Outline)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        0.864,
+        0.83
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_000_00_EyeWhite_00_EYE (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "N00_000_00_FaceBrow_00_FACE (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.811,
+        0.811,
+        0.811
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "N00_000_00_FaceEyelash_00_FACE (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "N00_000_00_FaceEyeline_00_FACE (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.6953,
+      "shift": 0.4787,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": true
+    },
+    {
+      "name": "N00_000_00_Body_00_SKIN (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        0.852,
+        0.813
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_000_00_Body_00_SKIN (Instance) (Outline)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        0.852,
+        0.813
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_001_03_Bottoms_01_CLOTH (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.632,
+        0.68,
+        0.932
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_001_03_Bottoms_01_CLOTH (Instance) (Outline)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.632,
+        0.68,
+        0.932
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_007_01_Tops_01_CLOTH (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.632,
+        0.68,
+        0.932
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_007_01_Tops_01_CLOTH (Instance) (Outline)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.632,
+        0.68,
+        0.932
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_001_01_Shoes_01_CLOTH (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_001_01_Shoes_01_CLOTH (Instance) (Outline)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.935,
+        0.629,
+        0.718
+      ],
+      "toony": 0.8298,
+      "shift": -0.2202,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "worldCoordinates",
+      "outlineWidth": 0.0005,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "N00_000_Hair_00_HAIR (Instance)",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.6464,
+      "shift": -0.0869,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 100,
+      "rimLift": 0.1,
+      "outlineMode": "none",
+      "outlineWidth": 0,
+      "_rimDead": true,
+      "_fresnelAbsurd": true,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": false
+    }
+  ],
+  "amongus.vrm": [
+    {
+      "name": "Body",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        1,
+        1,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0.047,
+        0.047,
+        0.047
+      ],
+      "rimMix": 0,
+      "rimFresnel": 3.9,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.00971,
+      "_rimDead": false,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": true,
+      "_looksLikeFaceDetail": false
+    },
+    {
+      "name": "Visor",
+      "type": "MToonMaterial",
+      "mtoon": true,
+      "lit": [
+        1,
+        1,
+        1
+      ],
+      "shade": [
+        0.672,
+        0.839,
+        1
+      ],
+      "toony": 0.95,
+      "shift": -0.05,
+      "gi": 0.9,
+      "rimColor": [
+        0,
+        0,
+        0
+      ],
+      "rimMix": 0,
+      "rimFresnel": 1,
+      "rimLift": 0,
+      "outlineMode": "none",
+      "outlineWidth": 0.005,
+      "_rimDead": true,
+      "_fresnelAbsurd": false,
+      "_toonyOutOfRange": false,
+      "_toonyTooSoft": false,
+      "_shiftFullyLit": false,
+      "_shiftExtremeNegative": false,
+      "_flatNoShade": false,
+      "_looksLikeFaceDetail": false
+    }
+  ]
+}

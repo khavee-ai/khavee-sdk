@@ -22,7 +22,17 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
   `3636451243928341470.vrm`.
 - Detection thresholds must be defined against **runtime** MToon values (post-`VRMMaterialsV0CompatPlugin`
   conversion), never against raw values read from the `.vrm` file.
+- Default renderer tone mapping becomes **`THREE.CineonToneMapping`** (human pick over the
+  metric-topping `Neutral`: +35% saturation vs ACES for near-zero contrast loss). `Neutral`
+  stays documented as the max-saturation alternative. (from 003)
 - Existing `toneMapping` prop on `VRMAvatar` must keep overriding whatever new default is chosen.
+- **`NoToneMapping` must not be offered as a "flat/authored colour" option.** Measured
+  second-lowest saturation of six curves — with no curve, out-of-range values clip per channel
+  and push channels toward equality, destroying saturation on exactly the brightest surfaces.
+  (from 003)
+- R1's rim tint must be derived from the base **texture's** average colour (or the key light),
+  not from `litFactor` — VRoid models leave `litFactor` white, so the current derivation emits a
+  grey rim that measurably dilutes saturation. Must be fixed before the pass graduates. (from 003)
 - **The repair pass must never touch face-detail materials** (eyes, irises, highlights,
   eyelashes, eyelines, brows, mouth). Flat/unshaded authoring on these is a deliberate anime
   convention, not a defect — spike 001 found 7/7 of `male.vrm`'s "flat" materials are exactly
@@ -42,4 +52,4 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
 |---|------|------|-----------|---------|------|
 | 001 | mtoon-runtime-audit | standard | Given real .vrm assets loaded through the SDK's own loader path, when every MToonMaterial's runtime properties are dumped, then the actual post-v0compat values are known and the proposed detection thresholds are confirmed or refuted | **VALIDATED** — 2 draft rules deleted, 2 new rules found | mtoon, vrm, diagnostics, v0compat |
 | 002 | mtoon-repair-pass | standard | Given a badly-authored and a well-authored VRM side by side, when the repair pass is toggled, then the bad model visibly improves and the good model does not regress | **VALIDATED** — human-confirmed both criteria; rim injection needs a fresnel fix too | mtoon, rendering, repair, non-regression |
-| 003 | tonemapping-toon | standard | Given the same MToon avatar, when renderer tone mapping is switched live across ACES/Neutral/AgX/None, then Neutral preserves toon saturation better than the current ACES default | PENDING | mtoon, tonemapping, rendering |
+| 003 | tonemapping-toon | standard | Given the same MToon avatar, when renderer tone mapping is switched live across six curves, then a curve is found that preserves toon saturation better than the current ACES default | **VALIDATED** — Cineon chosen (+35% sat, ~equal contrast); NoToneMapping refuted as a "flat look" option | mtoon, tonemapping, rendering, measurement |

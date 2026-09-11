@@ -150,6 +150,15 @@ export function GLBAvatar({
   // mount. NOTE: this mutates the Canvas-shared `gl` (WebGLRenderer)
   // instance, not just this avatar — see the detailed explanation in
   // utils/renderQuality.tsx (applyRendererDefaults).
+  //
+  // TONE-01: VRMAvatar defaults to THREE.CineonToneMapping (spike 003
+  // measured +35% saturation on MToon/toon output specifically). GLBAvatar
+  // renders plain glTF PBR (`happy.glb`) — the workload THREE.ACESFilmicToneMapping
+  // is designed for — so its default is unchanged here. Mounting both
+  // components in a single Canvas means the last-mounted effect wins on
+  // this Canvas-global setting (pre-existing behaviour, not introduced by
+  // this change): pass an explicit `toneMapping` prop to both when mixing
+  // VRMAvatar and GLBAvatar together.
   useEffect(() => {
     applyRendererDefaults(gl, {
       toneMapping: toneMapping ?? THREE.ACESFilmicToneMapping,

@@ -111,6 +111,13 @@ export interface RendererDefaultOptions {
  * `toneMapping` prop, or opt out and manage `gl` themselves. Idempotent —
  * safe to call repeatedly (e.g. on every mount-time effect run).
  *
+ * The tone curve `opts.toneMapping` is caller-dependent, not a single
+ * SDK-wide default: `VRMAvatar` passes `THREE.CineonToneMapping` (spike 003
+ * measured +35% saturation over `THREE.ACESFilmicToneMapping` on MToon/toon
+ * output for near-equal contrast loss), while `GLBAvatar` still passes
+ * `THREE.ACESFilmicToneMapping` for its plain glTF PBR output. See both
+ * components' own tone-mapping comments for the full measured rationale.
+ *
  * @param gl - The Canvas's shared WebGLRenderer instance.
  * @param opts - Tone mapping mode and output color space to force.
  */
@@ -271,10 +278,12 @@ export interface AvatarPostFXProps {
   bloomIntensity?: number;
   /**
    * Luminance floor (0-1) above which a pixel starts blooming. This is
-   * measured AFTER tone mapping (see `applyRendererDefaults` — ACES
-   * compresses highlights hard), so ordinary specular/rim highlights
-   * rarely reach anywhere near 1.0. Lower = more surfaces glow.
-   * Default: 0.3
+   * measured AFTER tone mapping (see `applyRendererDefaults` — the curve is
+   * caller-dependent: `THREE.CineonToneMapping` for `VRMAvatar`,
+   * `THREE.ACESFilmicToneMapping` for `GLBAvatar`, both of which compress
+   * highlights), so ordinary specular/rim highlights rarely reach anywhere
+   * near 1.0, and this threshold may need retuning per curve. Lower = more
+   * surfaces glow. Default: 0.3
    */
   bloomThreshold?: number;
   /** Softness of the threshold cutoff (0 = hard edge, higher = gradual falloff). Default: 1 */

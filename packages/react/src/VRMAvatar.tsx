@@ -136,7 +136,7 @@ interface VRMAvatarProps {
   receiveShadow?: boolean;
   /** Texture anisotropy for material maps, clamped to hardware max. Default: 8 (resolved) */
   anisotropy?: number;
-  /** Renderer tone mapping mode, applied Canvas-wide on mount. Default: THREE.ACESFilmicToneMapping */
+  /** Renderer tone mapping mode, applied Canvas-wide on mount. Default: THREE.CineonToneMapping */
   toneMapping?: THREE.ToneMapping;
   /** Mount a scoped ambient+directional light rig inside the avatar group. Default: true */
   autoLighting?: boolean;
@@ -395,10 +395,24 @@ export function VRMAvatar({
   // Force renderer defaults (tone mapping + output color space) once on
   // mount. NOTE: this mutates the Canvas-shared `gl` (WebGLRenderer)
   // instance, not just this avatar — see the detailed explanation in
-  // utils/renderQuality.tsx (applyRendererDefaults).
+  // utils/renderQuality.tsx (applyRendererDefaults). This call runs
+  // regardless of `autoLighting`, so a consumer mounting with
+  // `autoLighting={false}` still receives this default (khavee-app does
+  // this today and will inherit the Cineon change below).
+  //
+  // TONE-01 (spike 003): default changed from THREE.ACESFilmicToneMapping to
+  // THREE.CineonToneMapping. Measured on male.vrm at exposure 1.00: Cineon
+  // mean saturation 0.5066 vs ACESFilmic 0.3750 (+35%) for a contrast-spread
+  // cost of only 0.0143 (0.2898 vs 0.3041) — the best saturation-per-unit-
+  // contrast tradeoff of the six curves measured. THREE.NoToneMapping is NOT
+  // a "flat/authored colour" option here: it measured 0.2753, second-lowest
+  // of six, because out-of-range values clip per channel and push channels
+  // toward equality, destroying saturation rather than preserving it.
+  // THREE.NeutralToneMapping is the max-saturation alternative (0.6526) for
+  // callers who want it via the `toneMapping` prop below.
   useEffect(() => {
     applyRendererDefaults(gl, {
-      toneMapping: toneMapping ?? THREE.ACESFilmicToneMapping,
+      toneMapping: toneMapping ?? THREE.CineonToneMapping,
       colorSpace: THREE.SRGBColorSpace,
     });
   }, [gl, toneMapping]);

@@ -1,4 +1,4 @@
-import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+import { MToonMaterialDebugMode, VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { useFBX, useGLTF } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +15,7 @@ import {
   repairMToonMaterials,
   resolveAnisotropy,
   restoreMToon,
+  setMToonDebugMode,
   snapshotMToon,
 } from "./utils/renderQuality";
 import type { MaterialPreset, MToonSnapshot } from "./utils/renderQuality";
@@ -147,6 +148,8 @@ interface VRMAvatarProps {
   animationMinDwellSeconds?: number;
   /** Repair broken authored MToon values (rim light, toon ramp, fully-lit surfaces) at load time. `"off"` restores the authored values at runtime, with no reload. Default: "repair" */
   materialPreset?: MaterialPreset;
+  /** Render MToon's `litShadeRate` debug view so lit/shade boundaries are visible while tuning shading. Development aid. Default: false */
+  debugShading?: boolean;
   /**
    * Called once this avatar's model has finished loading (scene + VRM data
    * available). Fires again if `src` changes and the new model finishes
@@ -264,6 +267,7 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
  * @param smoothShading - Weld coincident vertices + recompute normals for smooth shading. Opt-in, mutates geometry. Default: false
  * @param materialPreset - Repair broken authored MToon values at load time; `"off"` restores authored values at runtime. Default: "repair"
+ * @param debugShading - Render MToon's `litShadeRate` debug view via the runtime setter (no reload). Default: false
  *
  * @example
  * // Basic usage
@@ -356,6 +360,7 @@ export function VRMAvatar({
   animationCycleOrder,
   animationMinDwellSeconds,
   materialPreset = "repair",
+  debugShading = false,
   onLoad,
   ...props
 }: VRMAvatarProps) {
@@ -565,6 +570,21 @@ export function VRMAvatar({
       repairMToonMaterials(scene);
     }
   }, [scene, materialPreset]);
+
+  // debugShading drives MToonMaterial's runtime `debugMode` SETTER, not the
+  // VRM loader's MToon plugin's load-time `debugMode` option: the setter
+  // sets `needsUpdate = true` internally (verified in
+  // @pixiv/three-vrm-materials-mtoon@3.4.2 lib source, `set debugMode`),
+  // which forces a shader recompile in place on an already-loaded model —
+  // the load-time option would require re-parsing the whole model to toggle
+  // instead.
+  useEffect(() => {
+    if (!scene) return;
+    setMToonDebugMode(
+      scene,
+      debugShading ? MToonMaterialDebugMode.LitShadeRate : MToonMaterialDebugMode.None,
+    );
+  }, [scene, debugShading]);
 
   // Shared animation module (ANIM-01): one adapter + controller drives all
   // chatStatus-triggered crossfading and blink for this avatar, replacing

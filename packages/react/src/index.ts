@@ -9,6 +9,23 @@ export {
 export { GLBAvatar } from "./GLBAvatar";
 export type { AnimationConfig } from "./VRMAvatar";
 export type { AnimationCycleOrder } from "./animation/AnimationStateEngine";
-export { AvatarPostFX, ShadowFloor } from "./utils/renderQuality";
-export type { AvatarPostFXProps, ShadowFloorProps } from "./utils/renderQuality";
+export {
+  AvatarPostFX,
+  ShadowFloor,
+  repairMToonMaterials,
+  snapshotMToon,
+  restoreMToon,
+  setMToonDebugMode,
+  DEFAULT_REPAIR,
+  FACE_DETAIL_MATERIAL_RE,
+} from "./utils/renderQuality";
+export type {
+  AvatarPostFXProps,
+  ShadowFloorProps,
+  MaterialPreset,
+  RepairOptions,
+  RepairResult,
+  RepairLogEntry,
+  MToonSnapshot,
+} from "./utils/renderQuality";
 export * from "./hooks";

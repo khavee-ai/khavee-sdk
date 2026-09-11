@@ -14,6 +14,29 @@ import { Bloom, EffectComposer, SMAA } from "@react-three/postprocessing";
  * behavior without duplicating traversal/material logic.
  */
 
+// The MToon repair pass lives in its own module, not inline here, because the
+// phase's TEST-01 tests run under vitest `environment: "node"` and this file
+// imports `@react-three/postprocessing` + JSX, which drags an R3F/DOM
+// dependency graph into a headless test. `mtoonRepair.ts` depends only on
+// `three` and `@pixiv/three-vrm`, so it stays node-testable. Re-exporting it
+// here keeps `renderQuality.tsx` as the single render-quality import site
+// `VRMAvatar`/`GLBAvatar` consume.
+export {
+  repairMToonMaterials,
+  snapshotMToon,
+  restoreMToon,
+  setMToonDebugMode,
+  DEFAULT_REPAIR,
+  FACE_DETAIL_MATERIAL_RE,
+} from "./mtoonRepair";
+export type {
+  MaterialPreset,
+  RepairOptions,
+  RepairResult,
+  RepairLogEntry,
+  MToonSnapshot,
+} from "./mtoonRepair";
+
 /** Options for {@link applyMeshRenderFlags}. */
 export interface MeshRenderFlagOptions {
   castShadow: boolean;

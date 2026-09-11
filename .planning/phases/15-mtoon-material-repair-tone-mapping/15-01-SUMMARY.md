@@ -111,3 +111,13 @@ None - no external service configuration required.
 ---
 *Phase: 15-mtoon-material-repair-tone-mapping*
 *Completed: 2026-09-11*
+
+## Self-Check: PASSED
+
+- FOUND: packages/react/src/utils/mtoonRepair.ts
+- FOUND: packages/react/src/utils/mtoonRepair.test.ts
+- FOUND: .planning/phases/15-mtoon-material-repair-tone-mapping/15-01-SUMMARY.md
+- FOUND commit: e1e69c6 (Task 1)
+- FOUND commit: ab16f1c (Task 2 RED)
+- FOUND commit: ea08157 (Task 2 GREEN)
+- FOUND commit: 5a7d3cc (plan metadata)

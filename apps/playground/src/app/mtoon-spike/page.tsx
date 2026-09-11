@@ -1,10 +1,18 @@
 "use client";
 
 /**
- * SPIKE 002 — MToon repair pass, side-by-side.
+ * Phase 15 regression fixture — MToon repair pass, side-by-side.
  *
- * Left:  male.vrm                  — badly authored (toony ~0.15 on 14/19 mats,
- *                                    hair permanently fully-lit, rim dead 19/19)
+ * This page exercises the SHIPPED `@khaveeai/react` repair API directly:
+ * `DEFAULT_REPAIR`, `repairMToonMaterials`, `restoreMToon`, `snapshotMToon`,
+ * and `setMToonDebugMode`. It is no longer a throwaway spike — it is the
+ * permanent harness that measures the same repair code every `VRMAvatar`
+ * runs by default (`materialPreset="repair"`), so there is exactly one
+ * implementation of the repair rules in the repo.
+ *
+ * Left:  male.vrm                  — badly authored subject (toony ~0.15 on
+ *                                    14/19 mats, hair permanently fully-lit,
+ *                                    rim dead 19/19).
  * Right: 3636451243928341470.vrm   — well authored VRM 1.0 (real rim colours,
  *                                    sane fresnel) — the NON-REGRESSION control.
  *
@@ -12,15 +20,25 @@
  * PreviewModel.tsx: ambientLight 0.7 + one directionalLight at [10,10,5]) so a
  * visible difference is attributable to the change under test.
  *
- * SPIKE 003 extends this same page with a tone-mapping selector, an exposure
- * slider, and an automated sweep that measures saturation/brightness per curve.
- * Spike 002's repair toggle is unchanged and still independently switchable —
- * hold one variable while moving the other.
+ * `measureSaturation.ts` (kept local to the playground — it is a measurement
+ * harness, not SDK surface) is the metric behind success criterion 4. It
+ * reads pixels back from the LEFT canvas's `<canvas>` element, which is why
+ * that `<Canvas>` is created with `gl={{ preserveDrawingBuffer: true }}` —
+ * without it the buffer is cleared before JS can read it back.
+ *
+ * This page also carries a tone-mapping selector, an exposure slider, and an
+ * automated sweep that measures saturation/brightness per curve. The repair
+ * toggle is independently switchable from tone mapping — hold one variable
+ * while moving the other.
+ *
+ * Spikes 001-003 (`.planning/spikes/001-*`, `002-*`, `003-*`) are the
+ * historical record of how these rules and thresholds were derived; this
+ * page is their production-facing successor, not a duplicate.
  */
 
 import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+import { MToonMaterialDebugMode, VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -29,10 +47,11 @@ import {
   DEFAULT_REPAIR,
   repairMToonMaterials,
   restoreMToon,
+  setMToonDebugMode,
   snapshotMToon,
   type MToonSnapshot,
   type RepairResult,
-} from "./repairMToon";
+} from "@khaveeai/react";
 import { measureCanvas, type FrameStats } from "./measureSaturation";
 
 const MODELS = [
@@ -105,6 +124,7 @@ function Panel({
   onResult,
   toneMapping,
   exposure,
+  debugShading,
   canvasHostRef,
 }: {
   src: string;
@@ -114,6 +134,7 @@ function Panel({
   onResult: (label: string, r: RepairResult | null) => void;
   toneMapping: THREE.ToneMapping;
   exposure: number;
+  debugShading: boolean;
   canvasHostRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const vrm = useVrm(src);
@@ -133,6 +154,17 @@ function Panel({
       onResult(label, null);
     }
   }, [vrm, repair, label, onResult]);
+
+  // Applied to BOTH panels' loaded VRMs — debugShading is a page-level
+  // toggle, not per-panel, so this effect runs once per model as it loads
+  // and again whenever the checkbox flips.
+  useEffect(() => {
+    if (!vrm) return;
+    setMToonDebugMode(
+      vrm.scene,
+      debugShading ? MToonMaterialDebugMode.LitShadeRate : MToonMaterialDebugMode.None,
+    );
+  }, [vrm, debugShading]);
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -167,6 +199,7 @@ export default function MToonSpikePage() {
   const [results, setResults] = useState<Record<string, RepairResult | null>>({});
   const [tmIndex, setTmIndex] = useState(2); // ACESFilmic — today's default
   const [exposure, setExposure] = useState(1);
+  const [debugShading, setDebugShading] = useState(false);
   const [sweep, setSweep] = useState<SweepRow[] | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const leftHostRef = useRef<HTMLDivElement | null>(null);
@@ -272,6 +305,15 @@ export default function MToonSpikePage() {
           />
         </label>
 
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={debugShading}
+            onChange={(e) => setDebugShading(e.target.checked)}
+          />
+          debugShading (litShadeRate)
+        </label>
+
         <button
           onClick={runSweep}
           disabled={sweeping}
@@ -299,6 +341,7 @@ export default function MToonSpikePage() {
             onResult={onResult}
             toneMapping={TONE_MAPPINGS[tmIndex].value}
             exposure={exposure}
+            debugShading={debugShading}
             canvasHostRef={i === 0 ? leftHostRef : undefined}
           />
         ))}

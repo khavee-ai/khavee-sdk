@@ -50,6 +50,19 @@ export interface RepairOptions {
   fresnelMax: number;
   /** Fresnel power used when clamping or when injecting a rim. Default: 5 */
   fresnelTarget: number;
+  /**
+   * Multiplier applied to the derived rim tint's HSL saturation (MTOON-03).
+   * VRoid base textures sampled at low resolution tend to read slightly less
+   * saturated than the authored intent, so the boost compensates without
+   * inventing a hue. Default: 2.0
+   */
+  rimSaturationBoost: number;
+  /**
+   * Below this HSL saturation, a derived rim tint is treated as genuinely
+   * achromatic (a true grey/white/black garment) rather than an
+   * under-saturated colour worth boosting. Default: 0.02
+   */
+  rimAchromaticThreshold: number;
 }
 
 /** Default repair thresholds, carried over verbatim from the validated spike. */
@@ -59,6 +72,8 @@ export const DEFAULT_REPAIR: RepairOptions = {
   toonyTarget: 0.75,
   fresnelMax: 20,
   fresnelTarget: 5,
+  rimSaturationBoost: 2.0,
+  rimAchromaticThreshold: 0.02,
 };
 
 /** One rule application, recorded for diagnostics/debugging. */
@@ -89,6 +104,115 @@ export type MToonSnapshot = Map<string, Record<string, unknown>>;
 const isNearBlack = (c: THREE.Color) => c.r < 0.02 && c.g < 0.02 && c.b < 0.02;
 const fmt = (c: THREE.Color) =>
   `[${c.r.toFixed(2)},${c.g.toFixed(2)},${c.b.toFixed(2)}]`;
+
+/**
+ * averageTextureColor - Sample a texture's average colour, excluding fully
+ * transparent texels, for use as a rim-tint source (MTOON-03: VRoid models
+ * leave `litFactor`/`m.color` white and keep the real colour in the base
+ * texture, so deriving a rim tint from `m.color` alone produces grey — see
+ * spike 003 finding 5).
+ *
+ * Returns `null` when no colour can be determined — callers must fall back
+ * to `m.color` in that case, never treat `null` as black.
+ *
+ * @param texture - The texture to sample (typically `material.map`). `null`/
+ *   `undefined` and image-less textures (the headless-loader stub) return
+ *   `null`.
+ * @returns The average colour, or `null` if it could not be determined.
+ */
+export function averageTextureColor(
+  texture: THREE.Texture | null | undefined,
+): THREE.Color | null {
+  if (!texture || !texture.image) return null;
+
+  // Path A: raw pixel buffer already in memory (DataTexture, or any texture
+  // whose `.image` exposes typed-array pixel data directly). This is the
+  // path that works headlessly/in Node, which is what this file's unit
+  // tests exercise — no canvas/DOM required.
+  const image = texture.image as {
+    data?: unknown;
+    width?: unknown;
+    height?: unknown;
+  };
+  if (
+    ArrayBuffer.isView(image.data) &&
+    typeof image.width === "number" &&
+    typeof image.height === "number"
+  ) {
+    const data = image.data as unknown as { [index: number]: number; length: number };
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let count = 0;
+    for (let i = 0; i + 3 < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha < 128) continue; // exclude fully/mostly-transparent texels
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      count++;
+    }
+    if (count === 0) return null;
+    // The sampled bytes are sRGB-encoded texel data (same space as an
+    // authored base-color texture); the colour-space argument tells
+    // THREE.Color to convert them into the working (linear) colour space it
+    // stores internally, so the result composes correctly with
+    // `MToonMaterial.color` (also linear-space internally). Omitting this
+    // argument would silently treat sRGB bytes as already-linear, skewing
+    // the derived hue/lightness — not cosmetic.
+    return new THREE.Color().setRGB(
+      r / count / 255,
+      g / count / 255,
+      b / count / 255,
+      THREE.SRGBColorSpace,
+    );
+  }
+
+  // Path B: browser canvas readback for textures whose pixel data isn't a
+  // plain typed array (e.g. an HTMLImageElement-backed Texture).
+  if (
+    typeof document !== "undefined" &&
+    typeof (image as { width?: unknown }).width === "number" &&
+    typeof (image as { height?: unknown }).height === "number"
+  ) {
+    try {
+      const size = 16;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(image as unknown as CanvasImageSource, 0, 0, size, size);
+      // A cross-origin texture taints the canvas; `getImageData` then throws
+      // a SecurityError. A repair pass must never break rendering because it
+      // could not sample a texture, so the whole browser path is wrapped in
+      // try/catch and falls back to null on any failure (T-15-01).
+      const { data } = ctx.getImageData(0, 0, size, size);
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let count = 0;
+      for (let i = 0; i + 3 < data.length; i += 4) {
+        if (data[i + 3] < 128) continue;
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count++;
+      }
+      if (count === 0) return null;
+      return new THREE.Color().setRGB(
+        r / count / 255,
+        g / count / 255,
+        b / count / 255,
+        THREE.SRGBColorSpace,
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
 
 function forEachMToon(root: THREE.Object3D, fn: (m: MToonMaterial) => void): void {
   const seen = new Set<string>();
@@ -221,12 +345,34 @@ export function repairMToonMaterials(
     // factor-only inspection cannot see texture-driven values (spike 001 caveat).
     if (isNearBlack(m.parametricRimColorFactor) && !m.rimMultiplyTexture) {
       const before = fmt(m.parametricRimColorFactor);
-      // Derive the rim from the material's own lit colour so hue stays coherent
-      // per-material, pushed toward white and scaled by strength.
-      m.parametricRimColorFactor
-        .copy(m.color)
-        .lerp(new THREE.Color(1, 1, 1), 0.6)
-        .multiplyScalar(opts.rimStrength);
+      // MTOON-03: derive the tint from the base TEXTURE's average colour,
+      // not `m.color` (litFactor) alone. VRoid models leave litFactor white
+      // and keep the real colour in the base texture — deriving from
+      // litFactor alone produced the grey rim spike 003 measured
+      // ([0,0,0] -> [0.45,0.45,0.45], lowering mean saturation on every
+      // tone curve tested). MToon's lit colour is `litFactor * baseTexture`,
+      // so multiplying the sampled average by `m.color` is correct and is a
+      // no-op on the common white-litFactor case.
+      const sampled = averageTextureColor(m.map);
+      const base = sampled ? sampled.clone().multiply(m.color) : m.color.clone();
+
+      const hsl = { h: 0, s: 0, l: 0 };
+      base.getHSL(hsl);
+
+      let achromaticScale = 1;
+      if (hsl.s >= opts.rimAchromaticThreshold) {
+        const boostedS = Math.min(1, hsl.s * opts.rimSaturationBoost);
+        base.setHSL(hsl.h, boostedS, THREE.MathUtils.clamp(hsl.l, 0.35, 0.8));
+      } else {
+        // Genuinely achromatic base (a true grey/white/black garment): do
+        // NOT invent a hue — that would tint a deliberately-grey material
+        // (e.g. red). Instead halve the rim's contribution, since adding
+        // achromatic energy dilutes measured saturation, which is exactly
+        // the SC-4 failure mode this fix targets.
+        achromaticScale = 0.5;
+      }
+
+      m.parametricRimColorFactor.copy(base).multiplyScalar(opts.rimStrength * achromaticScale);
       // TRAP (spike 002): a rim colour alone is not enough. male.vrm ships
       // parametricRimFresnelPowerFactor = 1 on every material; at power 1 the
       // Fresnel term covers the whole surface, so an injected rim colour

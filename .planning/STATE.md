@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Avatar Render Quality
-status: planned
-stopped_at: Phase 15 planned and plan-checker PASSED (4 plans, 3 waves) -- ready for /gsd:execute-phase 15
-last_updated: "2026-09-09T00:00:00.000Z"
-last_activity: 2026-09-09
+status: executing
+stopped_at: context exhaustion at 75% (2026-08-25)
+last_updated: "2026-09-11T04:08:20.552Z"
+last_activity: 2026-09-11 -- Phase 15 execution started
 progress:
-  total_phases: 18
-  completed_phases: 13
-  total_plans: 72
-  completed_plans: 68
-  percent: 72
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 4
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -29,11 +29,11 @@ Phase 16-18 scope outlines, plus the deferred asset/product tracks.
 
 ## Current Position
 
-Phase: 15 (mtoon-material-repair-tone-mapping) — PLANNED, not yet executed
-Plan: 0 of 4
-Status: plan-checker VERIFICATION PASSED (no blockers, no warnings) — ready for `/gsd:execute-phase 15`
+Phase: 15 (mtoon-material-repair-tone-mapping) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 15
 Branch: `feat/mtoon-render-quality` (branched off `main`; nothing merged yet)
-Last activity: 2026-09-09
+Last activity: 2026-09-11 -- Phase 15 execution started
 
 ### How Phase 15 was grounded
 
@@ -45,8 +45,10 @@ Three spikes ran before planning and are the source of every threshold in the pl
   details where "repair" would paint shadows across irises). Also found the full
   `VRMLoaderPlugin` DOES load headless in Node — Phase 11 concluded otherwise, but the blocker is
   texture decoding only. That unlock is what makes Phase 15's TEST-01 possible.
+
 - **002 mtoon-repair-pass** — human-verified at `/mtoon-spike`: badly-authored model improves,
   well-authored control does not regress despite the pass modifying 7 of its 21 materials.
+
 - **003 tonemapping-toon** — measured six tone curves. Cineon chosen (+35% saturation vs
   ACESFilmic at near-equal contrast). `NoToneMapping` refuted as a "flat look" option. Surfaced
   the open rim-tint bug that Phase 15's MTOON-03 fixes.

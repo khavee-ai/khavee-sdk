@@ -12,8 +12,12 @@ import {
   applyRendererDefaults,
   applySmoothShading,
   AvatarLightRig,
+  repairMToonMaterials,
   resolveAnisotropy,
+  restoreMToon,
+  snapshotMToon,
 } from "./utils/renderQuality";
+import type { MaterialPreset, MToonSnapshot } from "./utils/renderQuality";
 import { useAnimationController } from "./animation/AnimationStateEngine";
 import type { AvatarFormatAdapter } from "./animation/types";
 
@@ -141,6 +145,8 @@ interface VRMAvatarProps {
   animationCycleOrder?: AnimationCycleOrder;
   /** Minimum seconds a clip plays before the cycle may swap it (swap still waits for a loop boundary). Default: 2 */
   animationMinDwellSeconds?: number;
+  /** Repair broken authored MToon values (rim light, toon ramp, fully-lit surfaces) at load time. `"off"` restores the authored values at runtime, with no reload. Default: "repair" */
+  materialPreset?: MaterialPreset;
   /**
    * Called once this avatar's model has finished loading (scene + VRM data
    * available). Fires again if `src` changes and the new model finishes
@@ -236,6 +242,12 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * when no talk clip is loaded) uses the manually-set `animate()` clip, falling back to the
  * first loaded clip. See `packages/react/src/animation/AnimationStateEngine.ts`.
  *
+ * **MTOON REPAIR:** MToon material repair runs by default (`materialPreset="repair"`) —
+ * it fixes broken authored values (black rim lights, wide/absent toon shading ramps,
+ * fully-lit surfaces) proven broken by runtime auditing of real `.vrm` assets, while
+ * leaving well-authored materials untouched. Pass `materialPreset="off"` to render the
+ * model's authored values as-is, at runtime, with no reload.
+ *
  * **IMPORTANT:** Must be used inside a React Three Fiber `<Canvas>` component
  * and within a `<KhaveeProvider>`.
  *
@@ -248,9 +260,10 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param castShadow - Force castShadow on every avatar mesh. Default: true
  * @param receiveShadow - Force receiveShadow on every avatar mesh. Default: true
  * @param anisotropy - Texture anisotropy for material maps. Default: resolved against hardware max (8)
- * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.ACESFilmicToneMapping
+ * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.CineonToneMapping
  * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
  * @param smoothShading - Weld coincident vertices + recompute normals for smooth shading. Opt-in, mutates geometry. Default: false
+ * @param materialPreset - Repair broken authored MToon values at load time; `"off"` restores authored values at runtime. Default: "repair"
  *
  * @example
  * // Basic usage
@@ -342,6 +355,7 @@ export function VRMAvatar({
   smoothShading = false,
   animationCycleOrder,
   animationMinDwellSeconds,
+  materialPreset = "repair",
   onLoad,
   ...props
 }: VRMAvatarProps) {
@@ -357,6 +371,7 @@ export function VRMAvatar({
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
+  const mtoonSnapshotRef = useRef<MToonSnapshot | null>(null);
 
   const parsed = useLoadVRM(src);
   const scene = parsed?.scene;
@@ -522,6 +537,34 @@ export function VRMAvatar({
     // doc comment for why this can't be a forced default.
     if (smoothShading) applySmoothShading(scene);
   }, [scene, currentVrm, setVrm, gl, castShadow, receiveShadow, anisotropy, smoothShading]);
+
+  // Snapshot every MToon material's AUTHORED values before any repair write,
+  // once per `scene`. This must run (and its ref be populated) BEFORE the
+  // materialPreset apply effect below reads it — guaranteed by declaring
+  // this effect first, since React runs effects in declaration order. This
+  // is what makes materialPreset="off" restore to the values the artist
+  // actually authored, rather than restoring a previously-repaired state.
+  useEffect(() => {
+    if (!scene) return;
+    mtoonSnapshotRef.current = snapshotMToon(scene);
+    return () => {
+      mtoonSnapshotRef.current = null;
+    };
+  }, [scene]);
+
+  // Apply materialPreset. Every run restores from the authored snapshot
+  // FIRST, then repairs only when requested — this is what makes the toggle
+  // non-cumulative. Repeated repair passes over already-repaired values
+  // would compound (R3 would re-fire nothing since the value is already at
+  // its target, but R1's `multiplyScalar(rimStrength)` is not idempotent
+  // and would keep darkening the rim on every re-run without the restore).
+  useEffect(() => {
+    if (!scene || !mtoonSnapshotRef.current) return;
+    restoreMToon(scene, mtoonSnapshotRef.current);
+    if (materialPreset === "repair") {
+      repairMToonMaterials(scene);
+    }
+  }, [scene, materialPreset]);
 
   // Shared animation module (ANIM-01): one adapter + controller drives all
   // chatStatus-triggered crossfading and blink for this avatar, replacing

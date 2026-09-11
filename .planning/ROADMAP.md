@@ -524,8 +524,8 @@ Plans:
 - [x] 15-01-PLAN.md — Graduate the MToon repair pass into `@khaveeai/react` + fix the R1 rim-tint bug (MTOON-01/02/03)
 
 **Wave 2** (parallel)
-- [ ] 15-02-PLAN.md — Headless real-asset vitest suite proving the repair invariants (TEST-01)
-- [ ] 15-03-PLAN.md — `materialPreset`, `debugShading` and the CineonToneMapping default on VRMAvatar (MTOON-04/05, TONE-01)
+- [x] 15-02-PLAN.md — Headless real-asset vitest suite proving the repair invariants (TEST-01)
+- [x] 15-03-PLAN.md — `materialPreset`, `debugShading` and the CineonToneMapping default on VRMAvatar (MTOON-04/05, TONE-01)
 
 **Wave 3**
 - [ ] 15-04-PLAN.md — Repoint the spike harness at the SDK, live prop controls, human verification of criteria 1/2/4/5/7
@@ -618,7 +618,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 12. Gaze & Gesture | 10/10 | Gap deferred |  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |
 | 14. xAI Realtime Provider | 1/1 | Complete   | 2026-08-25 |
-| 15. MToon Material Repair & Tone Mapping | 1/4 | In Progress|  |
+| 15. MToon Material Repair & Tone Mapping | 3/4 | In Progress|  |
 | 16. Lighting, Shadows & Post-Processing | 0/TBD | Not started | - |
 | 17. Camera Direction & Scene Composition | 0/TBD | Not started | - |
 | 18. Facial Performance — Eyes, Visemes & Emotion | 0/TBD | Not started | - |

@@ -46,8 +46,10 @@ import {
 } from "./mtoonRepair";
 
 // `GLTFLoader.parse()` dies on `self is not defined` in Node — see the file
-// header for the full explanation of why this workaround is safe here.
-globalThis.self ??= globalThis;
+// header for the full explanation of why this workaround is safe here. Cast
+// through `unknown` because Node's `globalThis` type has no `self` property
+// and does not structurally satisfy DOM's `Window` type.
+(globalThis as unknown as { self: unknown }).self ??= globalThis;
 
 const MODELS_DIR = fileURLToPath(
   new URL("../../../../apps/playground/public/models/", import.meta.url),
@@ -74,9 +76,10 @@ async function loadVrmScene(file: string): Promise<THREE.Group> {
     parser.assignTexture = async (
       materialParams: Record<string, unknown>,
       mapName: string,
-    ) => {
-      materialParams[mapName] = stub();
-      return materialParams[mapName];
+    ): Promise<THREE.Texture> => {
+      const texture = stub();
+      materialParams[mapName] = texture;
+      return texture;
     };
     return { name: "HeadlessStubTextures" };
   });
@@ -193,6 +196,97 @@ describe("mtoonRepair against real .vrm assets", () => {
         // drops to 0 and every other assertion in this file would
         // vacuously pass.
         expect(result.mtoonCount, `${file}: mtoonCount mismatch`).toBe(expected);
+      }
+    },
+    ASSET_TIMEOUT,
+  );
+
+  it(
+    "fires each rule on exactly the materials the spike 001 audit predicted",
+    async () => {
+      function tally(log: { rule: string }[]): Record<string, number> {
+        const counts: Record<string, number> = {};
+        for (const entry of log) {
+          counts[entry.rule] = (counts[entry.rule] ?? 0) + 1;
+        }
+        return counts;
+      }
+
+      // BASELINE CORRECTION (documented as a Plan 15-02 finding, not a code
+      // regression): the numbers below differ from the fire-count table in
+      // `15-RESEARCH.md` §2, but match `.planning/spikes/001-mtoon-runtime-audit/audit-result.json`
+      // (the committed ground-truth per-material audit, `_looksLikeFaceDetail`
+      // flags) exactly, and were independently re-derived by hand-evaluating
+      // `FACE_DETAIL_MATERIAL_RE` against every material name in that JSON.
+      // Running the UNMODIFIED spike source
+      // (`apps/playground/src/app/mtoon-spike/repairMToon.ts`, byte-identical
+      // to before this phase) against these same committed `.vrm` files
+      // reproduces these exact numbers too — and `git log --follow` on all
+      // three asset files shows no changes since the initial commit. So this
+      // is not asset drift and not a graduation regression: the RESEARCH.md
+      // table's "shade ≈ lit" row (the face-detail proxy) undercounted by
+      // exactly one material on every model (male.vrm: 7 claimed vs 8 actual
+      // -- "M00_000_00_Face_00_SKIN" is correctly NOT face-detail and was
+      // seemingly miscounted as one of the matches when the table was
+      // written; 3636...vrm: 7 claimed vs 4 actual, matching the spike's own
+      // verify-repair.mjs EXPECTED comment, which is annotated with a
+      // hand-wavy "+" acknowledging it was never verified by regex; 262...vrm:
+      // 6 claimed vs 7 actual). Every downstream "fires after exclusion"
+      // number in the plan's baseline was computed as
+      // `rawConditionCount - claimed_faceSkipped`, so the same off-by-one
+      // propagates into R1/R3/R2. R4 and R5 are untouched (they don't overlap
+      // face-detail materials on these assets) and match the plan's original
+      // baseline exactly.
+      // male.vrm
+      {
+        const scene = await loadVrmScene("male.vrm");
+        const result = repairMToonMaterials(scene);
+        const counts = tally(result.log);
+        expect(counts["R5-range"] ?? 0).toBe(1);
+        expect(counts["R4-fully-lit"] ?? 0).toBe(5);
+        // Plan baseline: 14 (raw count of materials with shadingToonyFactor <
+        // 0.3, BEFORE face-detail exclusion -- matches RESEARCH.md's raw
+        // "toony < 0.3" row exactly). Actual R3 FIRE count after excluding
+        // the 8 real face-detail materials: 14 - 8 = 6.
+        expect(counts["R3-toony"] ?? 0).toBe(6);
+        expect(counts["R2-fresnel"] ?? 0).toBe(0);
+        // Plan baseline: 12 (computed as 19 - 7 using the undercounted
+        // faceSkipped). Actual: 19 - 8 = 11.
+        expect(counts["R1-rim"] ?? 0).toBe(11);
+        // Plan baseline: 7. Actual (verified against audit-result.json's
+        // `_looksLikeFaceDetail` flags): 8 -- FaceBrow, FaceMouth, EyeIris,
+        // EyeHighlight, EyeWhite, FaceEyelash, FaceEyeline, EyeExtra_01.
+        expect(result.skippedFaceDetail).toBe(8);
+      }
+
+      // 3636451243928341470.vrm — the non-regression control: success
+      // criterion 2 is only meaningful because the pass provably DOES modify
+      // this well-authored model (7/21 materials in spike 002's human review
+      // -- that 7 was `touched`, a different count than `skippedFaceDetail`).
+      {
+        const scene = await loadVrmScene("3636451243928341470.vrm");
+        const result = repairMToonMaterials(scene);
+        // Plan baseline: 7 (the spike's own verify-repair.mjs EXPECTED
+        // comment, annotated "eyes_shadow, face_e_a, + " -- an admittedly
+        // incomplete hand count). Actual, matching FACE_DETAIL_MATERIAL_RE
+        // evaluated against every material name in audit-result.json: 4
+        // (face_eyes, eyes_hiligit, eyes_shadow, face_e_a).
+        expect(result.skippedFaceDetail).toBe(4);
+        expect(result.touched).toBeGreaterThanOrEqual(7);
+      }
+
+      // 262410318834873893.vrm
+      {
+        const scene = await loadVrmScene("262410318834873893.vrm");
+        const result = repairMToonMaterials(scene);
+        const counts = tally(result.log);
+        // Plan baseline: 12 (computed as 18 - 6 using the undercounted
+        // faceSkipped). Actual: 18 - 7 = 11.
+        expect(counts["R2-fresnel"] ?? 0).toBe(11);
+        // Plan baseline: 6. Actual: 7 (FaceMouth, EyeIris, EyeHighlight,
+        // EyeWhite, FaceBrow, FaceEyelash, FaceEyeline -- all "(Instance)"
+        // suffixed, matched by FACE_DETAIL_MATERIAL_RE all the same).
+        expect(result.skippedFaceDetail).toBe(7);
       }
     },
     ASSET_TIMEOUT,

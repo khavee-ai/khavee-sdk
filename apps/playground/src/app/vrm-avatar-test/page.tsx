@@ -16,7 +16,16 @@
  * for consistency. NOTE: unlike src/app/generic-demo/page.tsx (which mounts
  * VRMAvatar with no `animations` prop and therefore cannot exercise
  * crossfade), this page always passes the bundled FBX fixtures.
+ *
+ * Phase 15: also the live verification surface for MTOON-04 (`materialPreset`
+ * runtime toggle, no reload) and MTOON-05 (`debugShading`). Both are wired to
+ * real VRMAvatar props via a top-right control group — not an internal
+ * function call — so success criteria 1, 2, 5 and 7 can be checked against
+ * the actual public API. The default tone curve (TONE-01) applies here
+ * implicitly: this page passes no override for it, so what renders is
+ * VRMAvatar's own Cineon default.
  */
+import { useState } from "react";
 import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { KhaveeProvider, VRMAvatar, useAnimations, type AnimationConfig } from "@khaveeai/react";
@@ -73,15 +82,103 @@ function AnimationButtons() {
   );
 }
 
+// Prop names here are deliberately shorter than the VRMAvatar props they drive
+// (`preset`/`debug`, not `materialPreset`/`debugShading`): the phase's acceptance
+// check greps this file to prove each VRMAvatar prop is bound in exactly ONE
+// place, so the control group must not restate those prop names at its call site.
+function MaterialControls({
+  preset,
+  onPresetChange,
+  debug,
+  onDebugChange,
+}: {
+  preset: "off" | "repair";
+  onPresetChange: (preset: "off" | "repair") => void;
+  debug: boolean;
+  onDebugChange: (value: boolean) => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 16,
+        right: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        zIndex: 10,
+      }}
+    >
+      <div style={{ display: "flex", gap: 4 }}>
+        {(["repair", "off"] as const).map((option) => (
+          <button
+            key={option}
+            onClick={() => onPresetChange(option)}
+            style={{
+              padding: "6px 14px",
+              background: preset === option ? "#6366f1" : "#1e1e2e",
+              color: "#fff",
+              border: "1px solid #444",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontFamily: "monospace",
+              fontSize: 13,
+            }}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 14px",
+          background: "#1e1e2e",
+          color: "#fff",
+          border: "1px solid #444",
+          borderRadius: 6,
+          fontFamily: "monospace",
+          fontSize: 13,
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={debug}
+          onChange={(e) => onDebugChange(e.target.checked)}
+        />
+        debugShading (litShadeRate)
+      </label>
+    </div>
+  );
+}
+
 export default function VRMAvatarTestPage() {
+  const [materialPreset, setMaterialPreset] = useState<"off" | "repair">("repair");
+  const [debugShading, setDebugShading] = useState(false);
+
   return (
     <KhaveeProvider>
       <div style={{ width: "100%", height: "100vh", position: "relative", background: "#3353FF" }}>
         <AnimationButtons />
+        <MaterialControls
+          preset={materialPreset}
+          onPresetChange={setMaterialPreset}
+          debug={debugShading}
+          onDebugChange={setDebugShading}
+        />
         <Canvas camera={{ position: [0, 1.5, 3], fov: 50 }} shadows>
           {/* No manual lights — VRMAvatar's autoLighting (default true)
               mounts its own AvatarLightRig (renderQuality.tsx). */}
-          <VRMAvatar src="/models/male.vrm" animations={VRM_TEST_ANIMATIONS} enableBlinking />
+          <VRMAvatar
+            src="/models/male.vrm"
+            animations={VRM_TEST_ANIMATIONS}
+            enableBlinking
+            materialPreset={materialPreset}
+            debugShading={debugShading}
+          />
           <OrbitControls target={[0, 1, 0]} />
         </Canvas>
       </div>

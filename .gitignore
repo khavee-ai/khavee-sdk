@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# spike-local symlinks into workspace node_modules (spike convention)
+.planning/spikes/*/node_modules

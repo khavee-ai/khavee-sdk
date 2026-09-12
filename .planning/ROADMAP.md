@@ -497,7 +497,7 @@ light, no post-processing, a filmic tone curve fighting toon materials, and a CS
 avatar is never lit by. Phases 15-18 close the code half of that gap in dependency order; the
 asset half is tracked separately below.
 
-- [ ] **Phase 15: MToon Material Repair & Tone Mapping** - Zero-config correction of broken authored MToon values plus a toon-appropriate tone curve, so every VRM avatar renders with correct toon shading without touching the character assets
+- [x] **Phase 15: MToon Material Repair & Tone Mapping** - Zero-config correction of broken authored MToon values plus a toon-appropriate tone curve, so every VRM avatar renders with correct toon shading without touching the character assets (completed 2026-09-12)
 - [ ] **Phase 16: Lighting, Shadows & Post-Processing** - A real light rig with rim/back light, soft contact shadows, and an opt-in post chain (DOF, vignette, grading) so the avatar reads as lit and composed rather than pasted onto its background
 - [ ] **Phase 17: Camera Direction & Scene Composition** - Curated framing, subtle camera life, and state-driven reframing, replacing free orbit that lets a viewer land on an unflattering angle
 - [ ] **Phase 18: Facial Performance — Eyes, Visemes & Emotion** - Real eye movement, TTS-timed visemes instead of guessed-from-audio phonemes, and an LLM-driven emotion channel wired to expression, gesture and gaze
@@ -528,7 +528,7 @@ Plans:
 - [x] 15-03-PLAN.md — `materialPreset`, `debugShading` and the CineonToneMapping default on VRMAvatar (MTOON-04/05, TONE-01)
 
 **Wave 3**
-- [ ] 15-04-PLAN.md — Repoint the spike harness at the SDK, live prop controls, human verification of criteria 1/2/4/5/7
+- [x] 15-04-PLAN.md — Repoint the spike harness at the SDK, live prop controls, human verification of criteria 1/2/4/5/7
 
 ### Phase 16: Lighting, Shadows & Post-Processing
 
@@ -618,7 +618,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 12. Gaze & Gesture | 10/10 | Gap deferred |  |
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |
 | 14. xAI Realtime Provider | 1/1 | Complete   | 2026-08-25 |
-| 15. MToon Material Repair & Tone Mapping | 3/4 | In Progress|  |
+| 15. MToon Material Repair & Tone Mapping | 4/4 | Complete   | 2026-09-12 |
 | 16. Lighting, Shadows & Post-Processing | 0/TBD | Not started | - |
 | 17. Camera Direction & Scene Composition | 0/TBD | Not started | - |
 | 18. Facial Performance — Eyes, Visemes & Emotion | 0/TBD | Not started | - |

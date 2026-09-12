@@ -1,4 +1,6 @@
-# Requirements: Khavee Generic Voice Pipeline — v2.2 Natural Avatar Animation
+# Requirements: Khavee Generic Voice Pipeline
+
+Covers v2.2 Natural Avatar Animation (Phases 10-13) and v3.1 Avatar Render Quality (Phases 15-18).
 
 **Defined:** 2026-07-12
 **Core Value (this milestone):** A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage. This milestone extends that value to the avatar rendering layer: natural-feeling animation with zero-config setup.
@@ -63,6 +65,36 @@ Deferred — blocked on hands-on asset procurement outside this milestone's reac
 
 Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeholder or the repo's existing (non-redistribution-safe, tracked separately in [#11](https://github.com/khavee-ai/khavee-sdk/issues/11)) clips — the architecture itself does not depend on final asset sourcing to be correct.
 
+## v3.1 Requirements — Avatar Render Quality
+
+Milestone v3.1 (Phases 15-18). Definitions below are lifted from each plan's
+acceptance criteria, not restated from memory.
+
+### MToon Material Repair (Phase 15)
+
+- **MTOON-01**: Rules R1-R5 exist in `packages/react/src/utils/mtoonRepair.ts` and run in the order R5, R4, R3, R2, R1. Every threshold is backed by a measured fire-count in spike 001.
+- **MTOON-02**: The face-detail check runs BEFORE any rule, and its effect is provable via the `skippedFaceDetail` count. Materials matching the classifier (eyes, irises, highlights, lashes, eyelines, brows, mouth interiors) are never modified.
+- **MTOON-03**: R1's injected rim tint derives from `averageTextureColor(material.map)` multiplied by `material.color`, preserving hue — not from `litFactor` alone, which VRoid models leave white and which produced the grey rim spike 003 measured.
+- **MTOON-04**: `materialPreset` defaults to `"repair"`; `"off"` restores the authored values at runtime with no reload.
+- **MTOON-05**: `debugShading` renders MToon's `litShadeRate` view via the runtime debug setter (not the loader plugin's load-time option, which would require re-parsing the model).
+
+### Tone Mapping (Phase 15)
+
+- **TONE-01**: Default renderer tone mapping is `THREE.CineonToneMapping`; an explicitly passed `toneMapping` prop still overrides it. `GLBAvatar` deliberately stays on `ACESFilmicToneMapping` — it renders plain glTF PBR, and spike 003 measured MToon output only.
+
+### Verification (Phase 15)
+
+- **TEST-01**: An automated vitest suite proves the repair invariants against real `.vrm` assets — not mocks, not inspection. Runs under `environment: "node"`.
+
+### Phases 16-18
+
+Requirements not yet defined — scope outlines only (see ROADMAP.md). To be
+specified at each phase's planning time:
+
+- Phase 16 — Lighting, Shadows & Post-Processing (5 scope items; outlines blocked on Phase 13's performance tiers)
+- Phase 17 — Camera Direction & Scene Composition (3 scope items)
+- Phase 18 — Facial Performance: Eyes, Visemes & Emotion (3 scope items)
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -100,6 +132,13 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 | PERF-02 | Phase 13 | Pending |
 | VERIFY-01 | Phase 13 | Pending |
 | VERIFY-02 | Phase 13 | Pending |
+| MTOON-01 | Phase 15 | Complete (2026-09-12, human-verified criteria 1/2/4/5/7 + 178 automated tests) |
+| MTOON-02 | Phase 15 | Complete (proven by real-asset test, not inspection — `mtoonRepair.assets.test.ts`) |
+| MTOON-03 | Phase 15 | Complete (TDD RED `ab16f1c` → GREEN `ea08157`; achromatic-branch gap closed by `e758625`) |
+| MTOON-04 | Phase 15 | Complete (runtime toggle, no reload — human-verified) |
+| MTOON-05 | Phase 15 | Complete (human-verified `litShadeRate` view) |
+| TONE-01 | Phase 15 | Complete (`VRMAvatar.tsx` — `toneMapping ?? THREE.CineonToneMapping`) |
+| TEST-01 | Phase 15 | Complete (5 real-`.vrm` tests through the full `VRMLoaderPlugin`) |
 
 **Untracked regressions (not mapped to a REQ-ID) — ALL RESOLVED as of 11-18 (2026-07-17):**
 - G1: Avatar stuck in T-pose on first load — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), re-confirmed by 11-18's sixth-round sweep. Root cause (found by 11-13 via headless production-path replay): the crossfade-trigger effect's single pre-connect run happened while clips/root were unresolvable and never re-fired when the VRM finished loading. Fixed with a new exported pure function `shouldTriggerClipSwitch`.
@@ -111,10 +150,16 @@ Until these land, ANIM/IDLE/TALK/TRANS work should build and test against placeh
 - OPEN ISSUE 2 (new, found 2026-07-17 in 11-16's fifth-round check): GLB procedural sway intensity too strong after swapping the active animation clip — FIXED by 11-17 (`shouldDisableProceduralForManualClip` gate) and confirmed by 11-18 (2026-07-17).
 
 **Coverage:**
-- v1 requirements: 22 total
+- v1 (v2.2) requirements: 22 total
 - Mapped to phases: 22 (Phase 10: ANIM-01/02/03, XFADE-01; Phase 11: IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01; Phase 12: GAZE-01/02, GEST-01/02; Phase 13: API-01/02/03/04, PERF-02, VERIFY-01/02)
+- v3.1 requirements: 7 total, all mapped to Phase 15, all Complete
 - Unmapped: 0 ✓
+
+**Known gap:** Phase 14 (xAI Realtime Provider, v3.0) was completed 2026-08-25
+without requirement IDs and is absent from this table. Recorded here rather than
+back-filled, since inventing IDs after the fact would misrepresent what was
+actually specified at the time.
 
 ---
 *Requirements defined: 2026-07-12*
-*Last updated: 2026-07-12 — roadmap created, all 22 v1 requirements mapped to Phases 10-13*
+*Last updated: 2026-09-13 — added the 7 v3.1 requirements (MTOON-01..05, TONE-01, TEST-01), all Complete via Phase 15. The v3.1 milestone was previously absent from this file entirely; Phase 15's verification had to fall back to ROADMAP.md for traceability, which happened to map all 7 IDs correctly. Caught by the Phase 15 verifier.*

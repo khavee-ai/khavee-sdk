@@ -4,7 +4,7 @@
  * (Phase 10 Plan 03, ANIM-01/ANIM-02/XFADE-01).
  *
  * The VRM analog of glb-avatar-test: mounts the SDK's VRMAvatar with the
- * bundled Idle/talking/talking1 Mixamo FBX clips (D-03) inside a
+ * bundled Idle/talk/talk2 Mixamo FBX clips (D-03) inside a
  * KhaveeProvider, so a human can trigger transitions between distinct poses
  * and watch the eased, pose-gap-adaptive VRM crossfade — a different code
  * path than GLB (VRM format adapter, currentVrm.scene root, Mixamo bone
@@ -34,8 +34,8 @@ import { KhaveeProvider, VRMAvatar, useAnimations, type AnimationConfig } from "
 // animate()-able clip names once useAnimationFiles/processedClips remaps them.
 const VRM_TEST_ANIMATIONS: AnimationConfig = {
   idle: "/models/animations/Idle.fbx",
-  talking: "/models/animations/talking.fbx",
-  talking1: "/models/animations/talking1.fbx",
+  talk: "/models/animations/talk.fbx",
+  talk2: "/models/animations/talk2.fbx",
 };
 
 function AnimationButtons() {
@@ -43,7 +43,7 @@ function AnimationButtons() {
   // setAvailableAnimations() on the KhaveeProvider context — a pre-existing
   // gap in useAnimationFiles/processedClips wiring, out of scope for this
   // phase (ANIM-03: model-loading paths stay untouched). We therefore drive
-  // buttons directly off the config keys (idle/talking/talking1) rather than
+  // buttons directly off the config keys (idle/talk/talk2) rather than
   // useAnimations().availableAnimations, which would stay permanently empty
   // for VRM today.
   const { animate, currentAnimation } = useAnimations();

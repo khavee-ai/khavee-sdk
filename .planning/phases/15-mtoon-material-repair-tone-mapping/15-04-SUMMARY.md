@@ -35,7 +35,7 @@ key-decisions:
   - "MaterialControls takes preset/debug rather than materialPreset/debugShading: the plan's acceptance criteria grep this file to prove each VRMAvatar prop is bound in exactly ONE place, so restating the SDK prop names at the control group's call site would have defeated the check. Recorded in an inline comment so the naming does not read as arbitrary."
   - "Task 2's <action> text asks the file header to state that no `toneMapping` prop is passed, but its own <acceptance_criteria> requires grep \"toneMapping\" to return 0 lines. Same class of internal plan tension Plan 03 hit. Resolved by wording the comment without the literal identifier — documentation intent and automated check both satisfied."
   - "Fixed a PRE-EXISTING broken asset reference discovered during verification rather than deferring it: the page pointed at /models/animations/talking.fbx and talking1.fbx, neither of which has ever existed in the repo (real assets are talk.fbx / talk2.fbx). Both refs date from Phase 10 Plan 03 and are present at aadb9b1, before this phase began. Fixed in scope because a 404 while a human judges render output is active interference with this plan's own verification gate."
-  - "lint could not be run as an automated check: eslint-config-next fails to load its own parser (Cannot find module 'next/dist/compiled/babel/eslint-parser') due to a pnpm peer-hoisting gap, independent of any file this plan touched. Reported as unverifiable rather than passed. See deferred-items.md."
+  - "lint could not be run at execution time: eslint-config-next failed to load its own parser (Cannot find module 'next/dist/compiled/babel/eslint-parser'). Reported as unverifiable rather than passed. RESOLVED 2026-09-13 — root cause was a corrupted pnpm store, not a dependency-tree gap; after a store prune + re-resolve, lint runs and both of this plan's files are clean. See deferred-items.md."
 
 requirements-completed: [MTOON-01, MTOON-02, MTOON-03, MTOON-04, MTOON-05, TONE-01, TEST-01]
 
@@ -75,7 +75,7 @@ material work, fixed because it polluted the verification console.
 | `grep "debugShading={"` | 1 (same element) |
 | `grep "toneMapping"` | 0 |
 | `tsc --noEmit` (playground) | Only the pre-existing `generic-demo` vitest-typings error; no error in any file this plan touched |
-| `lint` (playground) | **Unverifiable** — ESLint cannot load its config (see key-decisions) |
+| `lint` (playground) | **PASS for this plan's files** (re-checked 2026-09-13 after the store repair — both files clean; see deferred-items.md) |
 | `@khaveeai/react` suite | 174/174 |
 | `openai-stt-tts` suite (criterion 8 fence) | 13/13 |
 | Every referenced FBX asset resolves | Yes (Idle, talk, talk2) |

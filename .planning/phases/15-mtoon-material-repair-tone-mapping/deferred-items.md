@@ -33,3 +33,25 @@ only auto-fix issues directly caused by the current task's changes).
   (~800MB free) and per Rule 3's package-install exclusion. `tsc --noEmit` (the other automated
   check) passes clean modulo the unrelated vitest-typings issue above, so this is reported as an
   environment blocker on `lint` only, not a code defect in Task 1 or Task 2's files.
+
+---
+
+## Update 2026-09-13 — ESLint blocker RESOLVED
+
+The `eslint-config-next` parser failure above is **fixed**. Root cause was a
+corrupted/partial pnpm store state, not a genuine peer-dependency gap in the
+dependency tree: after `pnpm store prune` (17 GB → 15 MB, 11,784 orphaned
+packages removed) and a re-resolve, ESLint loads its config and runs normally.
+
+Re-checked at that point:
+- `apps/playground` lint: **runs**, reporting 13 errors / 87 warnings.
+- Phase 15's own two playground files (`vrm-avatar-test/page.tsx`,
+  `mtoon-spike/page.tsx`) lint **clean** — zero errors, zero warnings.
+- All 13 errors are in pre-existing files this phase never touched:
+  `components/VRMAvatarRef.tsx`, `utils/remapMixamoAnimationToVrm.ts`,
+  `xai/page.tsx` (Phase 14), and `generic-demo/__tests__/roundtrip-audio-contract.test.ts`
+  (Phase 4 — the same file as the known `tsc` error above, which remains).
+
+So Plan 15-04's lint acceptance criterion is **PASSED**, not unverifiable. The
+wider 13-error backlog is pre-existing debt for a separate cleanup, and is worth
+noting only because until now *no* playground file was being linted at all.

@@ -8,9 +8,33 @@ khavee-sdk currently ships an `openai-stt-tts` provider that hardcodes the STT �
 
 A developer can assemble a full voice pipeline (STT + LLM + TTS, with tool-calling) from independently swappable vendor adapters — without being locked into OpenAI for every stage.
 
-## Current Milestone: v2.2 Natural Avatar Animation
+## Current Milestone: v3.1 Avatar Render Quality
 
-> v2.1 "Block Studio" (Phase 9) is still active/in progress — its work is tracked below in "Active", not lost. This milestone starts alongside it per explicit user direction, not as a completion-first sequence.
+**Current state (2026-09-13):** Phase 15 complete — 4/4 plans, 8/8 success
+criteria verified, 11/11 threats closed, 178 automated tests green. Next up is
+Phase 16 (Lighting, Shadows & Post-Processing).
+
+v3.1 closes the *code* half of a competitor gap analysis whose finding was that
+the animation system is not the bottleneck — shading, lighting, composition and
+facial performance are. Phases 15-18 address those in dependency order. The
+*asset* half (character art quality, bespoke motion capture, spring-bone tuning)
+is tracked as a deferred track in ROADMAP.md, not as phases.
+
+**Phase 15 delivered:** zero-config repair of broken authored MToon values at
+load time, with a face-detail classifier that never touches eyes/lashes/brows,
+runtime-reversible `materialPreset`, a `debugShading` view, and
+`CineonToneMapping` as the default tone curve (+74% measured saturation over
+ACESFilmic, trading ~0.014 contrast that Phase 16 is expected to return through
+lighting rather than through the curve).
+
+### Earlier milestones, still open
+
+> v2.1 "Block Studio" (Phase 9) remains in progress (5/6 plans) — tracked below in "Active", not lost.
+> v2.2 "Natural Avatar Animation" (Phases 10-13): Phases 10, 11 complete; Phase 12 complete with GAZE-02 deferred by user direction; **Phase 13 not started** — note Phase 16's MToon-outline scope item is blocked behind Phase 13's performance tiers.
+> v3.0 "Multi-Provider Voice" (Phase 14, xAI/Grok realtime provider) complete 2026-08-25.
+> Phase 5 (End-to-End Mixed-Vendor Demo & Documentation) remains not started — it belongs to the earlier generic-pipeline scope, deprioritized when v2.0 was brought forward.
+
+### v2.2 milestone detail (retained for reference)
 
 **Goal:** Replace `VRMAvatar`/`GLBAvatar`'s robotic chatStatus-driven animation switching with a unified, natural-feeling state architecture — shared internal module, procedural motion layer, and a zero-config public API — per the fully-resolved design spec produced by wayfinder map [khavee-ai/khavee-sdk#1](https://github.com/khavee-ai/khavee-sdk/issues/1) (14 closed tickets, all architecture decisions locked; this milestone is implementation, not design).
 
@@ -121,4 +145,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-25 — v2.0 "WordPress Plugin (Custom Mode)" complete (Phases 6–8). Starting v2.1 "Block Studio" (Phase 9): visual config controls + live editor preview + ChatBox + lip-sync. Note: Phase 5 (End-to-End Mixed-Vendor Demo & Documentation) remains "Not started" — it belongs to the earlier generic-pipeline scope, left pending when v2.0 was prioritized ahead of it.*
+*Last updated: 2026-09-13 — Phase 15 (MToon Material Repair & Tone Mapping) complete, closing the first phase of v3.1 "Avatar Render Quality". This file had not been updated since 2026-06-25 and still described v2.1 as being started; the intervening Phases 10-15 and milestones v2.2/v3.0/v3.1 are now reflected above. Next: Phase 16 (Lighting, Shadows & Post-Processing).*

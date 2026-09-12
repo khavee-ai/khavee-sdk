@@ -18,6 +18,15 @@ findings:
   warning: 3
   info: 4
   total: 7
+resolved:
+  - WR-02  # fixed in e758625 — achromatic lightness floor + 4 regression tests
+  - WR-03  # fixed in e758625 — local vendor-neutral MToonDebugMode union
+outstanding:
+  - WR-01  # accepted: over-exclusion fails safe; carried to Phase 16
+  - IN-01
+  - IN-02
+  - IN-03
+  - IN-04
 status: issues_found
 ---
 
@@ -43,7 +52,7 @@ Where I found real gaps: the face-detail regex is broader than it needs to be in
 
 ## Warnings
 
-### WR-01: `FACE_DETAIL_MATERIAL_RE`'s bare `shadow` token can exclude legitimate non-face materials from repair
+### WR-01 [ACCEPTED — carried to Phase 16]: `FACE_DETAIL_MATERIAL_RE`'s bare `shadow` token can exclude legitimate non-face materials from repair
 
 **File:** `packages/react/src/utils/mtoonRepair.ts:26-27`
 **Issue:** The face-detail classifier is:
@@ -60,7 +69,7 @@ export const FACE_DETAIL_MATERIAL_RE =
   /eye|iris|highlight|lash|eyeline|brow|mouth|tooth|teeth|tongue|face_?e|(?:eyes?|face)[-_]?shadow/i;
 ```
 
-### WR-02: R1's rim-tint fix is a silent no-op for genuinely black/near-black base materials, and the achromatic branch has zero test coverage
+### WR-02 [RESOLVED e758625]: R1's rim-tint fix is a silent no-op for genuinely black/near-black base materials, and the achromatic branch has zero test coverage
 
 **File:** `packages/react/src/utils/mtoonRepair.ts:346-385`
 **Issue:** MTOON-03's fix derives the rim tint from `averageTextureColor(m.map) * m.color` (or `m.color` alone when there's no map), then branches on HSL saturation:
@@ -78,7 +87,7 @@ If a material's base colour is genuinely black — a black-texture/black-`litFac
 Compounding this: neither `mtoonRepair.test.ts` nor `mtoonRepair.assets.test.ts` exercises the achromatic branch (`hsl.s < rimAchromaticThreshold`) at all — the existing tests cover a saturated blue texture, a saturated blue `litFactor`-only fallback, and a face-detail skip, but never a grey/black/white base colour. This is precisely the branch the MTOON-03 fix comment calls out as safety-critical ("do NOT invent a hue... e.g. red"), and it currently ships with no regression protection.
 **Fix:** Give the achromatic branch a lightness floor so a genuinely-dark material still gets a *visible* (if desaturated) rim, e.g. `base.setHSL(hsl.h, hsl.s, Math.max(hsl.l, 0.3))` before scaling, and add a unit test with `material.color = new THREE.Color(0,0,0)` / no map asserting the resulting rim is not still `[0,0,0]`.
 
-### WR-03: `setMToonDebugMode`'s parameter type isn't reachable by external consumers of `@khaveeai/react`
+### WR-03 [RESOLVED e758625]: `setMToonDebugMode`'s parameter type isn't reachable by external consumers of `@khaveeai/react`
 
 **File:** `packages/react/src/utils/mtoonRepair.ts:407`, `packages/react/src/utils/renderQuality.tsx:24-38`, `packages/react/src/index.ts:11-29`
 **Issue:** `setMToonDebugMode(root, mode: MToonMaterialDebugMode)` is now publicly exported from `@khaveeai/react` (via `renderQuality.tsx` → `index.ts`), but `MToonMaterialDebugMode` itself — the enum needed to call it — is never re-exported. `@pixiv/three-vrm` is a `dependency` (not a `peerDependency`) of `@khaveeai/react` (`packages/react/package.json`), so under pnpm's strict, non-hoisted `node_modules` layout, a consuming app that has *not itself* listed `@pixiv/three-vrm` in its own `package.json` cannot resolve `import { MToonMaterialDebugMode } from "@pixiv/three-vrm"` — the package exists somewhere in the pnpm store but is not a direct dependency of the consumer, so plain Node/TS module resolution will fail for it (`Cannot find module '@pixiv/three-vrm'` or, in npm's flatter hoisting, works only by accident of hoisting order). A consumer who follows the exported API surface literally (`import { setMToonDebugMode } from "@khaveeai/react"`) has no supported way to construct a valid `mode` argument without adding an undeclared transitive dependency.
@@ -120,3 +129,42 @@ and add it to `index.ts`'s export list, or accept a plain `"none" | "litShadeRat
 _Reviewed: 2026-09-13T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+## Resolution (2026-09-13)
+
+**WR-02 — FIXED** (`e758625`). Added `RIM_ACHROMATIC_LIGHTNESS_FLOOR = 0.3`,
+applied only in the achromatic branch, so a black/near-black base now receives
+a visible but deliberately desaturated rim instead of silently staying at
+`[0,0,0]`. Kept as a module constant, not a `RepairOptions` field, because
+every field of that interface is required and adding one would break callers
+constructing it as a literal. Four regression tests added covering the
+previously-untested achromatic branch: black base gets a visible rim and its
+log entry reflects a real change, mid-grey and white bases stay achromatic
+while remaining visible, and the spike-002 fresnel trap still fires on this
+path. Confirmed the black-base test fails with the floor at `0` and passes at
+`0.3`, so it pins the fix rather than merely describing it.
+
+**WR-03 — FIXED** (`e758625`). Rather than re-exporting the vendor enum,
+declared `MToonDebugMode` locally in `mtoonRepair.ts` as
+`"none" | "normal" | "litShadeRate" | "uv"`. The vendor "enum" is a const
+object over those same string literals, so the local union is structurally
+identical and still assigns to `material.debugMode` without mapping — while
+keeping the public surface vendor-agnostic per this project's vendor-neutrality
+constraint. Exported through `renderQuality.tsx` and `index.ts`; `VRMAvatar`
+now passes plain literals, removing the last `@pixiv` debug-enum reference
+from the package.
+
+**WR-01 — ACCEPTED, carried forward.** The `shadow` token's over-match causes
+*over-exclusion*, which fails safe: an affected material is simply left
+unrepaired, never broken. No effect on the three shipped assets. Narrowing the
+regex needs evidence from a wider asset set than we currently have, so it is
+better done alongside Phase 16's lighting work than guessed at now.
+
+**IN-01 … IN-04 — carried forward.** Ergonomics and efficiency, no correctness
+impact. IN-02 (unconditional `needsUpdate`) is the one worth doing first, since
+it costs a shader-recompile check per untouched material on every preset toggle.
+
+Post-fix state: `@khaveeai/react` 178/178 (was 174), `openai-stt-tts` 13/13,
+`tsc` clean, build clean.

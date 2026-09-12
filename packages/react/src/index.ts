@@ -23,6 +23,7 @@ export type {
   AvatarPostFXProps,
   ShadowFloorProps,
   MaterialPreset,
+  MToonDebugMode,
   RepairOptions,
   RepairResult,
   RepairLogEntry,

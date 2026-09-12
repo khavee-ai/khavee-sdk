@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { MToonMaterial, MToonMaterialDebugMode } from "@pixiv/three-vrm";
+import { MToonMaterial } from "@pixiv/three-vrm";
 
 /**
  * mtoonRepair - Graduated from `apps/playground/src/app/mtoon-spike/repairMToon.ts`
@@ -38,6 +38,26 @@ export const FACE_DETAIL_MATERIAL_RE =
  */
 export type MaterialPreset = "off" | "repair";
 
+/**
+ * Debug visualisation passed to {@link setMToonDebugMode}.
+ *
+ * Declared here rather than re-exported from `@pixiv/three-vrm` on purpose
+ * (code review WR-03). `setMToonDebugMode` is public API of
+ * `@khaveeai/react`, but `@pixiv/three-vrm` is a plain dependency of this
+ * package, not a peer — so under pnpm's strict non-hoisted layout a consumer
+ * that has not itself declared `@pixiv/three-vrm` cannot import the vendor
+ * enum needed to call our own exported function. A local string union is
+ * structurally identical to the vendor's (same literal values, so it still
+ * assigns to `material.debugMode`) and keeps the public surface
+ * vendor-agnostic, per this project's vendor-neutrality constraint.
+ *
+ * - `"none"` — render normally
+ * - `"normal"` — visualise surface normals
+ * - `"litShadeRate"` — visualise the lit/shade boundary (MTOON-05)
+ * - `"uv"` — visualise UVs
+ */
+export type MToonDebugMode = "none" | "normal" | "litShadeRate" | "uv";
+
 /** Options for {@link repairMToonMaterials}. */
 export interface RepairOptions {
   /** Strength of an injected rim light, 0-1. Default: 0.45 */
@@ -64,6 +84,15 @@ export interface RepairOptions {
    */
   rimAchromaticThreshold: number;
 }
+
+/**
+ * Lightness floor applied to an ACHROMATIC derived rim tint (MTOON-03).
+ *
+ * Not a `RepairOptions` field on purpose: `RepairOptions` has every field
+ * required, so adding one would break any caller constructing it as a literal.
+ * A module constant keeps that public shape stable.
+ */
+const RIM_ACHROMATIC_LIGHTNESS_FLOOR = 0.3;
 
 /** Default repair thresholds, carried over verbatim from the validated spike. */
 export const DEFAULT_REPAIR: RepairOptions = {
@@ -370,6 +399,16 @@ export function repairMToonMaterials(
         // achromatic energy dilutes measured saturation, which is exactly
         // the SC-4 failure mode this fix targets.
         achromaticScale = 0.5;
+        // ...but a black base needs a LIGHTNESS floor or this rule no-ops.
+        // three.js's getHSL returns s=0, l=0 for pure black, so without the
+        // floor `base` stays [0,0,0], gets scaled by 0, and R1 logs a repair
+        // it did not actually perform — leaving exactly the black rim (i.e.
+        // no rim light) that R1 exists to fix. Black/near-black garments are
+        // common (shoes, straps, dark hair accents) and reach this branch on
+        // every asset whose litFactor is white, which spike 001 found is the
+        // norm. Floored below the chromatic branch's 0.35 because the 0.5
+        // achromatic halving is applied on top.
+        base.setHSL(hsl.h, hsl.s, Math.max(hsl.l, RIM_ACHROMATIC_LIGHTNESS_FLOOR));
       }
 
       m.parametricRimColorFactor.copy(base).multiplyScalar(opts.rimStrength * achromaticScale);
@@ -404,7 +443,7 @@ export function repairMToonMaterials(
  * @param mode - The debug visualization mode to apply to every material.
  * @returns The number of `MToonMaterial` instances touched.
  */
-export function setMToonDebugMode(root: THREE.Object3D, mode: MToonMaterialDebugMode): number {
+export function setMToonDebugMode(root: THREE.Object3D, mode: MToonDebugMode): number {
   let count = 0;
   forEachMToon(root, (m) => {
     m.debugMode = mode;

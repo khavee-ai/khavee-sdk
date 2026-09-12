@@ -109,3 +109,83 @@ describe("repairMToonMaterials — MTOON-03 chromatic rim", () => {
     expect(result.skippedFaceDetail).toBe(1);
   });
 });
+
+/**
+ * The achromatic branch (`hsl.s < rimAchromaticThreshold`) shipped with no
+ * coverage — caught by the Phase 15 code review as WR-02. It is the
+ * safety-critical half of MTOON-03: it must NOT invent a hue on a
+ * deliberately-grey material, but it must still leave a VISIBLE rim, which
+ * for a pure-black base it previously did not (three.js reports s=0, l=0, so
+ * the tint stayed [0,0,0] and R1 logged a repair it had not performed).
+ */
+describe("repairMToonMaterials — MTOON-03 achromatic rim (WR-02)", () => {
+  it("leaves a VISIBLE rim on a pure-black base instead of no-opping at [0,0,0]", () => {
+    const material = new MToonMaterial({});
+    material.name = "Test_CLOTH_BLACK";
+    material.parametricRimColorFactor = new THREE.Color(0, 0, 0);
+    material.color = new THREE.Color(0, 0, 0); // genuinely black garment
+    material.map = null;
+
+    const scene = makeMaterialScene(material);
+    const result = repairMToonMaterials(scene, DEFAULT_REPAIR);
+
+    expect(result.log.some((e) => e.rule === "R1-rim")).toBe(true);
+    // The actual regression: the rim must no longer be black.
+    const rim = material.parametricRimColorFactor;
+    expect(rim.r + rim.g + rim.b).toBeGreaterThan(0);
+    // R1 must have done what it logged.
+    const entry = result.log.find((e) => e.rule === "R1-rim")!;
+    expect(entry.after).not.toBe(entry.before);
+  });
+
+  it("does NOT invent a hue on a mid-grey base (stays achromatic)", () => {
+    const material = new MToonMaterial({});
+    material.name = "Test_CLOTH_GREY";
+    material.parametricRimColorFactor = new THREE.Color(0, 0, 0);
+    material.color = new THREE.Color(1, 1, 1);
+    material.map = solidTexture(128, 128, 128, 255); // deliberate grey
+
+    const scene = makeMaterialScene(material);
+    repairMToonMaterials(scene, DEFAULT_REPAIR);
+
+    const hsl = { h: 0, s: 0, l: 0 };
+    material.parametricRimColorFactor.getHSL(hsl);
+    // Saturation must stay at/near zero — tinting a grey garment is the
+    // failure this branch exists to prevent.
+    expect(hsl.s).toBeLessThan(DEFAULT_REPAIR.rimAchromaticThreshold);
+    // ...while still being visible.
+    expect(hsl.l).toBeGreaterThan(0);
+  });
+
+  it("keeps a white base achromatic and visible", () => {
+    const material = new MToonMaterial({});
+    material.name = "Test_CLOTH_WHITE";
+    material.parametricRimColorFactor = new THREE.Color(0, 0, 0);
+    material.color = new THREE.Color(1, 1, 1);
+    material.map = solidTexture(255, 255, 255, 255);
+
+    const scene = makeMaterialScene(material);
+    repairMToonMaterials(scene, DEFAULT_REPAIR);
+
+    const hsl = { h: 0, s: 0, l: 0 };
+    material.parametricRimColorFactor.getHSL(hsl);
+    expect(hsl.s).toBeLessThan(DEFAULT_REPAIR.rimAchromaticThreshold);
+    expect(hsl.l).toBeGreaterThan(0);
+  });
+
+  it("still raises fresnel power when injecting an achromatic rim (spike 002 trap)", () => {
+    const material = new MToonMaterial({});
+    material.name = "Test_CLOTH_BLACK_FRESNEL";
+    material.parametricRimColorFactor = new THREE.Color(0, 0, 0);
+    material.color = new THREE.Color(0, 0, 0);
+    material.map = null;
+    material.parametricRimFresnelPowerFactor = 1; // male.vrm's shipped value
+
+    const scene = makeMaterialScene(material);
+    repairMToonMaterials(scene, DEFAULT_REPAIR);
+
+    // At power 1 the Fresnel term covers the whole surface, so an injected
+    // rim reads as a full-body wash rather than an edge.
+    expect(material.parametricRimFresnelPowerFactor).toBe(DEFAULT_REPAIR.fresnelTarget);
+  });
+});

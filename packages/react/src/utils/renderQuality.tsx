@@ -31,6 +31,7 @@ export {
 } from "./mtoonRepair";
 export type {
   MaterialPreset,
+  MToonDebugMode,
   RepairOptions,
   RepairResult,
   RepairLogEntry,

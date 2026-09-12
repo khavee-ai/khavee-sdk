@@ -1,4 +1,4 @@
-import { MToonMaterialDebugMode, VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { useFBX, useGLTF } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -596,7 +596,7 @@ export function VRMAvatar({
     if (!scene) return;
     setMToonDebugMode(
       scene,
-      debugShading ? MToonMaterialDebugMode.LitShadeRate : MToonMaterialDebugMode.None,
+      debugShading ? "litShadeRate" : "none",
     );
   }, [scene, debugShading]);
 

@@ -54,9 +54,17 @@ That debt is this phase's to repay, and it is measurable.
   explicit control of distance, which is what makes DOF blur *tunable* rather than
   all-or-nothing; `scene.background` sits at maximum depth permanently and still carries the
   same aspect-ratio work, so it costs the same and delivers less.
-- **D-07:** The in-canvas backdrop is **opt-in**. The existing CSS-background path stays
-  working and unchanged, so khavee-app is not forced to migrate and no customer is affected
-  until they opt in.
+- **D-07:** The in-canvas backdrop is **on by default — but only when a background source is
+  actually supplied to the SDK.** "Default on" cannot mean "always render a backdrop", because
+  the SDK has no knowledge of a consumer's background unless it is passed in. So the contract is:
+  pass a background source and it is composited in-canvas automatically (no extra opt-in flag);
+  pass nothing and nothing changes — the canvas stays transparent and the existing CSS-background
+  path keeps working untouched.
+  - Consequence: this is **not breaking** for any current consumer, including khavee-app, which
+    passes no background to the SDK today and will be unaffected until it adopts the new prop.
+  - Consequence: D-08's spike becomes **more** important, not less. Because adopting the prop
+    immediately gets the in-canvas path with no second flag to hide behind, the aspect/`cover`
+    behaviour has to be correct before this ships.
 - **D-08:** **Spike first.** Before locking the backdrop + DOF into plans, spike the
   aspect/`cover` behaviour against real customer images at 2-3 different aspect ratios and
   measure the result. This mirrors how Phase 15 was grounded (spikes 001-003 produced its
@@ -76,11 +84,19 @@ That debt is this phase's to repay, and it is measurable.
 
 ### MToon outlines
 
-- **D-10:** Outlines are **in scope for this phase**, shipped as an **optional prop, default
-  off**. They are not gated behind Phase 13's performance tiers. Accepted trade-off: an outline
-  costs one extra draw pass per material (19 materials on `male.vrm`, so ~19 -> ~38 draw calls),
-  and with no tier system present the performance risk sits with whoever opts in. Revisit the
-  default once Phase 13 lands.
+- **D-10:** Outlines are **in scope for this phase** and ship **on by default**, as an optional
+  prop anyone can turn off. They are deliberately **not** gated behind Phase 13's performance
+  tiers.
+  - **Accepted risk, stated explicitly:** an outline costs one extra draw pass per material
+    (19 materials on `male.vrm`, so roughly 19 -> 38 draw calls), and with no tier system in
+    place every consumer inherits that cost without choosing it — including on mobile. The
+    roadmap originally deferred outlines behind Phase 13 for exactly this reason. The user was
+    told this and chose default-on anyway; recorded here so the decision is traceable rather
+    than looking like an oversight later.
+  - **Revisit when Phase 13 lands:** once performance tiers exist, outlines should become
+    tier-gated (auto-disabled on weak devices) rather than unconditionally on.
+  - Planning should treat "measure the actual frame-time cost of outlines on a representative
+    device" as in scope, so the accepted risk is quantified rather than assumed.
 
 ### Verification
 
@@ -179,8 +195,9 @@ That debt is this phase's to repay, and it is measurable.
 - The user explicitly raised "what if we move the background image into the canvas" unprompted,
   which is what surfaced D-06. The in-canvas backdrop is a wanted capability, not a reluctant
   concession to DOF.
-- Outlines: "เอามาทำเลย แค่อยากให้มันเป็น optional prop" — wanted in this phase, but must not be
-  forced on anyone. Hence D-10's default-off rather than deferral.
+- Outlines: first asked for as "เอามาทำเลย แค่อยากให้มันเป็น optional prop" (in this phase, as a
+  prop), then revised to **default on** — the prop stays, but its default value flips. The
+  performance consequence was put to the user before they confirmed. See D-10.
 - Rim colour from the background was chosen over a plain white rim even though white is the
   cheaper, more conventional three-point choice.
 
@@ -189,14 +206,18 @@ That debt is this phase's to repay, and it is measurable.
 <deferred>
 ## Deferred Ideas
 
-- **Performance tiers (Phase 13)** — still not started. D-10 ships outlines without them, so
-  once Phase 13 lands, revisit whether outlines should default on and be tier-gated.
+- **Performance tiers (Phase 13)** — still not started. D-10 ships outlines **default on**
+  without them, which is the single largest piece of accepted risk in this phase. When Phase 13
+  lands, outlines should become tier-gated so weak devices disable them automatically instead of
+  paying ~2x draw calls unconditionally.
 - **`<Environment>` / true IBL** — considered and rejected for now (D-06). A flat customer photo
   maps poorly to an environment map; revisit if HDRI backgrounds ever become a supported
   background type.
 - **Fallback path if the D-08 spike fails** — sample the background colour only, tint the rim
   from it, and defer DOF to Phase 17 (Camera Direction & Scene Composition), which owns framing
-  and is a more natural home for depth staging.
+  and is a more natural home for depth staging. Note this fallback got riskier under D-07's
+  default-on semantics: there is no opt-in flag to hide an unfinished backdrop behind, so if the
+  spike fails the in-canvas path must not ship at all rather than shipping half-done.
 - **khavee-app migration to the new rig** — adopting `lighting` and dropping
   `autoLighting={false}` is a separate change in a separate repo, and interacts with the pending
   avatar-reimplementation work already planned there. Not this phase's deliverable.

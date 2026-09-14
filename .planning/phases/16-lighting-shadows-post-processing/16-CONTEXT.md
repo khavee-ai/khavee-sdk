@@ -100,11 +100,22 @@ That debt is this phase's to repay, and it is measurable.
 
 ### Verification
 
-- **D-11:** Prove the contrast recovery by **measurement, not judgement**. Reuse the existing
-  `measureSaturation` harness in `apps/playground/src/app/mtoon-spike/` to measure mean HSV
-  contrast with the new rig on vs off. Success criterion: contrast must be **at least
-  ACESFilmic's pre-Phase-15 baseline of 0.3041**, so the trade Phase 15 made is demonstrably
-  repaid rather than assumed.
+- **D-11:** Prove the contrast recovery by **measurement, not judgement** — reusing the
+  `measureSaturation` harness.
+
+  **REVISED after spike 005.** The original wording set the gate at "contrast >= 0.3041,
+  ACESFilmic's pre-Phase-15 baseline". That threshold is **not usable** and must not be planned
+  against. Spike 005 found that figure was produced under four conditions this phase does not
+  share: a different render path (raw `<primitive>` vs `VRMAvatar`, which adds
+  `applyMeshRenderFlags`), a different camera framing (`fov 20 @ z4` vs `fov 50 @ z3` — framing
+  decides which body pixels are averaged, so it is a measurement variable), a different ambient
+  intensity, and repair OFF at a time when `materialPreset` now defaults to `repair`.
+
+  **The gate is therefore a same-harness comparison, not an absolute number:**
+  > The three-point rig must measure contrast **>= the `legacy` rig**, both measured in the same
+  > harness, same framing, same `materialPreset`, in the same session.
+
+  Absolute figures may not be carried across harnesses in either direction.
 
 ### Claude's Discretion
 

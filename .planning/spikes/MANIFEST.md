@@ -69,6 +69,21 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
   `requestAnimationFrame` to ~1Hz in hidden tabs, which produced a convincing but entirely false
   "2570ms/frame" reading. Performance numbers require a visible, focused tab. (from 004)
 
+- **A measurement is only comparable within the harness that produced it.** Spike 003's
+  `0.3041` contrast figure cannot be used as a Phase 16 gate: it was measured on a different
+  render path (raw `<primitive>` vs `VRMAvatar`), a different framing (`fov 20 @ z4` vs
+  `fov 50 @ z3`), a different ambient, and with repair OFF before repair became the default.
+  Gates must be expressed as **same-harness deltas** ("rig A >= rig B, measured together"),
+  never as absolute thresholds carried across spikes. (from 005)
+- **Pixel measurement, like frame timing, requires a visible focused tab.** In an automated
+  (hidden) tab `measureCanvas` returns null on every sample while screenshots of the same tab
+  show a fully rendered scene — rAF is throttled and the WebGL buffer is empty when sampled.
+  Screenshot-based *visual* comparison still works, because taking a screenshot forces a paint.
+  (from 005, same root cause as 004)
+- **Every measurement harness needs a reproduction check built into it.** The only reason the
+  above was caught is that the sweep included a row whose expected value was already known from
+  a prior spike. Without that row the numbers looked entirely plausible. (from 005)
+
 ## Spikes
 
 | # | Name | Type | Validates | Verdict | Tags |
@@ -77,6 +92,6 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
 | 002 | mtoon-repair-pass | standard | Given a badly-authored and a well-authored VRM side by side, when the repair pass is toggled, then the bad model visibly improves and the good model does not regress | **VALIDATED** — human-confirmed both criteria; rim injection needs a fresnel fix too | mtoon, rendering, repair, non-regression |
 | 003 | tonemapping-toon | standard | Given the same MToon avatar, when renderer tone mapping is switched live across six curves, then a curve is found that preserves toon saturation better than the current ACES default | **VALIDATED** — Cineon chosen (+35% sat, ~equal contrast); NoToneMapping refuted as a "flat look" option | mtoon, tonemapping, rendering, measurement |
 | 004 | backdrop-plane-dof | standard | Given real customer background images at several aspect ratios, when a backdrop plane is placed in-canvas behind the avatar and DOF is enabled, then `background-size: cover` equivalence holds across resizes and DOF separates background from subject without blurring the avatar | **VALIDATED** — cover holds; DOF works but ONLY with subject-tracking focus; `cover` keeps just 31.6% of a 9:16 upload | lighting, dof, background, composition |
-| 005 | lighting-contrast-rebaseline | standard | Given a prototype three-point rig with a rim light, when contrast and saturation are re-measured under it for both ACESFilmic and Cineon, then the correct Phase 16 contrast gate is known (superseding the 0.3041 figure measured under old lighting) | PENDING | lighting, measurement, tonemapping, rebaseline |
+| 005 | lighting-contrast-rebaseline | standard | Given a prototype three-point rig with a rim light, when contrast and saturation are re-measured under it for both ACESFilmic and Cineon, then the correct Phase 16 contrast gate is known (superseding the 0.3041 figure measured under old lighting) | **PARTIAL** — gate must become a same-harness delta, not an absolute threshold; 003's number is not portable (4 conditions differ). Numbers themselves still untrusted and withheld | lighting, measurement, tonemapping, rebaseline |
 | 006 | outline-draw-cost | standard | Given `male.vrm`'s 19 materials, when MToon outlines are enabled, then the real frame-time and draw-call cost is measured on a representative device rather than assumed | PENDING | mtoon, outlines, performance |
 | 007 | rim-from-background | standard | Given both a flat COLOR background and an uploaded IMAGE background, when the rim tint is derived from it, then the result reads as belonging to the same scene rather than merely measuring as more saturated | PENDING | lighting, rim, background, colour |

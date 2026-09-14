@@ -534,7 +534,7 @@ Plans:
 
 **Goal**: An avatar reads as a lit, grounded subject rather than a flat cut-out pasted on a background — a proper light rig with a rim/back light, soft contact shadows, and an opt-in post-processing chain that separates subject from background
 **Depends on**: Phase 15 (materials must be correct before lighting them is meaningful; Phase 15 also trades away contrast that this phase is expected to give back)
-**Requirements**: TBD
+**Requirements**: LIGHT-01, LIGHT-02, LIGHT-03, SHADOW-01, POST-01, POST-02, POST-03, BG-01, BG-02, OUTLINE-01, MEASURE-01
 **Scope outline** (not yet decomposed):
 
   1. **Three-point light rig** replacing `AvatarLightRig`'s ambient + single directional — key, cool fill, and a **rim/back light**, which is the signature of premium anime rendering. Phase 15 moved the default tone curve from ACESFilmic to Cineon, measurably trading ~0.014 of contrast (spike 003) — that contrast is meant to be recovered here, from lighting, not from the tone curve.
@@ -543,7 +543,15 @@ Plans:
   4. **Background / IBL integration** — production composites the avatar over a CSS `background-image` on a transparent canvas, so the character is never lit by, or colour-matched to, its own scene. Options include a subtle `<Environment>` and deriving a fill-light tint from the background image.
   5. **MToon outlines** — deferred here from Phase 15 for cost reasons: an outline is an extra draw pass per material (19 materials on `male.vrm`), so it must be gated by the performance tiers in Phase 13.
 
-**Plans**: TBD
+**Plans**: 6 plans in 5 waves
+
+Plans:
+- [ ] 16-01-PLAN.md — graduate the backdrop-cover and rim-colour maths with headless tests (wave 1)
+- [ ] 16-02-PLAN.md — three-point light rig, `lighting` prop on both avatars, `AvatarContactShadows` (wave 1)
+- [ ] 16-03-PLAN.md — post chain: trailing tone-mapping fix (D-13), subject-tracked DOF, vignette, grading (wave 2)
+- [ ] 16-04-PLAN.md — in-canvas backdrop plane and rim colour derived from the background (wave 3)
+- [ ] 16-05-PLAN.md — respect-existing MToon outlines, `outlines` prop, real-asset count test (wave 4)
+- [ ] 16-06-PLAN.md — lighting comparison harness + human contrast/cost measurement (wave 5)
 
 ### Phase 17: Camera Direction & Scene Composition
 

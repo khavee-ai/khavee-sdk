@@ -40,4 +40,10 @@ export type {
   RepairLogEntry,
   MToonSnapshot,
 } from "./utils/renderQuality";
+export { AvatarBackdrop } from "./utils/AvatarBackdrop";
+export type {
+  AvatarBackdropProps,
+  AvatarBackground,
+  BackgroundFit,
+} from "./utils/AvatarBackdrop";
 export * from "./hooks";

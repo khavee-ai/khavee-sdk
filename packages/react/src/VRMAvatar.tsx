@@ -19,6 +19,9 @@ import {
   snapshotMToon,
 } from "./utils/renderQuality";
 import type { MaterialPreset, MToonSnapshot, LightRigOptions } from "./utils/renderQuality";
+import { AvatarBackdrop } from "./utils/AvatarBackdrop";
+import type { AvatarBackground } from "./utils/AvatarBackdrop";
+import { useBackgroundRimColor, mergeRimColor } from "./utils/backgroundRim";
 import { useAnimationController } from "./animation/AnimationStateEngine";
 import type { AvatarFormatAdapter } from "./animation/types";
 
@@ -185,6 +188,19 @@ interface VRMAvatarProps {
    * THIS avatar specifically is ready.
    */
   onLoad?: () => void;
+  /**
+   * Composite a background inside the canvas and derive the rim light's colour from it.
+   * Omitting this prop leaves the canvas transparent and the existing CSS-background path untouched.
+   * There is no separate enable flag. The image host must send CORS headers.
+   * Should be supplied to at most one avatar per Canvas.
+   *
+   * @param background - Background source (COLOR or IMAGE).
+   */
+  background?: AvatarBackground;
+  /**
+   * Called on background load/validation errors (rejected URL scheme, failed load, CORS block, oversized image).
+   */
+  onBackgroundError?: (error: Error) => void;
 }
 
 // Re-export for backward compatibility (index.ts re-exports from here).
@@ -377,6 +393,8 @@ export function VRMAvatar({
   materialPreset = "repair",
   debugShading = false,
   onLoad,
+  background,
+  onBackgroundError,
   ...props
 }: VRMAvatarProps) {
   const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume, gestureHint, setGestureHint } =
@@ -388,6 +406,7 @@ export function VRMAvatar({
   // keeps the controller call site symmetric with GLBAvatar.tsx.
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
+  const derivedRim = useBackgroundRimColor(background, onBackgroundError);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const expressionTargetsRef = useRef<Record<string, number>>({});
@@ -697,10 +716,16 @@ export function VRMAvatar({
   });
 
   return (
-    <group position={position} rotation={rotation} scale={scale} {...props}>
-      {autoLighting && <AvatarLightRig options={lighting} />}
-      {scene && <primitive object={scene} />}
-    </group>
+    <>
+      {/* Backdrop must render outside the group because the group carries the
+          avatar's own position/rotation/scale — VRMAvatar's default rotation of
+          [0, Math.PI, 0] would otherwise turn the backdrop away from the camera. */}
+      {background && <AvatarBackdrop background={background} onError={onBackgroundError} />}
+      <group position={position} rotation={rotation} scale={scale} {...props}>
+        {autoLighting && <AvatarLightRig options={mergeRimColor(lighting, derivedRim)} />}
+        {scene && <primitive object={scene} />}
+      </group>
+    </>
   );
 }
 

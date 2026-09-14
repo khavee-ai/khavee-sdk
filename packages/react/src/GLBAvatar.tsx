@@ -14,6 +14,9 @@ import {
   resolveAnisotropy,
 } from "./utils/renderQuality";
 import type { LightRigOptions } from "./utils/renderQuality";
+import { AvatarBackdrop } from "./utils/AvatarBackdrop";
+import type { AvatarBackground } from "./utils/AvatarBackdrop";
+import { useBackgroundRimColor, mergeRimColor } from "./utils/backgroundRim";
 
 interface GLBAvatarProps {
   src: string; // URL or path to the GLB/GLTF model
@@ -50,6 +53,19 @@ interface GLBAvatarProps {
   animationCycleOrder?: AnimationCycleOrder;
   /** Minimum seconds a clip plays before the cycle may swap it (swap still waits for a loop boundary). Default: 2 */
   animationMinDwellSeconds?: number;
+  /**
+   * Composite a background inside the canvas and derive the rim light's colour from it.
+   * Omitting this prop leaves the canvas transparent and the existing CSS-background path untouched.
+   * There is no separate enable flag. The image host must send CORS headers.
+   * Should be supplied to at most one avatar per Canvas.
+   *
+   * @param background - Background source (COLOR or IMAGE).
+   */
+  background?: AvatarBackground;
+  /**
+   * Called on background load/validation errors (rejected URL scheme, failed load, CORS block, oversized image).
+   */
+  onBackgroundError?: (error: Error) => void;
 }
 
 /**
@@ -145,6 +161,8 @@ export function GLBAvatar({
   smoothShading = false,
   animationCycleOrder,
   animationMinDwellSeconds,
+  background,
+  onBackgroundError,
   ...props
 }: GLBAvatarProps) {
   const { currentAnimation, chatStatus, setAvailableAnimations, currentVolume, gestureHint, setGestureHint } =
@@ -155,6 +173,7 @@ export function GLBAvatar({
   // (GAZE-02).
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
+  const derivedRim = useBackgroundRimColor(background, onBackgroundError);
   const groupRef = useRef<THREE.Group>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
 
@@ -286,9 +305,15 @@ export function GLBAvatar({
   });
 
   return (
-    <group ref={groupRef} position={position} rotation={rotation} scale={scale} {...props}>
-      {autoLighting && <AvatarLightRig options={lighting} />}
-      <primitive object={gltf.scene} />
-    </group>
+    <>
+      {/* Backdrop must render outside the group because the group carries the
+          avatar's own position/rotation/scale — placing the backdrop inside
+          would inherit those transforms. */}
+      {background && <AvatarBackdrop background={background} onError={onBackgroundError} />}
+      <group ref={groupRef} position={position} rotation={rotation} scale={scale} {...props}>
+        {autoLighting && <AvatarLightRig options={mergeRimColor(lighting, derivedRim)} />}
+        <primitive object={gltf.scene} />
+      </group>
+    </>
   );
 }

@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import {
+  KhaveeProvider,
   VRMAvatar,
   AvatarPostFX,
   AvatarContactShadows,
@@ -25,7 +26,7 @@ import {
   type DepthOfFieldOptions,
 } from "@khaveeai/react";
 import { measureCanvas, type FrameStats } from "../mtoon-spike/measureSaturation";
-import { FIXTURES } from "./fixtureTextures";
+import { getFixtures, type FixtureKey } from "./fixtureTextures";
 
 const MODELS = [
   { src: "/models/male.vrm", label: "male.vrm" },
@@ -95,7 +96,8 @@ export default function LightingPage() {
   // Background
   const [bgMode, setBgMode] = useState<"none" | "color" | "fixture">("none");
   const [bgColor, setBgColor] = useState("#808080");
-  const [fixtureKey, setFixtureKey] = useState<keyof typeof FIXTURES>("landscape_16_9");
+  const [fixtureKey, setFixtureKey] = useState<FixtureKey>("landscape_16_9");
+  const FIXTURES = useMemo(() => getFixtures(), []);
   const [bgFit, setBgFit] = useState<"cover" | "contain">("cover");
 
   // Post FX
@@ -243,6 +245,7 @@ export default function LightingPage() {
   };
 
   return (
+    <KhaveeProvider>
     <div style={{ width: "100%", height: "100vh", display: "flex", flexDirection: "column", background: "#000" }}>
       {/* Canvas */}
       <div style={{ flex: 1, position: "relative" }}>
@@ -382,7 +385,7 @@ export default function LightingPage() {
             <>
               <select
                 value={fixtureKey}
-                onChange={(e) => setFixtureKey(e.target.value as keyof typeof FIXTURES)}
+                onChange={(e) => setFixtureKey(e.target.value as FixtureKey)}
                 style={{ width: "100%", marginBottom: 6, background: "#232838", color: "#fff", border: "1px solid #444", borderRadius: 3, padding: "4px 6px" }}
               >
                 <option value="landscape_16_9">16:9 landscape</option>
@@ -520,5 +523,6 @@ export default function LightingPage() {
         </div>
       </div>
     </div>
+    </KhaveeProvider>
   );
 }

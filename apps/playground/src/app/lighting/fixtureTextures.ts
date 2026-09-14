@@ -157,9 +157,22 @@ function makeSkyGroundDataURL({ aspect, size = 1024, label = "" }: FixtureOption
   return canvas.toDataURL("image/png");
 }
 
-export const FIXTURES = {
-  landscape_16_9: makeTestPatternDataURL({ aspect: 16 / 9, label: "16:9" }),
-  square_1_1: makeTestPatternDataURL({ aspect: 1, label: "1:1" }),
-  portrait_9_16: makeTestPatternDataURL({ aspect: 9 / 16, label: "9:16" }),
-  sky_ground: makeSkyGroundDataURL({ aspect: 16 / 9, label: "sky/ground" }),
-} as const;
+let _fixtures: {
+  landscape_16_9: string;
+  square_1_1: string;
+  portrait_9_16: string;
+  sky_ground: string;
+} | null = null;
+
+export function getFixtures() {
+  if (_fixtures) return _fixtures;
+  _fixtures = {
+    landscape_16_9: makeTestPatternDataURL({ aspect: 16 / 9, label: "16:9" }),
+    square_1_1: makeTestPatternDataURL({ aspect: 1, label: "1:1" }),
+    portrait_9_16: makeTestPatternDataURL({ aspect: 9 / 16, label: "9:16" }),
+    sky_ground: makeSkyGroundDataURL({ aspect: 16 / 9, label: "sky/ground" }),
+  };
+  return _fixtures;
+}
+
+export type FixtureKey = "landscape_16_9" | "square_1_1" | "portrait_9_16" | "sky_ground";

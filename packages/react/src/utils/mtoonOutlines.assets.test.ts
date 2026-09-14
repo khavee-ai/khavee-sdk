@@ -1,18 +1,14 @@
 /**
  * mtoonOutlines.assets.test.ts — real-asset verification of MToon outline
- * counts and toggle behavior (OUTLINE-01, Plan 16-05).
+ * counts, visibility toggling and the width override (OUTLINE-01).
  *
- * This test proves the 6/19 and 0/21 authored-outline counts stated in D-10's
- * revision by loading real `.vrm` files through the full `VRMLoaderPlugin` and
- * inspecting the materials three-vrm generated. The numbers come from
- * `.planning/spikes/001-mtoon-runtime-audit/audit-result.json` and are the
- * source of truth for "what outlines an asset actually carries" — not guessed,
- * not inferred from the asset filename, measured.
+ * Expected counts come from `.planning/spikes/001-mtoon-runtime-audit/audit-result.json`
+ * read through three-vrm's own generation rule (mode !== "none" AND width > 0):
+ * `male.vrm` sets a mode on 6 materials but authors width 0, so nothing is
+ * generated; `262410318834873893.vrm` is the only test asset with real outlines.
  *
- * Technique: mirrors `mtoonRepair.assets.test.ts` exactly — headless VRM
- * loading via texture stubs, `node:fs` imports, raised per-test timeout. See
- * that file's header for the full explanation of why this works and what its
- * caveat (texture-driven values invisible) is.
+ * Technique: mirrors `mtoonRepair.assets.test.ts` — headless VRM loading via
+ * texture stubs, `node:fs` imports, raised per-test timeout.
  */
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -30,12 +26,6 @@ const MODELS_DIR = fileURLToPath(
   new URL("../../../../apps/playground/public/models/", import.meta.url),
 );
 
-/**
- * Load a real `.vrm` file through the full `VRMLoaderPlugin` headlessly,
- * with all texture decoding stubbed out (image-less `THREE.Texture`
- * instances). Throws loudly with the resolved path when the asset is
- * missing — a silently-skipped invariant is worse than no invariant.
- */
 async function loadVrmScene(file: string): Promise<THREE.Group> {
   const abs = `${MODELS_DIR}${file}`;
   if (!fs.existsSync(abs)) {
@@ -68,168 +58,146 @@ async function loadVrmScene(file: string): Promise<THREE.Group> {
   return gltf.scene;
 }
 
-/**
- * Collect all surface MToonMaterial instances under `root`, skipping
- * three-vrm's generated outline clones (`isOutline === true`). Used to capture
- * authored `outlineWidthFactor` values before suppression, so the
- * non-cumulative restore test can verify them exactly.
- */
-function collectSurfaceMToons(root: THREE.Object3D): MToonMaterial[] {
-  const seen = new Set<string>();
-  const mats: MToonMaterial[] = [];
+interface OutlineEntry {
+  mesh: THREE.Mesh;
+  surface: MToonMaterial;
+  outline: MToonMaterial;
+}
+
+function collectOutlines(root: THREE.Object3D): OutlineEntry[] {
+  const out: OutlineEntry[] = [];
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const meshMats = Array.isArray(mesh.material)
-      ? mesh.material
-      : [mesh.material];
-    for (const mat of meshMats) {
-      if (!(mat instanceof MToonMaterial)) continue;
-      if (mat.isOutline) continue;
-      if (seen.has(mat.uuid)) continue;
-      seen.add(mat.uuid);
-      mats.push(mat);
-    }
+    if (!mesh.isMesh || !Array.isArray(mesh.material)) return;
+    const surface = mesh.material.find(
+      (m): m is MToonMaterial => m instanceof MToonMaterial && !m.isOutline,
+    );
+    const outline = mesh.material.find(
+      (m): m is MToonMaterial => m instanceof MToonMaterial && m.isOutline,
+    );
+    if (surface && outline) out.push({ mesh, surface, outline });
   });
-  return mats;
+  return out;
 }
 
 const ASSET_TIMEOUT = 120_000;
+const OUTLINED_ASSET = "262410318834873893.vrm";
 
 describe("mtoonOutlines against real .vrm assets", () => {
   it(
-    "male.vrm: 6 of 19 materials carry an authored outline",
+    "counts only the outlines three-vrm actually generated",
     async () => {
-      const scene = await loadVrmScene("male.vrm");
-      const counts = countOutlinedMaterials(scene);
-      // Sourced from `.planning/spikes/001-mtoon-runtime-audit/audit-result.json`
-      // and Plan 16-05's D-10 revision — these are the two numbers that make
-      // "respect-existing-only" true rather than plausible.
-      expect(counts.total).toBe(19);
-      expect(counts.outlined).toBe(6);
+      expect(countOutlinedMaterials(await loadVrmScene("male.vrm"))).toEqual({
+        total: 19,
+        outlined: 0,
+        injected: 0,
+      });
+      expect(
+        countOutlinedMaterials(await loadVrmScene("3636451243928341470.vrm")),
+      ).toEqual({ total: 21, outlined: 0, injected: 0 });
+      const outlinedScene = await loadVrmScene(OUTLINED_ASSET);
+      expect(countOutlinedMaterials(outlinedScene)).toEqual({
+        total: 13,
+        outlined: 5,
+        injected: 0,
+      });
+
+      // Spike 001's audit reports 18 materials / 10 outlined for this asset. It
+      // counted three-vrm's outline clones as materials: 13 surfaces + 5 clones,
+      // and 5 outlined surfaces + their 5 clones (clones copy mode and width).
+      const all = new Map<string, MToonMaterial>();
+      outlinedScene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          if (m instanceof MToonMaterial) all.set(m.uuid, m);
+        }
+      });
+      const mats = [...all.values()];
+      expect(mats).toHaveLength(18);
+      expect(
+        mats.filter((m) => m.outlineWidthMode !== "none" && m.outlineWidthFactor > 0),
+      ).toHaveLength(10);
+    },
+    ASSET_TIMEOUT * 3,
+  );
+
+  it(
+    `${OUTLINED_ASSET}: hiding and restoring acts on the drawn outline clone, non-cumulatively`,
+    async () => {
+      const scene = await loadVrmScene(OUTLINED_ASSET);
+      const entries = collectOutlines(scene);
+      expect(entries.length).toBeGreaterThan(0);
+      const authored = new Map(entries.map((e) => [e.outline, e.outline.outlineWidthFactor]));
+
+      expect(setMToonOutlines(scene, false)).toBe(entries.length);
+      for (const { outline } of entries) {
+        expect(outline.visible).toBe(false);
+      }
+
+      for (const enabled of [true, false, true]) setMToonOutlines(scene, enabled);
+      for (const { outline } of entries) {
+        expect(outline.visible).toBe(true);
+        expect(outline.outlineWidthFactor).toBe(authored.get(outline));
+      }
+
+      setMToonOutlines(scene, true, 0.003);
+      for (const { outline } of entries) expect(outline.outlineWidthFactor).toBe(0.003);
+      setMToonOutlines(scene, true);
+      for (const { outline } of entries) {
+        expect(outline.outlineWidthFactor).toBe(authored.get(outline));
+      }
     },
     ASSET_TIMEOUT,
   );
 
   it(
-    "3636451243928341470.vrm: 0 of 21 materials carry an authored outline",
+    "male.vrm: a width override builds outlines the asset never authored",
     async () => {
-      const scene = await loadVrmScene("3636451243928341470.vrm");
+      const scene = await loadVrmScene("male.vrm");
+      expect(setMToonOutlines(scene, false)).toBe(0);
+      expect(collectOutlines(scene)).toHaveLength(0);
+
+      setMToonOutlines(scene, true, 0.003);
+      const entries = collectOutlines(scene);
       const counts = countOutlinedMaterials(scene);
-      // The well-authored control from Phase 15. Zero outlines means
-      // `setMToonOutlines(scene, false)` must be a no-op (returns 0, mutates
-      // nothing).
-      expect(counts.total).toBe(21);
+      expect(counts.injected).toBeGreaterThan(0);
       expect(counts.outlined).toBe(0);
-    },
-    ASSET_TIMEOUT,
-  );
 
-  it(
-    "male.vrm: setMToonOutlines(false) is effectively a no-op (all 6 outlined materials already have width 0)",
-    async () => {
-      const scene = await loadVrmScene("male.vrm");
-      const mats = collectSurfaceMToons(scene);
-
-      // FINDING (Task 2): spike 001's audit and live loading both show all 6
-      // of male.vrm's outlined materials (outlineWidthMode !== "none") have
-      // outlineWidthFactor === 0 — they carry the outline infrastructure but
-      // the width is already zero. `setMToonOutlines(false)` therefore has
-      // nothing to suppress (it only touches materials with width > 0), and
-      // returns 0, not 6.
-      const touchedCount = setMToonOutlines(scene, false);
-      expect(touchedCount).toBe(0);
-
-      // Verify all 6 outlined materials remain at width 0 (unchanged).
-      let outlinedCount = 0;
-      for (const m of mats) {
-        if (m.outlineWidthMode !== "none") {
-          outlinedCount++;
-          expect(
-            m.outlineWidthFactor,
-            `${m.name} should remain at outlineWidthFactor === 0`,
-          ).toBe(0);
-        }
+      for (const { mesh, surface, outline } of entries) {
+        expect(surface.transparent).toBe(false);
+        expect(outline.side).toBe(THREE.BackSide);
+        expect(outline.outlineWidthMode).not.toBe("none");
+        expect(outline.outlineWidthFactor).toBe(0.003);
+        expect(outline.visible).toBe(true);
+        expect(mesh.material).toHaveLength(2);
+        expect(mesh.geometry.groups).toHaveLength(2);
       }
-      expect(outlinedCount).toBe(6);
-    },
-    ASSET_TIMEOUT,
-  );
 
-  it(
-    "male.vrm: setMToonOutlines(true) is also a no-op (nothing was suppressed)",
-    async () => {
-      const scene = await loadVrmScene("male.vrm");
-      const mats = collectSurfaceMToons(scene);
+      setMToonOutlines(scene, true, 0.003);
+      expect(collectOutlines(scene)).toHaveLength(entries.length);
+      expect(countOutlinedMaterials(scene)).toEqual(counts);
 
-      // All 6 outlined materials start at width 0 (per the finding above).
-      setMToonOutlines(scene, false); // no-op (returns 0)
-      const restoredCount = setMToonOutlines(scene, true); // also no-op
-      expect(restoredCount).toBe(0);
-
-      // All 6 outlined materials remain at width 0.
-      for (const m of mats) {
-        if (m.outlineWidthMode !== "none") {
-          expect(
-            m.outlineWidthFactor,
-            `${m.name} should still be at outlineWidthFactor === 0`,
-          ).toBe(0);
-        }
-      }
-    },
-    ASSET_TIMEOUT,
-  );
-
-  it(
-    "male.vrm: repeated toggling remains stable (all operations are no-ops on width-0 materials)",
-    async () => {
-      const scene = await loadVrmScene("male.vrm");
-      const mats = collectSurfaceMToons(scene);
-
-      // Cycle: suppress, restore, suppress again, restore again.
-      // All operations are no-ops because all 6 outlined materials have
-      // width 0.
-      setMToonOutlines(scene, false);
       setMToonOutlines(scene, true);
-      setMToonOutlines(scene, false);
-      setMToonOutlines(scene, true);
-
-      // All 6 outlined materials must still be at width 0 (unchanged).
-      for (const m of mats) {
-        if (m.outlineWidthMode !== "none") {
-          expect(
-            m.outlineWidthFactor,
-            `${m.name} should still be at outlineWidthFactor === 0 after 4 toggles`,
-          ).toBe(0);
-        }
-      }
+      for (const { outline } of entries) expect(outline.visible).toBe(false);
+      setMToonOutlines(scene, false, 0.003);
+      for (const { outline } of entries) expect(outline.visible).toBe(false);
     },
     ASSET_TIMEOUT,
   );
 
   it(
-    "3636451243928341470.vrm: setMToonOutlines(false) is a no-op (returns 0, mutates nothing)",
+    "3636451243928341470.vrm: nothing changes without a width, and the override is clamped",
     async () => {
       const scene = await loadVrmScene("3636451243928341470.vrm");
-      const mats = collectSurfaceMToons(scene);
+      expect(setMToonOutlines(scene, false)).toBe(0);
+      expect(setMToonOutlines(scene, true)).toBe(0);
+      expect(collectOutlines(scene)).toHaveLength(0);
 
-      // Capture every material's width before the call.
-      const before = new Map<string, number>();
-      for (const m of mats) {
-        before.set(m.uuid, m.outlineWidthFactor);
-      }
-
-      const touchedCount = setMToonOutlines(scene, false);
-      // An asset with no authored outlines → setMToonOutlines must return 0.
-      expect(touchedCount).toBe(0);
-
-      // Every material's width must be unchanged.
-      for (const m of mats) {
-        expect(
-          m.outlineWidthFactor,
-          `${m.name} should be unchanged (no outlines to suppress)`,
-        ).toBe(before.get(m.uuid));
-      }
+      setMToonOutlines(scene, true, 1);
+      const entries = collectOutlines(scene);
+      expect(entries.length).toBeGreaterThan(0);
+      for (const { outline } of entries) expect(outline.outlineWidthFactor).toBe(0.05);
     },
     ASSET_TIMEOUT,
   );

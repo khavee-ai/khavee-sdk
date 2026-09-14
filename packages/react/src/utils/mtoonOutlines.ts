@@ -2,147 +2,169 @@ import * as THREE from "three";
 import { MToonMaterial } from "@pixiv/three-vrm";
 
 /**
- * mtoonOutlines - Runtime toggle for MToon outlines already authored by the
- * artist (RESEARCH Pitfall 2, D-10 revised scope).
+ * mtoonOutlines - Runtime control of MToon outlines (OUTLINE-01).
  *
- * Outlines are generated at glTF-parse time by three-vrm's
- * `_MToonMaterialLoaderPlugin._generateOutline`, gated on the asset's authored
- * `outlineWidthMode` and `outlineWidthFactor`. There is no runtime lever that
- * creates an outline for a mesh that never got the material-array conversion
- * during load. This module therefore hides and restores; it does not generate.
+ * three-vrm generates an outline at glTF-parse time only when the asset
+ * authored `outlineWidthMode !== "none"` AND `outlineWidthFactor > 0`
+ * (`_MToonMaterialLoaderPlugin._shouldGenerateOutline`). The outline is a
+ * separate cloned material (`isOutline: true`, `BackSide`) drawn through a
+ * second geometry group, with its own copy of every uniform — so writing the
+ * surface material's width does nothing to a drawn outline.
  *
- * Real per-asset reality (measured in spike 001, validated by
- * `mtoonOutlines.assets.test.ts`):
- * - `male.vrm`: 6 of 19 surface materials carry an authored outline
- * - `3636451243928341470.vrm`: 0 of 21 surface materials carry an authored outline
+ * Measured per-asset reality (spike 001 audit, `mtoonOutlines.assets.test.ts`):
+ * - `male.vrm`: 6 materials set an outline mode but author width 0, so
+ *   three-vrm generated no outline at all
+ * - `3636451243928341470.vrm`: no outline mode set
+ * - `262410318834873893.vrm`: 10 of 18 materials carry a generated outline,
+ *   authored at 0.0005 world units (nearly invisible at typical framing)
  *
- * On an asset with no authored outlines, `setMToonOutlines(root, false)` is a
- * no-op: it returns 0 and mutates nothing.
+ * Because authored outlines are rare or too thin to see, `setMToonOutlines`
+ * accepts a width override that builds the outline itself for surfaces that
+ * have none, mirroring three-vrm's load-time generation (user decision
+ * 2026-09-14, superseding D-10's respect-existing-only scope).
  *
- * No `"use client"` directive — this module only imports `three` and
- * `@pixiv/three-vrm`, so it is importable from a headless/Node test (see
- * `mtoonOutlines.assets.test.ts`) without dragging in R3F or JSX, matching the
- * node-testability discipline of `mtoonRepair.ts`.
+ * No `"use client"` directive — imports only `three` and `@pixiv/three-vrm`, so
+ * it stays loadable from the node-environment asset test.
  */
 
-/** Count of surface MToon materials, plus how many carry an authored outline. */
+/** Outline presence under a root, counted per unique surface material. */
 export interface OutlineCounts {
-  /** Surface MToon materials under `root`, excluding three-vrm's generated outline clones. */
+  /** Surface MToon materials under `root`, excluding outline clones. */
   total: number;
-  /** Of those, how many carry an authored outline (mode !== "none" and width > 0). */
+  /** Surfaces carrying an outline three-vrm generated from the asset's own values. */
   outlined: number;
+  /** Surfaces carrying an outline built by `setMToonOutlines`' width override. */
+  injected: number;
 }
 
-/**
- * Module-level snapshot of authored `outlineWidthFactor` values, keyed by
- * material uuid. Used to implement the non-cumulative toggle requirement
- * (`.planning/spikes/CONVENTIONS.md`): restore reads from this snapshot, not
- * from the current (possibly already-suppressed) value. `WeakMap` so disposed
- * models' materials are collectable.
- */
-const authoredOutlineWidth = new WeakMap<MToonMaterial, number>();
+/** Upper bound for the width override; a hostile or mistaken value otherwise smears the whole frame. */
+const MAX_OUTLINE_WIDTH = 0.05;
 
-/**
- * forEachSurfaceMToon - Traverse `root` and yield every surface `MToonMaterial`,
- * skipping three-vrm's generated outline clones (`isOutline === true`). The
- * outline clone is a second material object for the same surface mesh and must
- * not be counted or mutated here — the surface material's `outlineWidthFactor`
- * already controls whether the outline renders.
- */
-function forEachSurfaceMToon(
-  root: THREE.Object3D,
-  fn: (m: MToonMaterial) => void,
-): void {
-  const seen = new Set<string>();
+/** Width each outline clone had before this module first touched it. */
+const authoredWidth = new WeakMap<MToonMaterial, number>();
+/** Outline clones this module created, as opposed to ones the loader authored. */
+const injectedOutlines = new WeakSet<MToonMaterial>();
+
+interface SurfaceEntry {
+  mesh: THREE.Mesh;
+  surface: MToonMaterial;
+  outline: MToonMaterial | null;
+}
+
+function forEachSurface(root: THREE.Object3D, fn: (entry: SurfaceEntry) => void): void {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    let surface: MToonMaterial | null = null;
+    let outline: MToonMaterial | null = null;
     for (const mat of mats) {
       if (!(mat instanceof MToonMaterial)) continue;
-      if (mat.isOutline) continue; // skip the outline clone
-      if (seen.has(mat.uuid)) continue;
-      seen.add(mat.uuid);
-      fn(mat);
+      if (mat.isOutline) outline ??= mat;
+      else surface ??= mat;
     }
+    if (surface) fn({ mesh, surface, outline });
   });
+}
+
+/**
+ * Build an outline for a mesh the loader left without one, the same way
+ * three-vrm's `_generateOutline` does. Returns null when the mesh is not a
+ * safe candidate.
+ */
+function injectOutline(mesh: THREE.Mesh, surface: MToonMaterial): MToonMaterial | null {
+  // Transparent MToon surfaces are face details (lashes, brows, eye highlights);
+  // an outline around them reads as a smudge, not a line.
+  if (surface.transparent) return null;
+  if (Array.isArray(mesh.material)) return null;
+  const geometry = mesh.geometry;
+  // Existing groups mean either another material layout or a geometry shared
+  // with a mesh that already got groups; adding two more would break both.
+  if (geometry.groups.length > 0) return null;
+
+  const outline = surface.clone();
+  outline.name += " (Outline)";
+  outline.isOutline = true;
+  outline.side = THREE.BackSide;
+  if (outline.outlineWidthMode === "none") outline.outlineWidthMode = "worldCoordinates";
+
+  const count = geometry.index ? geometry.index.count : geometry.attributes.position.count;
+  mesh.material = [surface, outline];
+  geometry.addGroup(0, count, 0);
+  geometry.addGroup(0, count, 1);
+
+  injectedOutlines.add(outline);
+  authoredWidth.set(outline, 0);
+  return outline;
 }
 
 /**
  * countOutlinedMaterials - Count surface MToon materials under `root` and how
- * many carry an authored outline.
- *
- * `outlined` counts materials where `outlineWidthMode !== "none"` AND the
- * AUTHORED width is greater than 0 — read from the snapshot when one exists,
- * so the count does not change depending on whether outlines are currently
- * suppressed. This property makes the count usable as a stable diagnostic in
- * plan 16-06's frame-cost harness.
+ * many carry an authored or injected outline. Based on which outline clones
+ * exist, so the result does not change when outlines are hidden.
  *
  * @param root - Root object to traverse (e.g. a loaded VRM scene).
- * @returns `{ total, outlined }` — counts of surface materials and how many
- *   carry an authored outline.
+ * @returns Counts per unique surface material.
  */
 export function countOutlinedMaterials(root: THREE.Object3D): OutlineCounts {
-  let total = 0;
-  let outlined = 0;
-  forEachSurfaceMToon(root, (m) => {
-    total++;
-    // A material "carries an authored outline" when its outlineWidthMode is
-    // not "none", regardless of the current width value — three-vrm generated
-    // the outline infrastructure at parse time based on the mode being set in
-    // the glTF extension. The width might be 0 (as spike 001's audit found
-    // for all 6 of male.vrm's outlined materials), but the outline capability
-    // is still present and toggleable.
-    if (m.outlineWidthMode !== "none") {
-      outlined++;
-    }
+  const total = new Set<string>();
+  const outlined = new Set<string>();
+  const injected = new Set<string>();
+  forEachSurface(root, ({ surface, outline }) => {
+    total.add(surface.uuid);
+    if (!outline) return;
+    (injectedOutlines.has(outline) ? injected : outlined).add(surface.uuid);
   });
-  return { total, outlined };
+  return { total: total.size, outlined: outlined.size, injected: injected.size };
 }
 
 /**
- * setMToonOutlines - Hide or restore authored outlines at runtime.
+ * setMToonOutlines - Show, hide or resize MToon outlines at runtime, with no reload.
  *
- * - `enabled === false`: for each surface material whose `outlineWidthMode !==
- *   "none"` and whose current `outlineWidthFactor` is greater than 0, record
- *   the current value in the module-level `WeakMap` if not already recorded,
- *   then assign `outlineWidthFactor = 0`.
- * - `enabled === true`: for each surface material present in the `WeakMap`,
- *   restore the recorded value and leave the map entry in place so repeated
- *   toggling stays non-cumulative.
+ * - `enabled === false` hides every outline. Hidden outline materials are
+ *   skipped by the renderer, so their draw calls go away.
+ * - `enabled === true` without `width` shows the asset's authored outlines at
+ *   their authored width and hides any this module injected.
+ * - `enabled === true` with `width` builds outlines for opaque surfaces that
+ *   have none, then draws every outline at that width (clamped to 0–0.05).
  *
- * Materials with `outlineWidthMode === "none"` are never written to, in either
- * direction — they declared no outline at parse time, so there is nothing to
- * suppress or restore.
+ * Non-cumulative: authored widths are snapshotted per outline before the first
+ * write, and restore always reads the snapshot.
  *
  * @param root - Root object to traverse (e.g. a loaded VRM scene).
- * @param enabled - `false` to suppress outlines, `true` to restore them.
- * @returns The number of materials touched in either direction.
+ * @param enabled - Whether outlines render.
+ * @param width - Optional world-space width override.
+ * @returns How many outline materials changed.
  */
-export function setMToonOutlines(root: THREE.Object3D, enabled: boolean): number {
-  let count = 0;
-  forEachSurfaceMToon(root, (m) => {
-    if (m.outlineWidthMode === "none") return;
+export function setMToonOutlines(
+  root: THREE.Object3D,
+  enabled: boolean,
+  width?: number,
+): number {
+  const override =
+    width === undefined || !Number.isFinite(width)
+      ? undefined
+      : Math.min(MAX_OUTLINE_WIDTH, Math.max(0, width));
+  let changed = 0;
 
-    if (!enabled) {
-      // Suppress: record the current value before zeroing, so restore can
-      // put it back exactly.
-      if (m.outlineWidthFactor > 0) {
-        if (!authoredOutlineWidth.has(m)) {
-          authoredOutlineWidth.set(m, m.outlineWidthFactor);
-        }
-        m.outlineWidthFactor = 0;
-        count++;
-      }
-    } else {
-      // Restore: read the snapshot value if one exists. If the material was
-      // never suppressed (no snapshot entry), it is already at its authored
-      // width — do nothing.
-      if (authoredOutlineWidth.has(m)) {
-        m.outlineWidthFactor = authoredOutlineWidth.get(m)!;
-        count++;
-      }
+  forEachSurface(root, ({ mesh, surface, outline }) => {
+    let target = outline;
+    if (!target && enabled && override !== undefined && override > 0) {
+      target = injectOutline(mesh, surface);
+    }
+    if (!target) return;
+
+    if (!authoredWidth.has(target)) authoredWidth.set(target, target.outlineWidthFactor);
+    const isInjected = injectedOutlines.has(target);
+    const nextWidth = override ?? authoredWidth.get(target)!;
+    const nextVisible = enabled && nextWidth > 0 && (override !== undefined || !isInjected);
+
+    if (target.visible !== nextVisible || target.outlineWidthFactor !== nextWidth) {
+      target.visible = nextVisible;
+      target.outlineWidthFactor = nextWidth;
+      changed++;
     }
   });
-  return count;
+
+  return changed;
 }

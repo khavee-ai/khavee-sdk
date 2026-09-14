@@ -109,6 +109,7 @@ export default function LightingPage() {
 
   // Outlines
   const [outlines, setOutlines] = useState(false);
+  const [outlineWidth, setOutlineWidth] = useState<number | null>(null);
 
   // Readouts
   const [visibilityState, setVisibilityState] = useState<DocumentVisibilityState>("visible");
@@ -271,6 +272,7 @@ export default function LightingPage() {
             lighting={lighting}
             background={background}
             outlines={outlines}
+            outlineWidth={outlineWidth ?? undefined}
             onBackgroundError={(err) => console.error("Background error:", err)}
           />
           <ShadowFloor y={-1.1} />
@@ -467,6 +469,17 @@ export default function LightingPage() {
         {/* Outlines */}
         <div style={box}>
           <div style={{ fontWeight: "bold", marginBottom: 6 }}>Outlines</div>
+          <input
+            aria-label="Outline width"
+            type="number"
+            min={0}
+            max={0.05}
+            step={0.0005}
+            placeholder="width"
+            value={outlineWidth ?? ""}
+            onChange={(e) => setOutlineWidth(e.target.value === "" ? null : Number(e.target.value))}
+            style={{ width: 70, marginBottom: 4, background: "#232838", color: "#fff", border: "1px solid #444", borderRadius: 3, padding: "3px 6px" }}
+          />
           <label>
             <input type="checkbox" checked={outlines} onChange={(e) => setOutlines(e.target.checked)} /> enable
           </label>

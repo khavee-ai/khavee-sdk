@@ -168,13 +168,15 @@ interface VRMAvatarProps {
   /** Render MToon's `litShadeRate` debug view so lit/shade boundaries are visible while tuning shading. Development aid. Default: false */
   debugShading?: boolean;
   /**
-   * Control whether the outlines an asset already authored are rendered. three-vrm generates outlines at glTF-parse time, gated on the artist's authored `outlineWidthMode` / `outlineWidthFactor` — this prop cannot add an outline to a model whose artist did not author one (they are generated at load time from the asset's own extension data), and on an asset with no authored outlines this prop is a no-op in either position. On `male.vrm` this affects 6 of 19 materials; on a model with none authored (e.g. `3636451243928341470.vrm`, 0 of 21) the prop does nothing.
+   * Show or hide MToon outlines — the asset's authored ones and any added by `outlineWidth`. Hidden outlines are skipped by the renderer, so they cost no draw calls. Toggling does not reload the model.
    *
-   * Toggling at runtime does not reload the model.
-   *
-   * Default: true (authored outlines render).
+   * Default: true
    */
   outlines?: boolean;
+  /**
+   * Outline width in world units (metres). Omit to draw only the outlines the asset authored, at their authored width — many assets author none, or author them too thin to see. When set, every opaque MToon surface is outlined at this width, including on models whose artist authored no outline: the SDK builds the outline material the same way three-vrm does at load. Transparent surfaces (lashes, brows, eye highlights) are skipped. Adds one draw call per outlined mesh. Clamped to 0–0.05; 0.001–0.004 suits a person-scale avatar.
+   */
+  outlineWidth?: number;
   /**
    * Called once this avatar's model has finished loading (scene + VRM data
    * available). Fires again if `src` changes and the new model finishes
@@ -402,6 +404,7 @@ export function VRMAvatar({
   materialPreset = "repair",
   debugShading = false,
   outlines = true,
+  outlineWidth,
   onLoad,
   background,
   onBackgroundError,
@@ -644,16 +647,13 @@ export function VRMAvatar({
     );
   }, [scene, debugShading]);
 
-  // outlines toggles runtime visibility of authored MToon outlines at runtime
-  // (Plan 16-05, OUTLINE-01). This effect is declared AFTER the
-  // materialPreset effect so that outline state is re-applied on top of
-  // whatever the repair/restore pass leaves behind — materialPreset="off"'s
-  // restore rewrites authored material values, and the outline toggle must
-  // run after that to preserve the user's chosen outline visibility.
+  // Declared after the materialPreset effect: materialPreset="off" rewrites
+  // authored material values, and outline visibility/width must be re-applied
+  // on top of that.
   useEffect(() => {
     if (!scene) return;
-    setMToonOutlines(scene, outlines);
-  }, [scene, outlines]);
+    setMToonOutlines(scene, outlines, outlineWidth);
+  }, [scene, outlines, outlineWidth]);
 
   // Shared animation module (ANIM-01): one adapter + controller drives all
   // chatStatus-triggered crossfading and blink for this avatar, replacing

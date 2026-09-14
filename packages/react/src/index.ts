@@ -12,6 +12,8 @@ export type { AnimationCycleOrder } from "./animation/AnimationStateEngine";
 export {
   AvatarPostFX,
   ShadowFloor,
+  AvatarContactShadows,
+  DEFAULT_LIGHT_RIG,
   repairMToonMaterials,
   snapshotMToon,
   restoreMToon,
@@ -22,6 +24,11 @@ export {
 export type {
   AvatarPostFXProps,
   ShadowFloorProps,
+  AvatarContactShadowsProps,
+  LightRigOptions,
+  LightSpec,
+  LightSetting,
+  ShadowOptions,
   MaterialPreset,
   MToonDebugMode,
   RepairOptions,

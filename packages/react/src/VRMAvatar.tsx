@@ -18,7 +18,7 @@ import {
   setMToonDebugMode,
   snapshotMToon,
 } from "./utils/renderQuality";
-import type { MaterialPreset, MToonSnapshot } from "./utils/renderQuality";
+import type { MaterialPreset, MToonSnapshot, LightRigOptions } from "./utils/renderQuality";
 import { useAnimationController } from "./animation/AnimationStateEngine";
 import type { AvatarFormatAdapter } from "./animation/types";
 
@@ -140,6 +140,19 @@ interface VRMAvatarProps {
   toneMapping?: THREE.ToneMapping;
   /** Mount a scoped ambient+directional light rig inside the avatar group. Default: true */
   autoLighting?: boolean;
+  /**
+   * Configure the light rig that `autoLighting` mounts. Omitting this prop
+   * yields the documented defaults (see `DEFAULT_LIGHT_RIG`). A bare number
+   * on any axis (e.g., `lighting={{ ambient: 0.6 }}`) is shorthand for
+   * intensity. Has no effect when `autoLighting={false}`.
+   *
+   * @example
+   * ```tsx
+   * // Keep the tuned shadow, fill and rim — only override ambient:
+   * <VRMAvatar src="..." lighting={{ ambient: 0.6 }} />
+   * ```
+   */
+  lighting?: LightRigOptions;
   /** Weld coincident vertices + recompute normals for smooth (non-faceted) shading. Mutates geometry — opt-in, NOT forced by default (some assets are deliberately low-poly). Default: false */
   smoothShading?: boolean;
   /** How clips rotate when a status has 2+ matching clips. "random" never repeats back-to-back; "sequential" keeps round-robin. Default: "random" */
@@ -265,6 +278,7 @@ function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
  * @param anisotropy - Texture anisotropy for material maps. Default: resolved against hardware max (8)
  * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.CineonToneMapping
  * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
+ * @param lighting - Configure the rig `autoLighting` mounts. Omitting yields defaults; bare numbers are intensity shorthand. No effect when `autoLighting={false}`. Example: `lighting={{ ambient: 0.6 }}`
  * @param smoothShading - Weld coincident vertices + recompute normals for smooth shading. Opt-in, mutates geometry. Default: false
  * @param materialPreset - Repair broken authored MToon values at load time; `"off"` restores authored values at runtime. Default: "repair"
  * @param debugShading - Render MToon's `litShadeRate` debug view via the runtime setter (no reload). Default: false
@@ -356,6 +370,7 @@ export function VRMAvatar({
   anisotropy,
   toneMapping,
   autoLighting = true,
+  lighting,
   smoothShading = false,
   animationCycleOrder,
   animationMinDwellSeconds,
@@ -683,7 +698,7 @@ export function VRMAvatar({
 
   return (
     <group position={position} rotation={rotation} scale={scale} {...props}>
-      {autoLighting && <AvatarLightRig />}
+      {autoLighting && <AvatarLightRig options={lighting} />}
       {scene && <primitive object={scene} />}
     </group>
   );

@@ -13,6 +13,7 @@ import {
   AvatarLightRig,
   resolveAnisotropy,
 } from "./utils/renderQuality";
+import type { LightRigOptions } from "./utils/renderQuality";
 
 interface GLBAvatarProps {
   src: string; // URL or path to the GLB/GLTF model
@@ -30,6 +31,19 @@ interface GLBAvatarProps {
   toneMapping?: THREE.ToneMapping;
   /** Mount a scoped ambient+directional light rig inside the avatar group. Default: true */
   autoLighting?: boolean;
+  /**
+   * Configure the light rig that `autoLighting` mounts. Omitting this prop
+   * yields the documented defaults (see `DEFAULT_LIGHT_RIG`). A bare number
+   * on any axis (e.g., `lighting={{ ambient: 0.6 }}`) is shorthand for
+   * intensity. Has no effect when `autoLighting={false}`.
+   *
+   * @example
+   * ```tsx
+   * // Keep the tuned shadow, fill and rim — only override ambient:
+   * <GLBAvatar src="..." lighting={{ ambient: 0.6 }} />
+   * ```
+   */
+  lighting?: LightRigOptions;
   /** Weld coincident vertices + recompute normals for smooth (non-faceted) shading. Mutates geometry — opt-in, NOT forced by default (some assets are deliberately low-poly). Default: false */
   smoothShading?: boolean;
   /** How clips rotate when a status has 2+ matching clips. "random" never repeats back-to-back; "sequential" keeps round-robin. Default: "random" */
@@ -58,6 +72,7 @@ interface GLBAvatarProps {
  * @param anisotropy - Texture anisotropy for material maps. Default: resolved against hardware max (8)
  * @param toneMapping - Renderer tone mapping mode (Canvas-global). Default: THREE.ACESFilmicToneMapping
  * @param autoLighting - Mount a scoped ambient+directional light rig. Default: true
+ * @param lighting - Configure the rig `autoLighting` mounts. Omitting yields defaults; bare numbers are intensity shorthand. No effect when `autoLighting={false}`. Example: `lighting={{ ambient: 0.6 }}`
  * @param smoothShading - Weld coincident vertices + recompute normals for smooth shading. Opt-in, mutates geometry. Default: false
  *
  * @example
@@ -126,6 +141,7 @@ export function GLBAvatar({
   anisotropy,
   toneMapping,
   autoLighting = true,
+  lighting,
   smoothShading = false,
   animationCycleOrder,
   animationMinDwellSeconds,
@@ -271,7 +287,7 @@ export function GLBAvatar({
 
   return (
     <group ref={groupRef} position={position} rotation={rotation} scale={scale} {...props}>
-      {autoLighting && <AvatarLightRig />}
+      {autoLighting && <AvatarLightRig options={lighting} />}
       <primitive object={gltf.scene} />
     </group>
   );

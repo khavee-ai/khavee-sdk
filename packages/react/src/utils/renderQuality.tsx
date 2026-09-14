@@ -1,7 +1,9 @@
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { Bloom, EffectComposer, SMAA, ToneMapping } from "@react-three/postprocessing";
+import { useFrame, useThree } from "@react-three/fiber";
+import { Bloom, DepthOfField, EffectComposer, SMAA, ToneMapping } from "@react-three/postprocessing";
 import { ContactShadows } from "@react-three/drei";
 import { ToneMappingMode } from "postprocessing";
 
@@ -526,8 +528,40 @@ const TONE_MAPPING_MODES: Record<Exclude<AvatarToneMapping, "none">, ToneMapping
   "linear": ToneMappingMode.LINEAR,
 };
 
+/** Options for subject-tracked depth of field. */
+export interface DepthOfFieldOptions {
+  /**
+   * World-space point the focus tracks. Default: [0, 1, 0] (roughly chest
+   * height for a person-scale avatar at the origin — override for avatars
+   * placed elsewhere).
+   */
+  subject?: [number, number, number];
+  /**
+   * Depth band that stays sharp, in world units. Default: 0.6
+   */
+  focusRange?: number;
+  /**
+   * Blur disc size. Default: 20 (spike 004 measured this value; library
+   * default of 6 is indistinguishable from off at this scene scale).
+   */
+  bokehScale?: number;
+}
+
 /** Options for {@link AvatarPostFX}. */
 export interface AvatarPostFXProps {
+  /**
+   * Enable subject-tracked depth of field. Default: false. A bare `true` uses
+   * all defaults. Focus tracks the subject's live camera distance, not a
+   * constant — a constant stops matching the moment the camera dollies (which
+   * Phase 17 will do by design).
+   *
+   * Known cosmetic limit: transparent face-detail materials (eyelashes, brows,
+   * eye highlights — 6 of 103 on `male.vrm`) do not write depth and therefore
+   * stay sharp when the rest of the face is defocused. This is a three.js
+   * material default (`transparent: true` → `depthWrite: false`), not fixable
+   * without potentially breaking other rendering assumptions.
+   */
+  dof?: boolean | DepthOfFieldOptions;
   /** Enable the bloom glow on bright highlights. Default: true */
   bloom?: boolean;
   /** Bloom glow strength. Default: 0.5 */
@@ -563,6 +597,43 @@ export interface AvatarPostFXProps {
 }
 
 /**
+ * SubjectFocusTracker - Internal helper that measures camera→subject distance
+ * every frame and calls `onDistance` only when the distance changes by more
+ * than 0.02 world units.
+ *
+ * Why the threshold exists: a state write every frame would cost more than the
+ * effect it is measuring. The 0.02 threshold means state only updates when the
+ * camera actually moves, not on every idle frame.
+ *
+ * NOT EXPORTED — this is an internal implementation detail of `AvatarPostFX`,
+ * not a public component.
+ */
+function SubjectFocusTracker({
+  subject,
+  onDistance,
+}: {
+  subject: [number, number, number];
+  onDistance: (d: number) => void;
+}) {
+  const { camera } = useThree();
+  const last = useRef(0);
+  const vec = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    vec.current.set(subject[0], subject[1], subject[2]);
+    const d = camera.position.distanceTo(vec.current);
+    // Only push upstream on a meaningful change — a state write every frame
+    // would cost more than the effect it is measuring.
+    if (Math.abs(d - last.current) > 0.02) {
+      last.current = d;
+      onDistance(d);
+    }
+  });
+
+  return null;
+}
+
+/**
  * AvatarPostFX - Opt-in Bloom + SMAA post-processing pipeline, with a trailing
  * ToneMapping pass to fix D-13 (EffectComposer's silent NoToneMapping override).
  *
@@ -576,6 +647,7 @@ export interface AvatarPostFXProps {
  * Renders nothing if both `bloom` and `smaa` are disabled.
  */
 export function AvatarPostFX({
+  dof = false,
   bloom = true,
   bloomIntensity = 0.5,
   bloomThreshold = 0.3,
@@ -583,12 +655,42 @@ export function AvatarPostFX({
   smaa = true,
   toneMapping = "cineon",
 }: AvatarPostFXProps) {
-  if (!bloom && !smaa) return null;
+  // Resolve DOF options: a bare `true` means "use all defaults".
+  const dofOpts = typeof dof === "boolean" ? (dof ? {} : null) : dof;
+  const subject = dofOpts?.subject ?? [0, 1, 0];
+  const focusRange = dofOpts?.focusRange ?? 0.6;
+  const bokehScale = dofOpts?.bokehScale ?? 20;
+
+  // Hold the tracked camera→subject distance in state, initialized to ~3
+  // (roughly the default demo camera's distance). This literal exists only so
+  // the effect has a finite uniform before the first frame; the tracker
+  // replaces it immediately.
+  const [trackedDistance, setTrackedDistance] = useState(3);
+
+  // Rules of Hooks: all hooks must be called unconditionally BEFORE any early
+  // return. The early `return null` guard has been moved to come AFTER this
+  // point so hooks always run in the same order.
+  if (!dof && !bloom && !smaa) return null;
 
   // EffectComposer's `children` type is `JSX.Element | JSX.Element[]` (no
   // boolean/null allowed), so conditionally-included effects must be built
   // as a filtered array rather than `{cond && <Effect />}` inline JSX.
   const effects: ReactElement[] = [];
+
+  // Effect order (fixed by plan): DepthOfField → Bloom → HueSaturation →
+  // BrightnessContrast → Vignette → SMAA → ToneMapping. DOF first because it
+  // operates on the depth buffer and must see un-bloomed geometry; ToneMapping
+  // strictly last per RESEARCH Pattern 2.
+  if (dof) {
+    effects.push(
+      <DepthOfField
+        key="dof"
+        worldFocusDistance={trackedDistance}
+        worldFocusRange={focusRange}
+        bokehScale={bokehScale}
+      />,
+    );
+  }
   if (bloom) {
     effects.push(
       <Bloom
@@ -619,5 +721,14 @@ export function AvatarPostFX({
     );
   }
 
-  return <EffectComposer>{effects}</EffectComposer>;
+  return (
+    <>
+      {/* SubjectFocusTracker must be a sibling of EffectComposer (inside Canvas
+          but outside composer's children) — EffectComposer only accepts effect
+          elements as children. Only mount when dof is enabled so a consumer who
+          never turns DOF on pays no per-frame cost. */}
+      {dof && <SubjectFocusTracker subject={subject} onDistance={setTrackedDistance} />}
+      <EffectComposer>{effects}</EffectComposer>
+    </>
+  );
 }

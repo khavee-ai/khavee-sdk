@@ -278,7 +278,7 @@ export default function LightingPage() {
           <AvatarPostFX
             bloom={bloom}
             smaa={smaa}
-            dof={dof}
+            dof={dof ? { subject: [0, 0.2, 0] } : false}
             vignette={vignette}
             grading={grading}
             toneMapping={TONE_MAPPINGS[tmIndex].value}

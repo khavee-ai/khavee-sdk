@@ -679,10 +679,14 @@ function SubjectFocusTracker({
   const { camera } = useThree();
   const last = useRef(0);
   const vec = useRef(new THREE.Vector3());
+  const forward = useRef(new THREE.Vector3());
 
   useFrame(() => {
-    vec.current.set(subject[0], subject[1], subject[2]);
-    const d = camera.position.distanceTo(vec.current);
+    // DepthOfField compares against view-space depth, not straight-line distance —
+    // a subject off the view axis would otherwise be focused behind itself.
+    vec.current.set(subject[0], subject[1], subject[2]).sub(camera.position);
+    camera.getWorldDirection(forward.current);
+    const d = vec.current.dot(forward.current);
     // Only push upstream on a meaningful change — a state write every frame
     // would cost more than the effect it is measuring.
     if (Math.abs(d - last.current) > 0.02) {

@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Avatar Render Quality
-status: ready_to_execute
-stopped_at: Phase 16 planned (6 plans, 5 waves) — ready to execute
-last_updated: 2026-09-14
-last_activity: 2026-09-14 -- Phase 16 planning complete, plan-checker PASS
+status: executing
+stopped_at: context exhaustion at 75% (2026-08-25)
+last_updated: "2026-09-14T06:48:08.994Z"
+last_activity: 2026-09-14 -- Phase 16 execution started
 progress:
   total_phases: 4
   completed_phases: 1
@@ -25,15 +25,15 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 system — the bottleneck is shading, lighting, composition and facial performance, not animation.
 See `.planning/ROADMAP.md` -> "### v3.1 Avatar Render Quality" for the full rationale and the
 Phase 16-18 scope outlines, plus the deferred asset/product tracks.
-**Current focus:** Phase 16 — lighting, shadows & post processing
+**Current focus:** Phase 16 — lighting-shadows-post-processing
 
 ## Current Position
 
-Phase: 16
-Plan: 6 plans written (16-01 through 16-06), plan-checker PASS (12 dimensions)
-Status: Ready to execute
+Phase: 16 (lighting-shadows-post-processing) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 16
 Branch: `feat/mtoon-render-quality` (branched off `main`; nothing merged yet)
-Last activity: 2026-09-14
+Last activity: 2026-09-14 -- Phase 16 execution started
 
 ### How Phase 15 was grounded
 

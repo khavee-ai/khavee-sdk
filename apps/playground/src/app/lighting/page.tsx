@@ -152,11 +152,18 @@ export default function LightingPage() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
+  const [lightingJson, setLightingJson] = useState("");
   const lighting = useMemo<LightRigOptions | undefined>(() => {
     if (rig === "legacy") return undefined;
-    if (ambientOverride === null) return undefined;
-    return { ambient: ambientOverride };
-  }, [rig, ambientOverride]);
+    let extra: LightRigOptions = {};
+    try {
+      extra = lightingJson.trim() ? JSON.parse(lightingJson) : {};
+    } catch {
+      extra = {};
+    }
+    const merged = ambientOverride === null ? extra : { ...extra, ambient: ambientOverride };
+    return Object.keys(merged).length ? merged : undefined;
+  }, [rig, ambientOverride, lightingJson]);
 
   const background = useMemo<AvatarBackground | undefined>(() => {
     if (bgMode === "none") return undefined;
@@ -266,8 +273,8 @@ export default function LightingPage() {
             outlines={outlines}
             onBackgroundError={(err) => console.error("Background error:", err)}
           />
-          <ShadowFloor />
-          <AvatarContactShadows />
+          <ShadowFloor y={-1.1} />
+          <AvatarContactShadows y={-1.1} />
           <AvatarPostFX
             bloom={bloom}
             smaa={smaa}
@@ -318,6 +325,14 @@ export default function LightingPage() {
               style={{ width: 60, background: "#232838", color: "#fff", border: "1px solid #444", borderRadius: 3, padding: "3px 6px" }}
             />
           </label>
+          <textarea
+            aria-label="Lighting JSON override"
+            placeholder='{"key":{"intensity":1.2}}'
+            value={lightingJson}
+            onChange={(e) => setLightingJson(e.target.value)}
+            rows={3}
+            style={{ width: 220, marginTop: 6, background: "#232838", color: "#fff", border: "1px solid #444", borderRadius: 3, padding: "3px 6px", fontFamily: "monospace", fontSize: 10 }}
+          />
         </div>
 
         {/* Model */}

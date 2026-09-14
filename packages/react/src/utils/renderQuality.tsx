@@ -1,8 +1,9 @@
 import type { ReactElement } from "react";
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { Bloom, EffectComposer, SMAA } from "@react-three/postprocessing";
+import { Bloom, EffectComposer, SMAA, ToneMapping } from "@react-three/postprocessing";
 import { ContactShadows } from "@react-three/drei";
+import { ToneMappingMode } from "postprocessing";
 
 /**
  * renderQuality - Shared helpers that give avatar components sane,
@@ -491,6 +492,40 @@ export function AvatarContactShadows({
   );
 }
 
+// ── Post-Processing Configuration Types ──
+
+/**
+ * AvatarToneMapping - Tone curve applied as the last pass of the post chain.
+ *
+ * This is a local string union, deliberately NOT the `ToneMappingMode` enum
+ * exported by `postprocessing`, following the same vendor-neutrality precedent
+ * as Phase 15's `MToonDebugMode` (consumers cannot import a third-party enum).
+ * The enum exists only in the internal `TONE_MAPPING_MODES` map, never in an
+ * exported signature.
+ */
+export type AvatarToneMapping =
+  | "cineon"
+  | "aces-filmic"
+  | "agx"
+  | "neutral"
+  | "reinhard"
+  | "linear"
+  | "none";
+
+/**
+ * TONE_MAPPING_MODES - Internal-only map from the public string union to the
+ * `postprocessing` enum. This is the ONLY place `ToneMappingMode` may appear
+ * in this file — it must never be exported or named in any public signature.
+ */
+const TONE_MAPPING_MODES: Record<Exclude<AvatarToneMapping, "none">, ToneMappingMode> = {
+  "cineon": ToneMappingMode.OPTIMIZED_CINEON,
+  "aces-filmic": ToneMappingMode.ACES_FILMIC,
+  "agx": ToneMappingMode.AGX,
+  "neutral": ToneMappingMode.NEUTRAL,
+  "reinhard": ToneMappingMode.REINHARD,
+  "linear": ToneMappingMode.LINEAR,
+};
+
 /** Options for {@link AvatarPostFX}. */
 export interface AvatarPostFXProps {
   /** Enable the bloom glow on bright highlights. Default: true */
@@ -499,22 +534,37 @@ export interface AvatarPostFXProps {
   bloomIntensity?: number;
   /**
    * Luminance floor (0-1) above which a pixel starts blooming. This is
-   * measured AFTER tone mapping (see `applyRendererDefaults` — the curve is
-   * caller-dependent: `THREE.CineonToneMapping` for `VRMAvatar`,
-   * `THREE.ACESFilmicToneMapping` for `GLBAvatar`, both of which compress
-   * highlights), so ordinary specular/rim highlights rarely reach anywhere
-   * near 1.0, and this threshold may need retuning per curve. Lower = more
-   * surfaces glow. Default: 0.3
+   * measured BEFORE the trailing `ToneMapping` pass (bloom runs before tone
+   * mapping in the fixed chain), so it samples un-tone-mapped values and may
+   * need retuning compared to pre-fix behavior. Lower = more surfaces glow.
+   * Default: 0.3
    */
   bloomThreshold?: number;
   /** Softness of the threshold cutoff (0 = hard edge, higher = gradual falloff). Default: 1 */
   bloomSmoothing?: number;
   /** Enable subpixel morphological anti-aliasing (on top of the Canvas's own MSAA). Default: true */
   smaa?: boolean;
+  /**
+   * Tone curve applied as the last pass of the post chain. Default: "cineon"
+   * (matching `VRMAvatar`'s renderer default).
+   *
+   * A Canvas containing only `GLBAvatar` should pass `toneMapping="aces-filmic"`.
+   * `"none"` appends no pass at all (escape hatch for callers who want pre-fix
+   * behavior or manage tone mapping themselves).
+   *
+   * This fixes D-13: `EffectComposer` unconditionally assigns
+   * `gl.toneMapping = THREE.NoToneMapping` while mounted, overwriting the
+   * renderer's own curve — every consumer of `AvatarPostFX` (including khavee-app's
+   * `<AvatarPostFX bloom={false} />` which leaves `smaa` at default `true`) has
+   * been rendering under `NoToneMapping`, silently undoing Phase 15's TONE-01.
+   * See RESEARCH Pitfall 1.
+   */
+  toneMapping?: AvatarToneMapping;
 }
 
 /**
- * AvatarPostFX - Opt-in Bloom + SMAA post-processing pipeline.
+ * AvatarPostFX - Opt-in Bloom + SMAA post-processing pipeline, with a trailing
+ * ToneMapping pass to fix D-13 (EffectComposer's silent NoToneMapping override).
  *
  * NOT auto-mounted by VRMAvatar/GLBAvatar (unlike AvatarLightRig): an
  * `EffectComposer` takes over its ENTIRE Canvas's render pipeline, so it
@@ -531,6 +581,7 @@ export function AvatarPostFX({
   bloomThreshold = 0.3,
   bloomSmoothing = 1,
   smaa = true,
+  toneMapping = "cineon",
 }: AvatarPostFXProps) {
   if (!bloom && !smaa) return null;
 
@@ -551,6 +602,21 @@ export function AvatarPostFX({
   }
   if (smaa) {
     effects.push(<SMAA key="smaa" />);
+  }
+
+  // D-13 fix (RESEARCH Pitfall 1): EffectComposer unconditionally assigns
+  // `gl.toneMapping = THREE.NoToneMapping` while mounted and restores the
+  // prior value only on unmount. Every consumer of `AvatarPostFX` — including
+  // khavee-app's `<AvatarPostFX bloom={false} />` which leaves `smaa` at its
+  // default `true` — has been rendering under `NoToneMapping`, silently undoing
+  // Phase 15's TONE-01 renderer default. The fix: append a `ToneMapping` effect
+  // as the LAST pass in the chain, re-establishing the curve we control.
+  // `toneMapping="none"` is the escape hatch for callers who want the pre-fix
+  // behavior (or manage tone mapping themselves) — it appends no pass at all.
+  if (toneMapping !== "none") {
+    effects.push(
+      <ToneMapping key="tonemap" mode={TONE_MAPPING_MODES[toneMapping]} />,
+    );
   }
 
   return <EffectComposer>{effects}</EffectComposer>;

@@ -284,6 +284,9 @@ importers:
       meyda:
         specifier: ^5.6.3
         version: 5.6.3(rollup@4.53.3)
+      postprocessing:
+        specifier: ^6.37.8
+        version: 6.37.8(three@0.180.0)
       three:
         specifier: ^0.180.0
         version: 0.180.0

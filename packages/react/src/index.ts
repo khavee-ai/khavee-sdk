@@ -23,6 +23,7 @@ export {
 } from "./utils/renderQuality";
 export type {
   AvatarPostFXProps,
+  AvatarToneMapping,
   ShadowFloorProps,
   AvatarContactShadowsProps,
   LightRigOptions,

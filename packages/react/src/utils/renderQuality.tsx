@@ -210,20 +210,25 @@ export interface LightRigOptions {
  * real MToon VRM assets under Cineon tone mapping. Omitting a field from the
  * `lighting` prop falls back to these values.
  *
- * - ambient: 0.32 (intentionally lower than the previous 0.6 — ambient is flat
- *   fill and is what eats contrast; Phase 15 traded contrast away expecting
- *   lighting to give it back through directional shape, not omnidirectional
- *   brightness)
- * - key: 1.35 intensity, warm `#fff4e6`, position `[2, 4, 3]` front-left/above
- * - fill: 0.45 intensity, cool `#cfe0ff`, position `[-3, 1.5, 2]` opposite side
+ * Re-tuned in plan 16-06 against the legacy production rig in the `/lighting`
+ * harness, after the rig's orientation inside `VRMAvatar` was corrected. The
+ * gate is value-spread >= legacy on both `male.vrm` and the well-authored
+ * control: measured 0.2875 vs 0.2846 and 0.0974 vs 0.0928. The two assets pull
+ * in opposite directions — more fill/ambient helps `male.vrm`, a darker and
+ * more lateral key helps the control — so change these as a set, and re-measure
+ * both assets in the harness.
+ *
+ * - ambient: 0.25 (flat fill is what eats contrast on well-authored MToon)
+ * - key: 1.2 intensity, warm `#fff4e6`, position `[4, 4, 1]` side/above
+ * - fill: 0.15 intensity, cool `#cfe0ff`, position `[-3, 1.5, 2]` opposite side
  * - rim: 1.6 intensity, cool `#bcd4ff`, position `[-1.5, 3, -4]` behind/above
- *   (static cool white; plan 16-04 will derive this from the background)
+ *   (derived from the background when one is supplied, plan 16-04)
  * - shadow: 0.6 intensity, 2048x2048 map, normalBias 0.02, radius 4
  */
 export const DEFAULT_LIGHT_RIG = {
-  ambient: { intensity: 0.32 },
-  key: { intensity: 1.35, color: "#fff4e6", position: [2, 4, 3] as [number, number, number] },
-  fill: { intensity: 0.45, color: "#cfe0ff", position: [-3, 1.5, 2] as [number, number, number] },
+  ambient: { intensity: 0.25 },
+  key: { intensity: 1.2, color: "#fff4e6", position: [4, 4, 1] as [number, number, number] },
+  fill: { intensity: 0.15, color: "#cfe0ff", position: [-3, 1.5, 2] as [number, number, number] },
   rim: { intensity: 1.6, color: "#bcd4ff", position: [-1.5, 3, -4] as [number, number, number] },
   shadow: { intensity: 0.6, mapSize: 2048, normalBias: 0.02, radius: 4 },
 };
@@ -252,7 +257,7 @@ function resolveLight(setting: LightSetting | undefined, fallback: LightSpec): R
  * consuming page to hand-roll lights. This is the default for both
  * `VRMAvatar` and `GLBAvatar` via their `autoLighting` prop (default `true`).
  *
- * The default ambient intensity (0.32) is intentionally lower than the
+ * The default ambient intensity (0.25) is intentionally lower than the
  * previous rig's 0.6 — ambient is omnidirectional flat fill, and the whole
  * point of a three-point rig is that shape/depth comes from directional
  * contrast, not brightness. Phase 15 traded contrast away (via tone curve)

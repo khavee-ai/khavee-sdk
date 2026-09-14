@@ -97,7 +97,6 @@ export default function LightingPage() {
   const [bgMode, setBgMode] = useState<"none" | "color" | "fixture">("none");
   const [bgColor, setBgColor] = useState("#808080");
   const [fixtureKey, setFixtureKey] = useState<FixtureKey>("landscape_16_9");
-  const FIXTURES = useMemo(() => getFixtures(), []);
   const [bgFit, setBgFit] = useState<"cover" | "contain">("cover");
 
   // Post FX
@@ -162,7 +161,7 @@ export default function LightingPage() {
   const background = useMemo<AvatarBackground | undefined>(() => {
     if (bgMode === "none") return undefined;
     if (bgMode === "color") return { type: "color", value: bgColor };
-    return { type: "image", url: FIXTURES[fixtureKey], fit: bgFit };
+    return { type: "image", url: getFixtures()[fixtureKey], fit: bgFit };
   }, [bgMode, bgColor, fixtureKey, bgFit]);
 
   // For dof, vignette, grading: pass true/false directly (the component handles undefined = default)

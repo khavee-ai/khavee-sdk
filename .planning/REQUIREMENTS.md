@@ -171,9 +171,9 @@ specified at each phase's planning time:
 | LIGHT-02 | Phase 16 | Pending |
 | LIGHT-03 | Phase 16 | Pending |
 | SHADOW-01 | Phase 16 | Pending |
-| POST-01 | Phase 16 | Pending |
-| POST-02 | Phase 16 | Pending |
-| POST-03 | Phase 16 | Pending |
+| POST-01 | Phase 16 | Complete (16-03: trailing ToneMapping pass, D-13 fixed) |
+| POST-02 | Phase 16 | Complete (16-03: subject-tracked DOF, spike 004 shape graduated) |
+| POST-03 | Phase 16 | Complete (16-03: vignette + grading opt-in props) |
 | BG-01 | Phase 16 | Pending |
 | BG-02 | Phase 16 | Pending |
 | OUTLINE-01 | Phase 16 | Pending |

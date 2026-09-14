@@ -33,7 +33,8 @@ import { ToneMappingMode } from "postprocessing";
 // dependency graph into a headless test. `mtoonRepair.ts` depends only on
 // `three` and `@pixiv/three-vrm`, so it stays node-testable. Re-exporting it
 // here keeps `renderQuality.tsx` as the single render-quality import site
-// `VRMAvatar`/`GLBAvatar` consume.
+// `VRMAvatar`/`GLBAvatar` consume. The same discipline applies to
+// `mtoonOutlines.ts` (Plan 16-05).
 export {
   repairMToonMaterials,
   snapshotMToon,
@@ -50,6 +51,9 @@ export type {
   RepairLogEntry,
   MToonSnapshot,
 } from "./mtoonRepair";
+
+export { setMToonOutlines, countOutlinedMaterials } from "./mtoonOutlines";
+export type { OutlineCounts } from "./mtoonOutlines";
 
 /** Options for {@link applyMeshRenderFlags}. */
 export interface MeshRenderFlagOptions {

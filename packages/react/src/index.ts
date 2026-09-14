@@ -18,6 +18,8 @@ export {
   snapshotMToon,
   restoreMToon,
   setMToonDebugMode,
+  setMToonOutlines,
+  countOutlinedMaterials,
   DEFAULT_REPAIR,
   FACE_DETAIL_MATERIAL_RE,
 } from "./utils/renderQuality";
@@ -39,6 +41,7 @@ export type {
   RepairResult,
   RepairLogEntry,
   MToonSnapshot,
+  OutlineCounts,
 } from "./utils/renderQuality";
 export { AvatarBackdrop } from "./utils/AvatarBackdrop";
 export type {

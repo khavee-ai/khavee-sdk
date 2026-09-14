@@ -16,6 +16,7 @@ import {
   resolveAnisotropy,
   restoreMToon,
   setMToonDebugMode,
+  setMToonOutlines,
   snapshotMToon,
 } from "./utils/renderQuality";
 import type { MaterialPreset, MToonSnapshot, LightRigOptions } from "./utils/renderQuality";
@@ -166,6 +167,14 @@ interface VRMAvatarProps {
   materialPreset?: MaterialPreset;
   /** Render MToon's `litShadeRate` debug view so lit/shade boundaries are visible while tuning shading. Development aid. Default: false */
   debugShading?: boolean;
+  /**
+   * Control whether the outlines an asset already authored are rendered. three-vrm generates outlines at glTF-parse time, gated on the artist's authored `outlineWidthMode` / `outlineWidthFactor` — this prop cannot add an outline to a model whose artist did not author one (they are generated at load time from the asset's own extension data), and on an asset with no authored outlines this prop is a no-op in either position. On `male.vrm` this affects 6 of 19 materials; on a model with none authored (e.g. `3636451243928341470.vrm`, 0 of 21) the prop does nothing.
+   *
+   * Toggling at runtime does not reload the model.
+   *
+   * Default: true (authored outlines render).
+   */
+  outlines?: boolean;
   /**
    * Called once this avatar's model has finished loading (scene + VRM data
    * available). Fires again if `src` changes and the new model finishes
@@ -392,6 +401,7 @@ export function VRMAvatar({
   animationMinDwellSeconds,
   materialPreset = "repair",
   debugShading = false,
+  outlines = true,
   onLoad,
   background,
   onBackgroundError,
@@ -633,6 +643,17 @@ export function VRMAvatar({
       debugShading ? "litShadeRate" : "none",
     );
   }, [scene, debugShading]);
+
+  // outlines toggles runtime visibility of authored MToon outlines at runtime
+  // (Plan 16-05, OUTLINE-01). This effect is declared AFTER the
+  // materialPreset effect so that outline state is re-applied on top of
+  // whatever the repair/restore pass leaves behind — materialPreset="off"'s
+  // restore rewrites authored material values, and the outline toggle must
+  // run after that to preserve the user's chosen outline visibility.
+  useEffect(() => {
+    if (!scene) return;
+    setMToonOutlines(scene, outlines);
+  }, [scene, outlines]);
 
   // Shared animation module (ANIM-01): one adapter + controller drives all
   // chatStatus-triggered crossfading and blink for this avatar, replacing

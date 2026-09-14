@@ -217,9 +217,11 @@ export function AvatarBackdrop({
   });
 
   // ── Render ──
+  // Distinct keys force a remount when the type flips; reusing the material
+  // would keep the previous image's `map` and tint it with the new colour.
   if (background.type === "color") {
     return (
-      <mesh ref={meshRef}>
+      <mesh key="color" ref={meshRef}>
         <planeGeometry args={[1, 1]} />
         {/* Spike 004: meshBasicMaterial, not standard — the backdrop is an image,
             not a lit surface. Lighting it breaks its match to the source.
@@ -235,7 +237,7 @@ export function AvatarBackdrop({
 
   if (background.type === "image" && texture) {
     return (
-      <mesh ref={meshRef}>
+      <mesh key="image" ref={meshRef}>
         <planeGeometry args={[1, 1]} />
         {/* Spike 004: meshBasicMaterial + toneMapped={false} + ClampToEdgeWrapping.
             depthWrite={true} ensures the backdrop is visible to DOF (plan 16-03). */}

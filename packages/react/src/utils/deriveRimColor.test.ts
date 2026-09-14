@@ -101,21 +101,26 @@ describe("deriveRimColor", () => {
   });
 
   it("excludes low-alpha pixels", () => {
-    // 128×128 fixture: top half transparent blue, bottom half opaque brown
+    // 128×128 fixture: top 20 rows transparent blue, rows 20-42 opaque brown, bottom opaque grey
+    // This ensures the top third (rows 0-42) has both transparent and opaque pixels
     const img = createFixture(128, 128, (x, y) => {
-      if (y < 64) {
-        // Top half: sky blue but alpha=0 (fully transparent)
+      if (y < 20) {
+        // Top rows: sky blue but alpha=0 (fully transparent, should be excluded)
         return { r: 68, g: 136, b: 255, a: 0 };
       }
-      // Bottom half: ground brown, opaque
-      return { r: 85, g: 51, b: 17, a: 255 };
+      if (y < 43) {
+        // Rest of top third: ground brown, opaque (should be included)
+        return { r: 85, g: 51, b: 17, a: 255 };
+      }
+      // Bottom two thirds: grey
+      return { r: 128, g: 128, b: 128, a: 255 };
     });
 
     const result = deriveRimColor(img);
     expect(result).not.toBeNull();
     if (!result) return;
 
-    // Should be brown-ish (r > b), not blue
+    // Should be brown-ish (r > b), not blue (transparent pixels excluded)
     expect(result.r).toBeGreaterThan(result.b);
   });
 

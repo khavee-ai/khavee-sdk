@@ -172,10 +172,6 @@ export function AvatarBackdrop({
       });
 
       meshRef.current.scale.set(layout.planeWidth, layout.planeHeight, 1);
-      // Position the plane `distance` in front of the camera along its view axis,
-      // not at a fixed world Z — otherwise orbiting the camera slides the backdrop
-      // out of frame (spike 004).
-      meshRef.current.position.set(0, 0, -distance);
     } else if (background.type === "image" && texture) {
       // Image has its own aspect — compute cover/contain layout.
       const img = texture.image as HTMLImageElement;
@@ -195,7 +191,6 @@ export function AvatarBackdrop({
       texture.needsUpdate = true;
 
       meshRef.current.scale.set(layout.planeWidth, layout.planeHeight, 1);
-      meshRef.current.position.set(0, 0, -distance);
     }
   }, [
     camera,
@@ -207,6 +202,19 @@ export function AvatarBackdrop({
     background.type,
     background.type === "color" ? background.value : null,
   ]);
+
+  // backdropLayout sizes the plane for `distance` from the camera, so the plane
+  // must sit at that distance along the camera's view axis and face it. A fixed
+  // world position only matches when the camera sits at the origin (spike 004's
+  // original framing); with the camera at z=4 it rendered at ~60% size.
+  const forward = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera: cam }) => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    cam.getWorldDirection(forward);
+    mesh.position.copy(cam.position).addScaledVector(forward, distance);
+    mesh.quaternion.copy(cam.quaternion);
+  });
 
   // ── Render ──
   if (background.type === "color") {

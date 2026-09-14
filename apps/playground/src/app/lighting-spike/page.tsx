@@ -25,6 +25,9 @@ import { coverTransform, planeSizeForDistance, visibleFraction } from "./coverMa
 import { makeTestPatternTexture, TEST_ASPECTS } from "./testTexture";
 import { measureCanvas, type FrameStats } from "../mtoon-spike/measureSaturation";
 import { Rig, RIGS, TONE_CURVES, DEFAULT_THREE_POINT, type RigId } from "./rigs";
+import {
+  deriveRimColor, saturationOf, toHex, DERIVATIONS, type DerivationId,
+} from "./deriveRimColor";
 
 const AVATAR_Y = -1.1;
 
@@ -242,6 +245,8 @@ export default function LightingSpikePage() {
       sampled (tight crop excludes the dark trousers), so it is a measurement
       variable, not a cosmetic one. */
   const [match003, setMatch003] = useState(false);
+  // --- spike 007 ---
+  const [derivation, setDerivation] = useState<DerivationId>("upper-region");
   const [sweep, setSweep] = useState<SweepRow[] | null>(null);
   const [sweeping, setSweeping] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -279,6 +284,30 @@ export default function LightingSpikePage() {
     [aspect, label],
   );
   useEffect(() => () => texture.dispose(), [texture]);
+
+  /**
+   * Rim colours derived from the CURRENT backdrop image, one per strategy.
+   *
+   * Read straight off the texture's own canvas rather than re-rendering it, so
+   * what the swatches show is exactly the image on the backdrop plane.
+   */
+  const derived = useMemo(() => {
+    const src = texture.image as HTMLCanvasElement | undefined;
+    if (!src?.getContext) return null;
+    const ctx = src.getContext("2d");
+    if (!ctx) return null;
+    const img = ctx.getImageData(0, 0, src.width, src.height);
+    return DERIVATIONS.map((d) => {
+      const rgb = deriveRimColor(
+        { data: img.data, width: src.width, height: src.height },
+        d.id,
+      );
+      return { id: d.id, label: d.label, hex: toHex(rgb), sat: saturationOf(rgb) };
+    });
+  }, [texture]);
+
+  const rimColor =
+    derived?.find((d) => d.id === derivation)?.hex ?? DEFAULT_THREE_POINT.rimColor;
 
   // Forensic log — records every config change with its resulting numbers, so
   // a finding can be traced back to the exact state that produced it.
@@ -386,7 +415,7 @@ export default function LightingSpikePage() {
             toneMapping={TONE_CURVES[curveIdx].value}
             onCanvas={(c) => { canvasRef.current = c; }}
           />
-          <Rig id={rig} params={DEFAULT_THREE_POINT} />
+          <Rig id={rig} params={{ ...DEFAULT_THREE_POINT, rimColor }} />
           {showBackdrop && (
             <Backdrop
               distance={distance}
@@ -533,6 +562,34 @@ export default function LightingSpikePage() {
               {sweeping ? "measuring..." : "run sweep (12 combos)"}
             </button>
           </div>
+
+          {derived && (
+            <div style={{ ...box, display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ opacity: 0.7 }}>
+                SPIKE 007 — rim colour from backdrop
+                <span style={{ opacity: 0.7 }}> (needs three-point rig)</span>
+              </div>
+              {derived.map((d) => (
+                <button key={d.id} onClick={() => setDerivation(d.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "3px 5px",
+                    background: derivation === d.id ? "#6366f1" : "#2a2a3e",
+                    color: "#fff", border: "1px solid #444", borderRadius: 4,
+                    cursor: "pointer", fontFamily: "monospace", fontSize: 10,
+                  }}>
+                  <span style={{
+                    width: 16, height: 16, borderRadius: 3,
+                    background: d.hex, border: "1px solid #666", flexShrink: 0,
+                  }} />
+                  <span style={{ width: 104, textAlign: "left" }}>{d.label}</span>
+                  <span style={{ opacity: 0.8 }}>{d.hex}</span>
+                  <span style={{ color: d.sat < 0.12 ? "#ff6e9c" : "#00e5a0" }}>
+                    {d.sat.toFixed(2)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {live && (
             <div style={{ ...box, fontSize: 11 }}>

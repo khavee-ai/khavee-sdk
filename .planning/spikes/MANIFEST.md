@@ -84,6 +84,18 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
   above was caught is that the sweep included a row whose expected value was already known from
   a prior spike. Without that row the numbers looked entirely plausible. (from 005)
 
+- **Derive the rim tint with a saturation-weighted upper-region sample, never a plain mean.**
+  Measured on adversarial fixtures: a plain mean turns a grey wall + red neon into muddy mauve
+  (sat 0.19), reproducing MTOON-03's grey-rim defect one level up; `dominant` returns grey there
+  and picks the dark ground rather than the sky on a sky/ground photo. Upper-region wins on
+  measured evidence and is the only option with a physical justification — a rim light comes from
+  behind and above. (from 007)
+- **A neutral background must produce a neutral rim, and that guarantee needs its own test.**
+  All four derivations currently hold it, but Phase 15's WR-02 showed this exact class of
+  guarantee failing silently in shipped code. (from 007)
+- **Known limit, to document rather than tune away:** a background split evenly between two
+  opposing saturated hues defeats every derivation — no single rim colour is right for it. (from 007)
+
 ## Spikes
 
 | # | Name | Type | Validates | Verdict | Tags |
@@ -94,4 +106,4 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
 | 004 | backdrop-plane-dof | standard | Given real customer background images at several aspect ratios, when a backdrop plane is placed in-canvas behind the avatar and DOF is enabled, then `background-size: cover` equivalence holds across resizes and DOF separates background from subject without blurring the avatar | **VALIDATED** — cover holds; DOF works but ONLY with subject-tracking focus; `cover` keeps just 31.6% of a 9:16 upload | lighting, dof, background, composition |
 | 005 | lighting-contrast-rebaseline | standard | Given a prototype three-point rig with a rim light, when contrast and saturation are re-measured under it for both ACESFilmic and Cineon, then the correct Phase 16 contrast gate is known (superseding the 0.3041 figure measured under old lighting) | **PARTIAL** — gate must become a same-harness delta, not an absolute threshold; 003's number is not portable (4 conditions differ). Numbers themselves still untrusted and withheld | lighting, measurement, tonemapping, rebaseline |
 | 006 | outline-draw-cost | standard | Given `male.vrm`'s 19 materials, when MToon outlines are enabled, then the real frame-time and draw-call cost is measured on a representative device rather than assumed | PENDING | mtoon, outlines, performance |
-| 007 | rim-from-background | standard | Given both a flat COLOR background and an uploaded IMAGE background, when the rim tint is derived from it, then the result reads as belonging to the same scene rather than merely measuring as more saturated | PENDING | lighting, rim, background, colour |
+| 007 | rim-from-background | standard | Given both a flat COLOR background and an uploaded IMAGE background, when the rim tint is derived from it, then the result reads as belonging to the same scene rather than merely measuring as more saturated | **VALIDATED** — ship saturation-weighted upper-region; `mean` reproduces the MTOON-03 grey-rim defect, `dominant` picks the wrong half | lighting, rim, background, colour |

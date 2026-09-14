@@ -25,6 +25,8 @@ export type {
   AvatarPostFXProps,
   AvatarToneMapping,
   DepthOfFieldOptions,
+  VignetteOptions,
+  GradingOptions,
   ShadowFloorProps,
   AvatarContactShadowsProps,
   LightRigOptions,

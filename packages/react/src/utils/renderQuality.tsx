@@ -3,7 +3,16 @@ import type { ReactElement } from "react";
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Bloom, DepthOfField, EffectComposer, SMAA, ToneMapping } from "@react-three/postprocessing";
+import {
+  Bloom,
+  BrightnessContrast,
+  DepthOfField,
+  EffectComposer,
+  HueSaturation,
+  SMAA,
+  ToneMapping,
+  Vignette,
+} from "@react-three/postprocessing";
 import { ContactShadows } from "@react-three/drei";
 import { ToneMappingMode } from "postprocessing";
 
@@ -547,6 +556,35 @@ export interface DepthOfFieldOptions {
   bokehScale?: number;
 }
 
+/** Options for the vignette effect. */
+export interface VignetteOptions {
+  /** Vignette offset (inward shift of the darkening). Default: 0.35 */
+  offset?: number;
+  /** Darkness of the vignette. Default: 0.55 */
+  darkness?: number;
+}
+
+/** Options for colour grading (hue/saturation + brightness/contrast). */
+export interface GradingOptions {
+  /**
+   * Saturation adjustment, -1..1 (HueSaturation effect). Default: 0.12
+   * (deliberately small nudge).
+   */
+  saturation?: number;
+  /** Hue rotation in radians (HueSaturation effect). Default: 0 */
+  hue?: number;
+  /** Brightness adjustment, -1..1 (BrightnessContrast effect). Default: 0 */
+  brightness?: number;
+  /**
+   * Contrast adjustment, -1..1 (BrightnessContrast effect). Default: 0.08
+   * (deliberately small nudge).
+   *
+   * This is a display-space grade applied BEFORE the tone curve — it is not a
+   * substitute for Phase 15's material repair or for the tone-curve choice.
+   */
+  contrast?: number;
+}
+
 /** Options for {@link AvatarPostFX}. */
 export interface AvatarPostFXProps {
   /**
@@ -576,6 +614,20 @@ export interface AvatarPostFXProps {
   bloomThreshold?: number;
   /** Softness of the threshold cutoff (0 = hard edge, higher = gradual falloff). Default: 1 */
   bloomSmoothing?: number;
+  /**
+   * Enable vignette (spatial falloff darkening). Default: false. A bare `true`
+   * uses all defaults. Shipped as a separate prop from `grading` because they
+   * are unrelated operations (a spatial falloff versus a colour transform) and
+   * a consumer very often wants one without the other.
+   */
+  vignette?: boolean | VignetteOptions;
+  /**
+   * Enable colour grading (hue/saturation + brightness/contrast). Default: false.
+   * A bare `true` uses all defaults (saturation: 0.12, contrast: 0.08 — deliberately
+   * small nudges). This is a display-space grade applied BEFORE the tone curve —
+   * it is not a substitute for Phase 15's material repair or for the tone-curve choice.
+   */
+  grading?: boolean | GradingOptions;
   /** Enable subpixel morphological anti-aliasing (on top of the Canvas's own MSAA). Default: true */
   smaa?: boolean;
   /**
@@ -652,6 +704,8 @@ export function AvatarPostFX({
   bloomIntensity = 0.5,
   bloomThreshold = 0.3,
   bloomSmoothing = 1,
+  vignette = false,
+  grading = false,
   smaa = true,
   toneMapping = "cineon",
 }: AvatarPostFXProps) {
@@ -660,6 +714,18 @@ export function AvatarPostFX({
   const subject = dofOpts?.subject ?? [0, 1, 0];
   const focusRange = dofOpts?.focusRange ?? 0.6;
   const bokehScale = dofOpts?.bokehScale ?? 20;
+
+  // Resolve vignette options.
+  const vignetteOpts = typeof vignette === "boolean" ? (vignette ? {} : null) : vignette;
+  const vignetteOffset = vignetteOpts?.offset ?? 0.35;
+  const vignetteDarkness = vignetteOpts?.darkness ?? 0.55;
+
+  // Resolve grading options.
+  const gradingOpts = typeof grading === "boolean" ? (grading ? {} : null) : grading;
+  const saturation = gradingOpts?.saturation ?? 0.12;
+  const hue = gradingOpts?.hue ?? 0;
+  const brightness = gradingOpts?.brightness ?? 0;
+  const contrast = gradingOpts?.contrast ?? 0.08;
 
   // Hold the tracked camera→subject distance in state, initialized to ~3
   // (roughly the default demo camera's distance). This literal exists only so
@@ -670,7 +736,7 @@ export function AvatarPostFX({
   // Rules of Hooks: all hooks must be called unconditionally BEFORE any early
   // return. The early `return null` guard has been moved to come AFTER this
   // point so hooks always run in the same order.
-  if (!dof && !bloom && !smaa) return null;
+  if (!dof && !bloom && !vignette && !grading && !smaa) return null;
 
   // EffectComposer's `children` type is `JSX.Element | JSX.Element[]` (no
   // boolean/null allowed), so conditionally-included effects must be built
@@ -679,8 +745,9 @@ export function AvatarPostFX({
 
   // Effect order (fixed by plan): DepthOfField → Bloom → HueSaturation →
   // BrightnessContrast → Vignette → SMAA → ToneMapping. DOF first because it
-  // operates on the depth buffer and must see un-bloomed geometry; ToneMapping
-  // strictly last per RESEARCH Pattern 2.
+  // operates on the depth buffer and must see un-bloomed geometry; grading and
+  // vignette after bloom so they act on the composed image; ToneMapping strictly
+  // last per RESEARCH Pattern 2.
   if (dof) {
     effects.push(
       <DepthOfField
@@ -700,6 +767,23 @@ export function AvatarPostFX({
         luminanceThreshold={bloomThreshold}
         luminanceSmoothing={bloomSmoothing}
       />,
+    );
+  }
+  // Grading: skip HueSaturation entirely when both hue and saturation are 0.
+  if (grading && (hue !== 0 || saturation !== 0)) {
+    effects.push(
+      <HueSaturation key="hue-sat" hue={hue} saturation={saturation} />,
+    );
+  }
+  // Grading: skip BrightnessContrast entirely when both brightness and contrast are 0.
+  if (grading && (brightness !== 0 || contrast !== 0)) {
+    effects.push(
+      <BrightnessContrast key="bright-contrast" brightness={brightness} contrast={contrast} />,
+    );
+  }
+  if (vignette) {
+    effects.push(
+      <Vignette key="vignette" offset={vignetteOffset} darkness={vignetteDarkness} />,
     );
   }
   if (smaa) {

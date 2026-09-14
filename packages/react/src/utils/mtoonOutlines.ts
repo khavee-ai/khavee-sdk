@@ -87,14 +87,15 @@ export function countOutlinedMaterials(root: THREE.Object3D): OutlineCounts {
   let outlined = 0;
   forEachSurfaceMToon(root, (m) => {
     total++;
-    if (m.outlineWidthMode === "none") return;
-    // Read the authored width: prefer the snapshot value if one exists
-    // (material was suppressed at least once), otherwise read the current
-    // value (material never touched yet, so current === authored).
-    const width = authoredOutlineWidth.has(m)
-      ? authoredOutlineWidth.get(m)!
-      : m.outlineWidthFactor;
-    if (width > 0) outlined++;
+    // A material "carries an authored outline" when its outlineWidthMode is
+    // not "none", regardless of the current width value — three-vrm generated
+    // the outline infrastructure at parse time based on the mode being set in
+    // the glTF extension. The width might be 0 (as spike 001's audit found
+    // for all 6 of male.vrm's outlined materials), but the outline capability
+    // is still present and toggleable.
+    if (m.outlineWidthMode !== "none") {
+      outlined++;
+    }
   });
   return { total, outlined };
 }

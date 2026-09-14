@@ -743,7 +743,14 @@ export function VRMAvatar({
           [0, Math.PI, 0] would otherwise turn the backdrop away from the camera. */}
       {background && <AvatarBackdrop background={background} onError={onBackgroundError} />}
       <group position={position} rotation={rotation} scale={scale} {...props}>
-        {autoLighting && <AvatarLightRig options={mergeRimColor(lighting, derivedRim)} />}
+        {/* The model faces its local -Z (the default rotation turns it toward the
+            camera), but the rig's positions assume the subject faces +Z. Without
+            this counter-rotation the key lights from behind and the rim hits the face. */}
+        {autoLighting && (
+          <group rotation={[0, Math.PI, 0]}>
+            <AvatarLightRig options={mergeRimColor(lighting, derivedRim)} />
+          </group>
+        )}
         {scene && <primitive object={scene} />}
       </group>
     </>

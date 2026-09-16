@@ -42,6 +42,11 @@ export interface XAIRealtimeConfig extends Omit<RealtimeConfig, "voice"> {
   /** Audio sample rate in Hz. Default: 24000 */
   sampleRate?: number;
   /**
+   * Output speech speed multiplier, inherited from RealtimeConfig.
+   * xAI accepts 0.7-1.5 (values outside are clamped); 1.0 is the default.
+   */
+  speed?: number;
+  /**
    * Backend endpoint that mints ephemeral tokens for browser use.
    * e.g. "/api/xai-token" — called via POST, expects JSON response
    * with `{ client_secret: { value: string } }`.

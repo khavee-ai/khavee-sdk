@@ -818,6 +818,29 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     }
 
     this.sendEvent({ type: "session.update", session });
+    this.sendOutputSpeedUpdate();
+  }
+
+  /**
+   * Apply `speed` via xAI's nested audio config (`audio.output.speed`, range 0.7-1.5).
+   *
+   * Sent as its own session.update rather than merged into the main one: the main
+   * update uses xAI's legacy flat audio keys (input_audio_format/output_audio_format),
+   * and mixing both shapes in a single event risks the whole update being rejected —
+   * which would drop instructions, voice and tools. Isolated, a rejection costs only
+   * the speed setting and leaves the session working.
+   */
+  private sendOutputSpeedUpdate(): void {
+    const requested = this.config.speed;
+    if (requested === undefined) return;
+
+    const speed = Math.min(1.5, Math.max(0.7, requested));
+    if (speed === 1) return; // xAI's default — nothing to change
+
+    this.sendEvent({
+      type: "session.update",
+      session: { audio: { output: { speed } } },
+    });
   }
 
   // ── Private: WebSocket Utilities ───────────────────────────────────────────

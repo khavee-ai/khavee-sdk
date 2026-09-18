@@ -125,12 +125,20 @@ acceptance criteria, not restated from memory.
 - [x] **CAM-06**: State-driven reframing is dolly-only — a subtle ~5–10% push-in when `chatStatus` transitions to `"speaking"`, easing back on `"listening"`/`"ready"`. No angle, target, or framing change. Defaults to `reframe={true}`.
 - [ ] **CAM-07**: Existing `AvatarBackdrop`, `SubjectFocusTracker` (DOF), `gaze.ts`, and `AvatarLightRig` continue to work correctly — no jitter, lag, or regression from camera moves introduced by `AvatarCamera`.
 
-### Phase 18
+### Facial Performance — Eyes, Visemes & Emotion (Phase 18)
 
-Requirements not yet defined — scope outlines only (see ROADMAP.md). To be
-specified at planning time:
+Derived at planning time (2026-09-18) from the locked decisions in
+`18-CONTEXT.md` (D-01..D-16); the decision IDs each requirement covers are listed inline.
 
-- Phase 18 — Facial Performance: Eyes, Visemes & Emotion (3 scope items)
+- [ ] **EYE-01**: Eye gaze lives in a new module separate from head-bone `gaze.ts`. It drives `vrm.lookAt` yaw/pitch when the avatar has one, and falls back to additive `leftEye`/`rightEye` bone rotation when it doesn't. Eyes follow the camera smoothly with occasional subtle micro-saccades in an anime-natural style (D-01, D-03, D-04).
+- [ ] **EYE-02**: Blinks are coupled to significant eye-target shifts. A large gaze change forces a blink. The independent random timer survives only as a long safety net that every coupled blink pushes back (D-02).
+- [ ] **VIS-01**: Hybrid viseme source. A vendor-neutral timing path (`TTSProvider.speak` `onViseme` → `PhonemeData` with `source: "timing"`) is used whenever timing data covers the current time. Otherwise the client-side audio-analysis stream is used, now debounced and smoothed (D-05).
+- [ ] **VIS-02**: Coarticulation smoothing. Neighboring visemes blend into each other's mouth shape through a continuous weighted neighbor blend with lip-rounding anticipation. This replaces a plain crossfade (D-06).
+- [ ] **VIS-03**: Additive jaw-bone rotation driven by mouth openness, layered on top of the mouth blendshapes (D-07).
+- [ ] **VIS-04**: `useAudioLipSync` is marked `@deprecated` and keeps working unchanged. The new viseme layer takes ownership of the mouth only while it is receiving data (D-08).
+- [ ] **EMO-01**: `createEmotionTool(setEmotionHint)` returns a ready-to-register `set_emotion` `RealtimeTool` (plain JS objects, `ToolExecutor`-dispatchable) plus a system-prompt addition telling the LLM to call it before the spoken reply. `{ emotion, intensity }` arguments are allow-list validated and clamped at both the tool and the React-context boundary (D-09, D-10, D-11, D-16).
+- [ ] **EMO-02**: Six core emotions (happy, sad, angry, surprised, neutral, thinking) map to VRM expressions with intensity-scaled weights. Transitions crossfade with `easeInOutCubic` over 0.4s in and 0.5s out. `expressionDrift` stays running underneath as the base layer and is suppressed only while an emotion is present (D-13, D-14, D-15, D-16).
+- [ ] **EMO-03**: The active emotion also biases eye-gaze behavior (offset, aversion frequency, saccade scale) and selects a head gesture (nod/shake) when no explicit gesture hint is pending (D-12).
 
 ## Out of Scope
 
@@ -187,6 +195,15 @@ specified at planning time:
 | BG-02 | Phase 16 | Complete |
 | OUTLINE-01 | Phase 16 | Complete |
 | MEASURE-01 | Phase 16 | Complete |
+| EYE-01 | Phase 18 | Pending |
+| EYE-02 | Phase 18 | Pending |
+| VIS-01 | Phase 18 | Pending |
+| VIS-02 | Phase 18 | Pending |
+| VIS-03 | Phase 18 | Pending |
+| VIS-04 | Phase 18 | Pending |
+| EMO-01 | Phase 18 | Pending |
+| EMO-02 | Phase 18 | Pending |
+| EMO-03 | Phase 18 | Pending |
 
 **Untracked regressions (not mapped to a REQ-ID) — ALL RESOLVED as of 11-18 (2026-07-17):**
 - G1: Avatar stuck in T-pose on first load — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), re-confirmed by 11-18's sixth-round sweep. Root cause (found by 11-13 via headless production-path replay): the crossfade-trigger effect's single pre-connect run happened while clips/root were unresolvable and never re-fired when the VRM finished loading. Fixed with a new exported pure function `shouldTriggerClipSwitch`.
@@ -203,6 +220,7 @@ specified at planning time:
 - v3.1 Phase 15 requirements: 7 total, all mapped to Phase 15, all Complete
 - v3.1 Phase 16 requirements: 7 total, all mapped to Phase 16, all Complete
 - v3.1 Phase 17 requirements: 7 total (CAM-01..07), mapped to Phase 17, Pending
+- v3.1 Phase 18 requirements: 9 total (EYE-01/02, VIS-01..04, EMO-01..03), derived from 18-CONTEXT.md D-01..D-16, mapped to Phase 18, Pending
 - Unmapped: 0 ✓
 
 **Known gap:** Phase 14 (xAI Realtime Provider, v3.0) was completed 2026-08-25

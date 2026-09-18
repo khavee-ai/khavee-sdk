@@ -570,14 +570,22 @@ Plans:
 
 **Goal**: The face carries the performance — the avatar makes real eye contact, its mouth matches what is actually being said, and its expression follows the emotional content of the reply rather than drifting at random
 **Depends on**: Phase 15 (expression work on correct materials), Phase 12 (gaze layer already exists)
-**Requirements**: TBD
+**Requirements**: EYE-01, EYE-02, VIS-01, VIS-02, VIS-03, VIS-04, EMO-01, EMO-02, EMO-03
 **Scope outline** (not yet decomposed):
 
   1. **Real eye movement** — `packages/react/src/animation/gaze.ts` moves the head bone only and never drives `vrm.lookAt`. Add eye-bone gaze plus micro-saccades and blink coupling.
   2. **Viseme lip-sync from TTS timing** replacing the MFCC/formant classifier in `useRealtime.ts` and `useAudioLipSync.ts`, which guesses phonemes from the audio spectrum and is inherently jittery. Add coarticulation smoothing and additive jaw-bone motion rather than blendshapes alone.
   3. **Emotion channel** — have the LLM emit emotion tags and drive expression, gesture and gaze from them. Today `expressionDrift.ts` is random drift with no relationship to what is being said. This is the capability Animates markets as "emotional range".
 
-**Plans**: TBD
+**Plans:** 6 plans
+
+Plans:
+- [ ] 18-01-PLAN.md — Eye gaze module (vrm.lookAt primary, eye-bone fallback, saccades, glance-aways), blink coupling surface, additive bone helper (wave 1)
+- [ ] 18-02-PLAN.md — createEmotionTool() in core + react emotion crossfade module with gaze bias and gesture suggestion (wave 1)
+- [ ] 18-03-PLAN.md — Vendor-neutral viseme timing interface, GenericPipelineProvider forwarding, viseme module (hybrid, coarticulation, jaw) (wave 2)
+- [ ] 18-04-PLAN.md — Compose eyeGaze/viseme/emotion as controller steps 12-14 with blink, drift, gaze and gesture couplings (wave 3)
+- [ ] 18-05-PLAN.md — KhaveeProvider emotionHint/visemeChannel, useRealtime channel feeding, useAudioLipSync deprecation (wave 3)
+- [ ] 18-06-PLAN.md — VRMAvatar wiring, type exports, openai-avatar-test demo, human verification checkpoint (wave 4)
 
 ## Deferred Tracks (v3.1, not scheduled as phases)
 

@@ -117,12 +117,12 @@ acceptance criteria, not restated from memory.
 
 ### Camera Direction & Scene Composition (Phase 17)
 
-- [ ] **CAM-01**: `AvatarCamera` ships as a separate opt-in per-Canvas component (not baked into `VRMAvatar`/`GLBAvatar`). Consumers must mount it explicitly; no `autoCamera` prop exists on avatar components. Existing consumers using `OrbitControls`/`CameraControls` directly are unaffected.
-- [ ] **CAM-02**: Three built-in framing presets (`"bust-shot"` default, `"medium-close-up"`, `"full-body"`) with consumer-overridable `position`, `target`, and `fov` props — an explicit prop overrides the preset's default for that axis only.
-- [ ] **CAM-03**: Three orbit modes (`"locked"` default, `"constrained"`, `"free"`). `"locked"` prevents all user camera interaction; `"constrained"` clamps polar, azimuth, and distance within flattering angles per preset; `"free"` is unconstrained.
-- [ ] **CAM-04**: Presets are runtime-swappable — changing the `preset` prop triggers a smooth eased transition (easeInOutCubic, ~0.8–1.5s) from the current camera position to the new preset's position.
-- [ ] **CAM-05**: Handheld drift uses procedural simplex noise on camera position/target each frame (~0.5–2 cm world-space amplitude). Drift is always on across all `chatStatus` values, pauses only during active user orbit, and defaults to `drift={true}`.
-- [ ] **CAM-06**: State-driven reframing is dolly-only — a subtle ~5–10% push-in when `chatStatus` transitions to `"speaking"`, easing back on `"listening"`/`"ready"`. No angle, target, or framing change. Defaults to `reframe={true}`.
+- [x] **CAM-01**: `AvatarCamera` ships as a separate opt-in per-Canvas component (not baked into `VRMAvatar`/`GLBAvatar`). Consumers must mount it explicitly; no `autoCamera` prop exists on avatar components. Existing consumers using `OrbitControls`/`CameraControls` directly are unaffected.
+- [x] **CAM-02**: Three built-in framing presets (`"bust-shot"` default, `"medium-close-up"`, `"full-body"`) with consumer-overridable `position`, `target`, and `fov` props — an explicit prop overrides the preset's default for that axis only.
+- [x] **CAM-03**: Three orbit modes (`"locked"` default, `"constrained"`, `"free"`). `"locked"` prevents all user camera interaction; `"constrained"` clamps polar, azimuth, and distance within flattering angles per preset; `"free"` is unconstrained.
+- [x] **CAM-04**: Presets are runtime-swappable — changing the `preset` prop triggers a smooth eased transition (easeInOutCubic, ~0.8–1.5s) from the current camera position to the new preset's position.
+- [x] **CAM-05**: Handheld drift uses procedural simplex noise on camera position/target each frame (~0.5–2 cm world-space amplitude). Drift is always on across all `chatStatus` values, pauses only during active user orbit, and defaults to `drift={true}`.
+- [x] **CAM-06**: State-driven reframing is dolly-only — a subtle ~5–10% push-in when `chatStatus` transitions to `"speaking"`, easing back on `"listening"`/`"ready"`. No angle, target, or framing change. Defaults to `reframe={true}`.
 - [ ] **CAM-07**: Existing `AvatarBackdrop`, `SubjectFocusTracker` (DOF), `gaze.ts`, and `AvatarLightRig` continue to work correctly — no jitter, lag, or regression from camera moves introduced by `AvatarCamera`.
 
 ### Phase 18

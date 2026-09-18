@@ -628,5 +628,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 14. xAI Realtime Provider | 1/1 | Complete   | 2026-08-25 |
 | 15. MToon Material Repair & Tone Mapping | 4/4 | Complete    | 2026-09-12 |
 | 16. Lighting, Shadows & Post-Processing | 6/6 | Complete    | 2026-09-18 |
-| 17. Camera Direction & Scene Composition | 0/TBD | Not started | - |
+| 17. Camera Direction & Scene Composition | 1/2 | In Progress|  |
 | 18. Facial Performance — Eyes, Visemes & Emotion | 0/TBD | Not started | - |

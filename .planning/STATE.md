@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Avatar Render Quality
-status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-09-18T15:30:00.000Z"
-last_activity: 2026-09-18 -- Phase 17 Plan 01 complete
+status: checkpoint
+stopped_at: 17-02 Task 1 complete (Task 2 PENDING checkpoint:human-verify)
+last_updated: "2026-09-18T15:35:00.000Z"
+last_activity: 2026-09-18 -- Phase 17 Plan 02 Task 1 complete, Task 2 awaiting human verification
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 11
-  percent: 92
+  completed_plans: 12
+  percent: 75
 ---
 
 # Project State
@@ -30,10 +30,10 @@ Phase 16-18 scope outlines, plus the deferred asset/product tracks.
 ## Current Position
 
 Phase: 17
-Plan: 17-02 (Wave 1, next)
-Status: Ready
+Plan: 17-02 (Wave 2, Task 1 complete, Task 2 PENDING checkpoint)
+Status: Checkpoint
 Branch: `feat/mtoon-render-quality` (branched off `main`; nothing merged yet)
-Last activity: 2026-09-18 -- Phase 17 Plan 01 complete
+Last activity: 2026-09-18 -- Phase 17 Plan 02 Task 1 complete, Task 2 awaiting human verification
 
 ### How Phase 15 was grounded
 
@@ -71,7 +71,7 @@ Plan 12-10 result: Task 1 (autonomous, TDD) added a final-delta re-clamp to `ste
 
 Phase 12 is NOT complete — GAZE-02 is an open, deprioritized gap (user-deferred, not urgent). Requirements GEST-01, GEST-02, and GAZE-01 are confirmed PASS; GAZE-02 remains open with a confirmed-but-unverified root-cause hypothesis (happy.glb's own idle-clip loop seam).
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -99,7 +99,7 @@ Progress: [█████████░] 92%
 | 13 | 0/TBD | - | - |
 | 15 | 4 | - | - |
 | 16 | 6 | - | - |
-| 17 | 1/2 | - | - |
+| 17 | 2/2 (17-02 T2 checkpoint pending) | - | - |
 
 **Recent Trend:**
 
@@ -110,6 +110,7 @@ Progress: [█████████░] 92%
 | Phase 11 P18 | 25min | 2 tasks | 1 files |
 | Phase 12 P06 | 15min | 2 tasks | 2 files |
 | Phase 17 P01 | 42min | 2 tasks | 3 files |
+| Phase 17 P02 | 1min | 1 task (T2 pending) | 1 files |
 
 ## Accumulated Context
 
@@ -162,6 +163,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-18T08:31:27.054Z
+Last session: 2026-09-18T08:35:39.208Z
 Stopped at: Phase 17 UI-SPEC approved
 Resume file: None

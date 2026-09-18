@@ -615,24 +615,24 @@ export function planeSizeForDistance(
 |---|-------|---------|---------------|
 | — | (empty) | — | — |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact Preset Positions/Targets/FOV Values**
+1. **Exact Preset Positions/Targets/FOV Values** — RESOLVED: Claude's discretion per CONTEXT.md.
    - What we know: Standard cinematographic framing definitions (bust shot ~chest-up, medium close-up ~shoulder-up, full body ~head-to-feet visible); existing demos use targets around [0, 1, 0] and distances 1.5–4.0m.
    - What's unclear: Optimal values that work across both VRM and GLB avatars of varying heights/proportions, and feel "right" at typical viewport aspect ratios (16:9, 4:3, portrait).
    - Recommendation: Start with empirical values based on cinematography rules-of-thumb, tune against male.vrm / happy.glb in a harness. Bust-shot: camera at [0, 1.4, 1.8], target [0, 1.3, 0], fov 35°. Medium close-up: [0, 1.5, 2.2], target [0, 1.4, 0], fov 40°. Full-body: [0, 1.2, 4.0], target [0, 1.0, 0], fov 50°. Iterate based on subjective review.
 
-2. **Constrained Orbit Range Clamps Per Preset**
+2. **Constrained Orbit Range Clamps Per Preset** — RESOLVED: Claude's discretion per CONTEXT.md.
    - What we know: CameraControls supports minPolarAngle/maxPolarAngle, minAzimuthAngle/maxAzimuthAngle, minDistance/maxDistance. Ranges should be preset-specific (Pitfall 1).
    - What's unclear: Exact degree/radian ranges that feel "constrained but not locked" and prevent unflattering angles without feeling restrictive.
    - Recommendation: Start with ranges that allow ±15° azimuth and ±10° polar from each preset's default position. Test by trying to orbit to "bad" angles (under chin, top of head) and verify they're blocked. Widen if too restrictive, tighten if bad angles slip through.
 
-3. **Drift Noise Parameters (Frequency, Amplitude, Octaves)**
+3. **Drift Noise Parameters (Frequency, Amplitude, Octaves)** — RESOLVED: Claude's discretion per CONTEXT.md.
    - What we know: Target amplitude ~0.5–2 cm (0.005–0.02 world units), should be "subtle enough to not notice consciously, obvious enough that removing it makes the scene feel dead" (CONTEXT.md D-07).
    - What's unclear: Exact frequency (Hz) and whether multi-octave noise is needed, or if single-octave simplex is sufficient.
    - Recommendation: Start with single-octave simplex, frequency 0.5 Hz, amplitude 0.01 (1cm). Tune amplitude via a runtime debug slider (not exposed in production API). If drift feels too uniform, layer a second octave at 2x frequency and 0.5x amplitude for higher-frequency detail. Avoid >2 octaves (diminishing returns, added per-frame cost).
 
-4. **State Reframing Dolly Distance (5-10% Range)**
+4. **State Reframing Dolly Distance (5-10% Range)** — RESOLVED: Claude's discretion per CONTEXT.md.
    - What we know: D-10 specifies ~5–10% push-in on speaking, dolly-only (no angle change).
    - What's unclear: Exact percentage that reads as "subtle cinematic push-in" vs "distractingly aggressive move-in."
    - Recommendation: Start at 7% (middle of range). Test with a conversation that alternates speaking/listening rapidly — if camera feels "busy," reduce to 5%. If barely perceptible, increase to 10%. User should feel "the camera is paying attention to the speaker" without consciously noticing a move.

@@ -115,12 +115,21 @@ acceptance criteria, not restated from memory.
 
 - **MEASURE-01**: The contrast recovery is proved by a same-harness, same-framing, same-session comparison — three-point rig contrast greater than or equal to the legacy production rig's. No absolute figure is carried across harnesses, and no measurement is taken through browser automation (D-11, revised; spikes 004/005).
 
-### Phases 17-18
+### Camera Direction & Scene Composition (Phase 17)
+
+- [ ] **CAM-01**: `AvatarCamera` ships as a separate opt-in per-Canvas component (not baked into `VRMAvatar`/`GLBAvatar`). Consumers must mount it explicitly; no `autoCamera` prop exists on avatar components. Existing consumers using `OrbitControls`/`CameraControls` directly are unaffected.
+- [ ] **CAM-02**: Three built-in framing presets (`"bust-shot"` default, `"medium-close-up"`, `"full-body"`) with consumer-overridable `position`, `target`, and `fov` props — an explicit prop overrides the preset's default for that axis only.
+- [ ] **CAM-03**: Three orbit modes (`"locked"` default, `"constrained"`, `"free"`). `"locked"` prevents all user camera interaction; `"constrained"` clamps polar, azimuth, and distance within flattering angles per preset; `"free"` is unconstrained.
+- [ ] **CAM-04**: Presets are runtime-swappable — changing the `preset` prop triggers a smooth eased transition (easeInOutCubic, ~0.8–1.5s) from the current camera position to the new preset's position.
+- [ ] **CAM-05**: Handheld drift uses procedural simplex noise on camera position/target each frame (~0.5–2 cm world-space amplitude). Drift is always on across all `chatStatus` values, pauses only during active user orbit, and defaults to `drift={true}`.
+- [ ] **CAM-06**: State-driven reframing is dolly-only — a subtle ~5–10% push-in when `chatStatus` transitions to `"speaking"`, easing back on `"listening"`/`"ready"`. No angle, target, or framing change. Defaults to `reframe={true}`.
+- [ ] **CAM-07**: Existing `AvatarBackdrop`, `SubjectFocusTracker` (DOF), `gaze.ts`, and `AvatarLightRig` continue to work correctly — no jitter, lag, or regression from camera moves introduced by `AvatarCamera`.
+
+### Phase 18
 
 Requirements not yet defined — scope outlines only (see ROADMAP.md). To be
-specified at each phase's planning time:
+specified at planning time:
 
-- Phase 17 — Camera Direction & Scene Composition (3 scope items)
 - Phase 18 — Facial Performance: Eyes, Visemes & Emotion (3 scope items)
 
 ## Out of Scope
@@ -191,7 +200,9 @@ specified at each phase's planning time:
 **Coverage:**
 - v1 (v2.2) requirements: 22 total
 - Mapped to phases: 22 (Phase 10: ANIM-01/02/03, XFADE-01; Phase 11: IDLE-01/02, TRANS-01/02, TALK-01/02, PERF-01; Phase 12: GAZE-01/02, GEST-01/02; Phase 13: API-01/02/03/04, PERF-02, VERIFY-01/02)
-- v3.1 requirements: 7 total, all mapped to Phase 15, all Complete
+- v3.1 Phase 15 requirements: 7 total, all mapped to Phase 15, all Complete
+- v3.1 Phase 16 requirements: 7 total, all mapped to Phase 16, all Complete
+- v3.1 Phase 17 requirements: 7 total (CAM-01..07), mapped to Phase 17, Pending
 - Unmapped: 0 ✓
 
 **Known gap:** Phase 14 (xAI Realtime Provider, v3.0) was completed 2026-08-25

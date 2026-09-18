@@ -557,14 +557,14 @@ Plans:
 
 **Goal**: The avatar is always framed deliberately — a viewer cannot land on an unflattering angle, and the camera has enough life that the scene does not read as a static render
 **Depends on**: Phase 16 (framing decisions depend on the lighting and depth-of-field the scene actually has)
-**Requirements**: TBD
-**Scope outline** (not yet decomposed):
+**Requirements**: CAM-01, CAM-02, CAM-03, CAM-04, CAM-05, CAM-06, CAM-07
+**Scope:**
 
   1. **Framing presets** (e.g. medium close-up) replacing unconstrained `CameraControls` orbit, which today lets a viewer rotate to arbitrary bad angles.
   2. **Subtle camera life** — very low-amplitude handheld drift, so the shot is not perfectly static.
   3. **State-driven reframing** — a slow push-in on `speaking`, easing back on `listening`/`ready`, driven from the same `chatStatus` the animation layer already consumes.
 
-**Plans**: TBD
+**Plans**: 17-01 (Wave 1: AvatarCamera component), 17-02 (Wave 2: demo verification harness)
 
 ### Phase 18: Facial Performance — Eyes, Visemes & Emotion
 

@@ -412,21 +412,24 @@ export const toolGesture = {
 
 **If this table is empty:** N/A — see above.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does D-05's primary (TTS-timestamp) path need to be functionally proven this phase, or is the interface addition alone sufficient?**
    - What we know: no TTS vendor wired in this repo emits timestamps (Pitfall 1, confirmed via source read + web search).
    - What's unclear: whether CONTEXT.md's "when available" framing means the planner should build a mock/test-fixture TTS provider with synthetic timestamps to prove the code path works, or whether an untested interface extension is acceptable for this milestone.
+   - RESOLVED: Adopted in 18-03 — full interface + consumption code, proven with hand-built timing fixtures and a fake TTS; no live vendor call.
    - Recommendation: Build the interface + consumption code, add a unit test using a hand-constructed `PhonemeData[]` timing array as a stand-in for a real vendor response (no live vendor call needed) — proves the coarticulation/jaw-bone consumption logic without requiring a real timestamp-capable TTS integration this phase.
 
 2. **Should `blink.ts`'s public surface change to accept a `forceBlink` trigger, or should the eye-gaze module read/write blink state directly?**
    - What we know: `blink.ts`'s scheduling state is currently fully private to its own `useBlink()` closure (Pitfall 5).
    - What's unclear: whether the planner prefers a minimal signature addition (`step(adapter, enabled, forceBlink?)`) or a more invasive refactor exposing a `triggerBlink()` method.
+   - RESOLVED: Adopted in 18-01 Task 2 — minimal options-object addition (`forceBlink`/`coupled`) to blink's step call.
    - Recommendation: Minimal signature addition — smallest diff, consistent with how `gesture.ts` already accepts an external hint parameter into an otherwise-internal step function.
 
 3. **Does the emotion tool's `execute` callback live in app code (like the gesture tool's documented example) or does the SDK's `createEmotionTool()` bundle a default `execute` that calls `setEmotionHint` directly?**
    - What we know: `toolGesture` in `packages/core/src/tools/gesture.ts` is a bare tool-shape object with NO `execute` attached — `KhaveeProvider.tsx`'s own JSDoc example shows app code supplying `execute: async ({gesture}) => { setGestureHint(gesture); return 'done'; }` manually.
    - What's unclear: D-11 explicitly asks for "Built-in SDK helper... zero-config emotion support" — this implies `createEmotionTool()` should be a step MORE integrated than `toolGesture`'s bare-object precedent (likely needs to accept `setEmotionHint` as a parameter and return a ready-to-register `RealtimeTool` with `execute` already wired), not an identical copy of the gesture pattern.
+   - RESOLVED: Adopted in 18-02 Task 1 — `createEmotionTool(setEmotionHint)` factory with `execute` pre-wired.
    - Recommendation: Design `createEmotionTool(setEmotionHint: (emotion: string, intensity: number) => void): RealtimeTool` — a factory function, not a bare object — to actually satisfy "zero-config" (D-11) rather than requiring the app author to write the `execute` wiring by hand as `toolGesture` currently does.
 
 ## Environment Availability

@@ -521,13 +521,16 @@ asset half is tracked separately below.
 **Plans**: 4 plans in 3 waves
 Plans:
 **Wave 1**
+
 - [x] 15-01-PLAN.md — Graduate the MToon repair pass into `@khaveeai/react` + fix the R1 rim-tint bug (MTOON-01/02/03)
 
 **Wave 2** (parallel)
+
 - [x] 15-02-PLAN.md — Headless real-asset vitest suite proving the repair invariants (TEST-01)
 - [x] 15-03-PLAN.md — `materialPreset`, `debugShading` and the CineonToneMapping default on VRMAvatar (MTOON-04/05, TONE-01)
 
 **Wave 3**
+
 - [x] 15-04-PLAN.md — Repoint the spike harness at the SDK, live prop controls, human verification of criteria 1/2/4/5/7
 
 ### Phase 16: Lighting, Shadows & Post-Processing
@@ -546,6 +549,7 @@ Plans:
 **Plans**: 6 plans in 5 waves
 
 Plans:
+
 - [x] 16-01-PLAN.md — graduate the backdrop-cover and rim-colour maths with headless tests (wave 1)
 - [x] 16-02-PLAN.md — three-point light rig, `lighting` prop on both avatars, `AvatarContactShadows` (wave 1)
 - [x] 16-03-PLAN.md — post chain: trailing tone-mapping fix (D-13), subject-tracked DOF, vignette, grading (wave 2)
@@ -580,11 +584,22 @@ Plans:
 **Plans:** 6 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 18-01-PLAN.md — Eye gaze module (vrm.lookAt primary, eye-bone fallback, saccades, glance-aways), blink coupling surface, additive bone helper (wave 1)
 - [ ] 18-02-PLAN.md — createEmotionTool() in core + react emotion crossfade module with gaze bias and gesture suggestion (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 18-03-PLAN.md — Vendor-neutral viseme timing interface, GenericPipelineProvider forwarding, viseme module (hybrid, coarticulation, jaw) (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 18-04-PLAN.md — Compose eyeGaze/viseme/emotion as controller steps 12-14 with blink, drift, gaze and gesture couplings (wave 3)
 - [ ] 18-05-PLAN.md — KhaveeProvider emotionHint/visemeChannel, useRealtime channel feeding, useAudioLipSync deprecation (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 18-06-PLAN.md — VRMAvatar wiring, type exports, openai-avatar-test demo, human verification checkpoint (wave 4)
 
 ## Deferred Tracks (v3.1, not scheduled as phases)
@@ -595,10 +610,12 @@ something the code phases will fix:
 
 - Character art quality — topology, hair cards, texture density, and an **ARKit 52 / Perfect Sync
   blendshape set** rather than the handful of VRM preset expressions.
+
 - **Replace the Mixamo clip library.** `khavee-app`'s `PreviewModel.tsx` loads
   `idle.fbx` / `talk.fbx` / `talk2` / `talk3` / `thinking` / `thinking2` / `wave` from Mixamo —
   clips with no finger articulation, no character, and shared with every other product using
   them. Bespoke mocap plus an additive layer is the fix.
+
 - **Spring-bone (hair/cloth) tuning.** `vrm.update(delta)` already runs the physics, but the SDK
   exposes no configuration, so secondary motion is whatever the model author happened to set.
 
@@ -606,8 +623,10 @@ something the code phases will fix:
 
 - Voice latency budget per pipeline stage — the turn-based `generic-stt-tts` path is
   structurally slower than the realtime providers.
+
 - Persistent memory and proactive re-engagement (Animates processes conversations while the app
   is closed). The SDK has `trimHistory()` and nothing else.
+
 - Performance tiers are already scoped as **Phase 13** — Phase 16's outlines and post chain
   depend on that work landing.
 

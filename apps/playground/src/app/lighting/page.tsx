@@ -110,6 +110,9 @@ export default function LightingPage() {
   // Outlines
   const [outlines, setOutlines] = useState(false);
   const [outlineWidth, setOutlineWidth] = useState<number | null>(null);
+  // ShadowFloor masks whether AvatarContactShadows renders at all (CR-01), so
+  // it has to be switchable off to verify contact shadows.
+  const [shadowFloor, setShadowFloor] = useState(true);
 
   // Readouts
   const [visibilityState, setVisibilityState] = useState<DocumentVisibilityState>("visible");
@@ -275,7 +278,7 @@ export default function LightingPage() {
             outlineWidth={outlineWidth ?? undefined}
             onBackgroundError={(err) => console.error("Background error:", err)}
           />
-          <ShadowFloor y={-1.1} />
+          {shadowFloor && <ShadowFloor y={-1.1} />}
           <AvatarContactShadows y={-1.1} />
           <AvatarPostFX
             bloom={bloom}
@@ -482,6 +485,9 @@ export default function LightingPage() {
           />
           <label>
             <input type="checkbox" checked={outlines} onChange={(e) => setOutlines(e.target.checked)} /> enable
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input type="checkbox" checked={shadowFloor} onChange={(e) => setShadowFloor(e.target.checked)} /> shadow floor
           </label>
         </div>
 

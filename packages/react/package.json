@@ -54,6 +54,7 @@
     "@react-three/postprocessing": "^3.0.4",
     "meyda": "^5.6.3",
     "postprocessing": "^6.37.8",
+    "simplex-noise": "4.0.3",
     "three": "^0.180.0"
   },
   "devDependencies": {

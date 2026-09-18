@@ -49,4 +49,10 @@ export type {
   AvatarBackground,
   BackgroundFit,
 } from "./utils/AvatarBackdrop";
+export { AvatarCamera } from "./utils/AvatarCamera";
+export type {
+  AvatarCameraProps,
+  CameraPreset,
+  OrbitMode,
+} from "./utils/AvatarCamera";
 export * from "./hooks";

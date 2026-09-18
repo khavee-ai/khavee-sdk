@@ -498,7 +498,7 @@ avatar is never lit by. Phases 15-18 close the code half of that gap in dependen
 asset half is tracked separately below.
 
 - [x] **Phase 15: MToon Material Repair & Tone Mapping** - Zero-config correction of broken authored MToon values plus a toon-appropriate tone curve, so every VRM avatar renders with correct toon shading without touching the character assets (completed 2026-09-12)
-- [ ] **Phase 16: Lighting, Shadows & Post-Processing** - A real light rig with rim/back light, soft contact shadows, and an opt-in post chain (DOF, vignette, grading) so the avatar reads as lit and composed rather than pasted onto its background
+- [x] **Phase 16: Lighting, Shadows & Post-Processing** - A real light rig with rim/back light, soft contact shadows, and an opt-in post chain (DOF, vignette, grading) so the avatar reads as lit and composed rather than pasted onto its background (completed 2026-09-18)
 - [ ] **Phase 17: Camera Direction & Scene Composition** - Curated framing, subtle camera life, and state-driven reframing, replacing free orbit that lets a viewer land on an unflattering angle
 - [ ] **Phase 18: Facial Performance — Eyes, Visemes & Emotion** - Real eye movement, TTS-timed visemes instead of guessed-from-audio phonemes, and an LLM-driven emotion channel wired to expression, gesture and gaze
 
@@ -551,7 +551,7 @@ Plans:
 - [x] 16-03-PLAN.md — post chain: trailing tone-mapping fix (D-13), subject-tracked DOF, vignette, grading (wave 2)
 - [x] 16-04-PLAN.md — in-canvas backdrop plane and rim colour derived from the background (wave 3)
 - [x] 16-05-PLAN.md — respect-existing MToon outlines, `outlines` prop, real-asset count test (wave 4)
-- [ ] 16-06-PLAN.md — lighting comparison harness + human contrast/cost measurement (wave 5)
+- [x] 16-06-PLAN.md — lighting comparison harness + human contrast/cost measurement (wave 5)
 
 ### Phase 17: Camera Direction & Scene Composition
 
@@ -627,6 +627,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 13. Public API, Performance Tiers & Verification | 0/TBD | Not started | - |
 | 14. xAI Realtime Provider | 1/1 | Complete   | 2026-08-25 |
 | 15. MToon Material Repair & Tone Mapping | 4/4 | Complete    | 2026-09-12 |
-| 16. Lighting, Shadows & Post-Processing | 5/6 | In Progress|  |
+| 16. Lighting, Shadows & Post-Processing | 6/6 | Complete   | 2026-09-18 |
 | 17. Camera Direction & Scene Composition | 0/TBD | Not started | - |
 | 18. Facial Performance — Eyes, Visemes & Emotion | 0/TBD | Not started | - |

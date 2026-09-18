@@ -12,6 +12,7 @@ import {
   Conversation,
   ChatStatus,
   ToolExecutor,
+  buildColdOpenPrompt,
 } from "@khaveeai/core";
 import { v4 as uuidv4 } from "uuid";
 
@@ -599,6 +600,12 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     // "user" — this must never look like real user speech) makes the cold
     // open explicit without overriding the session's real instructions, the
     // way response.create's own `response.instructions` override would.
+    //
+    // With `config.greeting` set, the same item instead pins the opening line
+    // so the model says it word for word (see buildColdOpenPrompt). It stays a
+    // system item rather than a `response.instructions` override because that
+    // override *replaces* the session instructions for the response, which
+    // would drop the persona, language and Thai speech rules from the greeting.
     this.dataChannel.send(
       JSON.stringify({
         type: "conversation.item.create",
@@ -608,7 +615,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           content: [
             {
               type: "input_text",
-              text: "This is the very start of the conversation — the user has not spoken or typed anything yet. Deliver your opening greeting now, exactly as instructed, without referencing or responding to anything as if the user had said something.",
+              text: buildColdOpenPrompt(this.config.greeting),
             },
           ],
         },

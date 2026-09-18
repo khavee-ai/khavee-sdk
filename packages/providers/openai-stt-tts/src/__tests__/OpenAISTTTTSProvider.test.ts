@@ -261,3 +261,187 @@ describe("SDK-09: onUsageReport fires with mapped token counts", () => {
     expect(report.outputAudioTokens).toBe(0);
   });
 });
+
+// ── Greeting: fixed opening line spoken via TTS right after connect() ────────
+
+describe("greeting: spoken verbatim after connect()", () => {
+  class GreetingProvider extends OpenAISTTTTSProvider {
+    getMessages(): Array<{ role: "system" | "user" | "assistant"; content: string }> {
+      return this.messages;
+    }
+    greetingPromise(): Promise<void> | null {
+      return this.greetingInFlight;
+    }
+  }
+
+  type SpeakImpl = (
+    text: string,
+    cfg: unknown,
+    ctx: unknown,
+    onAudioData?: (analyser: unknown, ctx: unknown) => void,
+  ) => Promise<void>;
+
+  function makeDeps(speakImpl?: SpeakImpl) {
+    const calls: string[] = [];
+    const audioRecorder = {
+      onSpeechStart: undefined,
+      onUtteranceReady: undefined,
+      onError: undefined,
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      pause: vi.fn().mockImplementation(async () => {
+        calls.push("pause");
+      }),
+      resume: vi.fn().mockImplementation(async () => {
+        calls.push("resume");
+      }),
+      isListening: vi.fn().mockReturnValue(false),
+    } as unknown as AudioRecorder;
+    const sttClient = { transcribe: vi.fn() } as unknown as STTClient;
+    const chatClient = {
+      complete: vi.fn().mockResolvedValue({ text: "reply", usage: {} }),
+    } as unknown as ChatClient;
+    const defaultSpeak: SpeakImpl = async (_text, _cfg, _ctx, onAudioData) => {
+      calls.push("speak");
+      onAudioData?.({}, {});
+    };
+    const ttsPlayer = {
+      speak: vi.fn().mockImplementation(speakImpl ?? defaultSpeak),
+      cancel: vi.fn().mockImplementation(() => {
+        calls.push("cancel");
+      }),
+    } as unknown as TTSPlayer;
+    return { calls, audioRecorder, sttClient, chatClient, ttsPlayer };
+  }
+
+  function stubAudioContext() {
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        state = "running";
+        close = vi.fn().mockResolvedValue(undefined);
+      },
+    );
+  }
+
+  it("speaks the greeting once with the mic paused, records it as the first assistant message, and settles to ready", async () => {
+    stubAudioContext();
+    const deps = makeDeps();
+    const provider = new GreetingProvider(
+      { instructions: "You are a test bot.", greeting: "  Hi! Welcome to Khavee.  " },
+      deps,
+    );
+    const statuses: string[] = [];
+    provider.onChatStatusChange = (s) => statuses.push(s);
+    const onConnect = vi.fn();
+    provider.onConnect = onConnect;
+
+    await provider.connect();
+    expect(onConnect).toHaveBeenCalledTimes(1);
+    expect(provider.chatStatus).not.toBe("ready"); // greeting still in flight
+    await provider.greetingPromise();
+
+    const speak = deps.ttsPlayer.speak as ReturnType<typeof vi.fn>;
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(speak.mock.calls[0][0]).toBe("Hi! Welcome to Khavee.");
+    expect(deps.calls.indexOf("pause")).toBeLessThan(deps.calls.indexOf("speak"));
+    expect(deps.calls.indexOf("speak")).toBeLessThan(deps.calls.indexOf("resume"));
+
+    const nonSystem = provider.getMessages().filter((m) => m.role !== "system");
+    expect(nonSystem).toEqual([{ role: "assistant", content: "Hi! Welcome to Khavee." }]);
+    expect(provider.conversation).toHaveLength(1);
+    expect(provider.conversation[0].role).toBe("assistant");
+    expect(provider.conversation[0].text).toBe("Hi! Welcome to Khavee.");
+
+    expect(statuses).toContain("speaking");
+    expect(statuses[statuses.length - 1]).toBe("ready");
+    expect(provider.isMicrophoneEnabled()).toBe(true);
+    expect(provider.greetingPromise()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not greet on a skipGreeting reconnect", async () => {
+    stubAudioContext();
+    const deps = makeDeps();
+    const provider = new GreetingProvider({ greeting: "Hi!" }, deps);
+
+    await provider.connect({ skipGreeting: true });
+
+    expect(deps.ttsPlayer.speak).not.toHaveBeenCalled();
+    expect(provider.chatStatus).toBe("ready");
+    expect(provider.greetingPromise()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("behaves exactly as before when no greeting is configured", async () => {
+    stubAudioContext();
+    const deps = makeDeps();
+    const provider = new GreetingProvider({ instructions: "You are a test bot." }, deps);
+    const order: string[] = [];
+    provider.onChatStatusChange = (s) => order.push(`status:${s}`);
+    provider.onConnect = () => order.push("connect");
+
+    await provider.connect();
+
+    expect(deps.ttsPlayer.speak).not.toHaveBeenCalled();
+    expect(provider.chatStatus).toBe("ready");
+    expect(order.slice(-2)).toEqual(["status:ready", "connect"]);
+    expect(provider.conversation).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it("lets disconnect() win mid-greeting: no resume, status stays stopped, history cleared", async () => {
+    stubAudioContext();
+    let finishSpeak: () => void = () => {};
+    const deps = makeDeps(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSpeak = resolve;
+        }),
+    );
+    const provider = new GreetingProvider({ greeting: "Hi!" }, deps);
+
+    await provider.connect();
+    const inFlight = provider.greetingPromise();
+    expect(inFlight).not.toBeNull();
+
+    await provider.disconnect();
+    expect(deps.ttsPlayer.cancel).toHaveBeenCalled();
+    finishSpeak();
+    await inFlight;
+
+    expect(provider.chatStatus).toBe("stopped");
+    expect(deps.audioRecorder.resume).not.toHaveBeenCalled();
+    expect(provider.conversation).toHaveLength(0);
+    expect(provider.isMicrophoneEnabled()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("sendMessage during the greeting cancels it and then runs exactly one turn", async () => {
+    stubAudioContext();
+    let finishSpeak: () => void = () => {};
+    let speakCount = 0;
+    const deps = makeDeps(async () => {
+      speakCount += 1;
+      if (speakCount === 1) {
+        // The greeting: stays pending until cancel() resolves it.
+        await new Promise<void>((resolve) => {
+          finishSpeak = resolve;
+        });
+      }
+    });
+    (deps.ttsPlayer.cancel as ReturnType<typeof vi.fn>).mockImplementation(() => finishSpeak());
+    const provider = new GreetingProvider({ greeting: "Hi!" }, deps);
+
+    await provider.connect();
+    await provider.sendMessage("hello");
+
+    expect(deps.ttsPlayer.cancel).toHaveBeenCalledTimes(1);
+    expect(deps.chatClient.complete).toHaveBeenCalledTimes(1);
+    expect(speakCount).toBe(2); // greeting + reply
+    const roles = provider.conversation.map((c) => c.role);
+    expect(roles).toEqual(["assistant", "user", "assistant"]);
+    expect(provider.chatStatus).toBe("ready");
+    vi.unstubAllGlobals();
+  });
+});

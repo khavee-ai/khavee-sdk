@@ -19,6 +19,7 @@ import {
   ToolExecutor,
   MouthState,
   PhonemeData,
+  buildColdOpenPrompt,
 } from "@khaveeai/core";
 import { XAIRealtimeConfig, XAIServerEvent } from "./types";
 import { AudioPlaybackEngine } from "./AudioPlaybackEngine";
@@ -184,8 +185,12 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       // Send session.update with initial configuration
       this.sendSessionUpdate();
 
-      // Trigger initial greeting (cold-open pattern matching OpenAI provider)
-      if (!options?.skipGreeting && this.config.instructions) {
+      // Trigger initial greeting (cold-open pattern matching OpenAI provider).
+      // Fires when there are instructions to improvise from OR a fixed
+      // greeting to speak — a greeting alone is enough to have something to
+      // say. With a greeting the cold-open text pins the exact opening line.
+      const greeting = this.config.greeting?.trim();
+      if (!options?.skipGreeting && (this.config.instructions || greeting)) {
         this.sendEvent({
           type: "conversation.item.create",
           item: {
@@ -194,7 +199,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
             content: [
               {
                 type: "input_text",
-                text: "This is the very start of the conversation — the user has not spoken or typed anything yet. Deliver your opening greeting now, exactly as instructed, without referencing or responding to anything as if the user had said something.",
+                text: buildColdOpenPrompt(greeting),
               },
             ],
           },

@@ -62,6 +62,7 @@ Once mounted, calling `connect()` (typically via the `useRealtime()` hook from `
 | `model` | `string` | — | Chat Completions model name, forwarded to `chatProxyEndpoint`. |
 | `voice` | `"alloy" \| "ash" \| "ballad" \| "coral" \| "echo" \| "sage" \| "shimmer" \| "verse" \| "marin" \| "cedar"` | `"alloy"` | TTS voice, forwarded to `ttsProxyEndpoint`. |
 | `instructions` | `string` | — | System prompt; seeded into the internal chat history on construction. |
+| `greeting` | `string` | — | Fixed opening line. Sent to `ttsProxyEndpoint` and played right after `connect()` resolves (mic paused during playback, status `starting` → `speaking` → `ready`), and appended to the chat history as the first assistant message. No Chat Completions call is made for it. Skipped on `connect({ skipGreeting: true })`. |
 | `temperature` | `number` | — | Forwarded to `chatProxyEndpoint`. |
 | `tools` | `RealtimeTool[]` | — | Tools to auto-register at construction time (see Tool-calling below). |
 | `turnServers` | `RTCIceServer[]` | — | Not used by this provider (no WebRTC) — present only because it's part of the shared base config. |

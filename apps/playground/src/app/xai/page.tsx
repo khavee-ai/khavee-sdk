@@ -19,6 +19,9 @@ const xaiProvider = new XAIRealtimeProvider({
   instructions:
     "You are a helpful AI assistant powered by Grok. Be conversational and friendly. Keep responses concise. When you agree with something, nod your head. When you disagree, shake your head.",
   tokenEndpoint: "/api/xai-token",
+  // Fixed opening line — spoken word for word when connecting with the
+  // greeting enabled ("Connect + greet" below).
+  greeting: "Hi there! Welcome to the Khavee playground. What can I help you with today?",
 });
 
 // Register a sample tool for testing function calling
@@ -88,8 +91,10 @@ function XAIAvatarTest() {
     };
   }, []);
 
-  const handleConnect = async () => {
-    await xaiProvider.connect({ skipGreeting: true });
+  // Silent by default — each greeting is billable audio. "Connect + greet"
+  // exercises the cold-open / greeting path.
+  const handleConnect = async (skipGreeting = true) => {
+    await xaiProvider.connect({ skipGreeting });
     setMicOn(xaiProvider.isMicrophoneEnabled());
   };
 
@@ -118,11 +123,19 @@ function XAIAvatarTest() {
 
           <div className="flex gap-3 mb-4">
             <button
-              onClick={handleConnect}
+              onClick={() => handleConnect(true)}
               disabled={isConnected}
               className="px-5 py-2 bg-purple-600 rounded-lg disabled:opacity-50 hover:bg-purple-700"
             >
               {isConnected ? "Connected" : "Connect"}
+            </button>
+            <button
+              onClick={() => handleConnect(false)}
+              disabled={isConnected}
+              className="px-5 py-2 bg-violet-800 rounded-lg disabled:opacity-50 hover:bg-violet-900"
+              title="Connect and play the configured greeting (billable audio)"
+            >
+              Connect + greet
             </button>
             <button
               onClick={disconnect}

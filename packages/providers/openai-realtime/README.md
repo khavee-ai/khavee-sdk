@@ -110,6 +110,7 @@ falls back to the listed default, except where noted as "no default."
 | `model` | `string` | `"gpt-realtime-1.5"` | Passed to the proxy session config, or appended as a query param on the direct (non-proxy) calls endpoint. |
 | `voice` | `"alloy" \| "ash" \| "ballad" \| "coral" \| "echo" \| "sage" \| "shimmer" \| "verse" \| "marin" \| "cedar"` | `"shimmer"` | OpenAI Realtime voice name. |
 | `instructions` | `string` | `"You are a helpful AI assistant."` (proxy mode only) | System prompt. Only injected into the proxy session config — in direct mode it is not currently sent anywhere in `connect()`. |
+| `greeting` | `string` | `undefined` | Fixed opening line. When set, the cold-open item sent on connect tells the model to say it word for word (in the language it is written in) instead of improvising a greeting from `instructions`. Blank counts as unset. Ignored on `connect({ skipGreeting: true })`. |
 | `temperature` | `number` | `0.8` | Set on the provider instance, but **dropped** in proxy mode — OpenAI's session-create endpoint rejects a session-level `temperature` field, so it's silently omitted from `buildProxySessionConfig()` with a one-time `console.warn` if you explicitly set it. |
 | `speed` | `number` | `1.4` | Speech playback speed, sent as `audio.output.speed` in the proxy session config. |
 | `language` | `string` | `"en"` | Used for input transcription language in proxy mode (`audio.input.transcription.language`). |

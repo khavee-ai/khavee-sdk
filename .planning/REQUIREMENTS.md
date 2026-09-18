@@ -167,17 +167,17 @@ specified at each phase's planning time:
 | MTOON-05 | Phase 15 | Complete (human-verified `litShadeRate` view) |
 | TONE-01 | Phase 15 | Complete (`VRMAvatar.tsx` — `toneMapping ?? THREE.CineonToneMapping`) |
 | TEST-01 | Phase 15 | Complete (5 real-`.vrm` tests through the full `VRMLoaderPlugin`) |
-| LIGHT-01 | Phase 16 | Pending |
-| LIGHT-02 | Phase 16 | Pending |
-| LIGHT-03 | Phase 16 | Pending |
-| SHADOW-01 | Phase 16 | Pending |
+| LIGHT-01 | Phase 16 | Complete |
+| LIGHT-02 | Phase 16 | Complete |
+| LIGHT-03 | Phase 16 | Complete |
+| SHADOW-01 | Phase 16 | Complete |
 | POST-01 | Phase 16 | Complete (16-03: trailing ToneMapping pass, D-13 fixed) |
 | POST-02 | Phase 16 | Complete (16-03: subject-tracked DOF, spike 004 shape graduated) |
 | POST-03 | Phase 16 | Complete (16-03: vignette + grading opt-in props) |
-| BG-01 | Phase 16 | Pending |
-| BG-02 | Phase 16 | Pending |
-| OUTLINE-01 | Phase 16 | Pending |
-| MEASURE-01 | Phase 16 | Pending |
+| BG-01 | Phase 16 | Complete |
+| BG-02 | Phase 16 | Complete |
+| OUTLINE-01 | Phase 16 | Complete |
+| MEASURE-01 | Phase 16 | Complete |
 
 **Untracked regressions (not mapped to a REQ-ID) — ALL RESOLVED as of 11-18 (2026-07-17):**
 - G1: Avatar stuck in T-pose on first load — FIXED and confirmed by 11-14's round-4 human re-check (2026-07-17), re-confirmed by 11-18's sixth-round sweep. Root cause (found by 11-13 via headless production-path replay): the crossfade-trigger effect's single pre-connect run happened while clips/root were unresolvable and never re-fired when the VRM finished loading. Fixed with a new exported pure function `shouldTriggerClipSwitch`.

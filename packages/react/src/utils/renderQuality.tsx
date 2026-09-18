@@ -386,7 +386,19 @@ export function applySmoothShading(
     if (!(obj instanceof THREE.Mesh)) return;
     if (!(obj.geometry instanceof THREE.BufferGeometry)) return;
 
-    const merged = mergeVertices(obj.geometry, tolerance);
+    const original = obj.geometry;
+    const originalCount = original.index
+      ? original.index.count
+      : original.attributes.position.count;
+    // Welding renumbers the index, so a group's own `count` stops being valid.
+    // Whole-geometry groups (three-vrm's outline pass, and the ones
+    // `mtoonOutlines` injects) can be re-added at the merged count; a
+    // partial-range group cannot be remapped, so those meshes keep their
+    // geometry rather than render corrupted (CR-05).
+    const groups = original.groups;
+    if (groups.some((g) => g.start !== 0 || g.count !== originalCount)) return;
+
+    const merged = mergeVertices(original, tolerance);
     merged.computeVertexNormals();
     // mergeVertices returns a geometry with no bounding volumes computed —
     // required for correct frustum culling (VRMAvatar disables frustumCulled
@@ -394,7 +406,12 @@ export function applySmoothShading(
     // could make the mesh vanish at the wrong camera angle).
     merged.computeBoundingSphere();
     merged.computeBoundingBox();
+    const mergedCount = merged.index
+      ? merged.index.count
+      : merged.attributes.position.count;
+    for (const g of groups) merged.addGroup(0, mergedCount, g.materialIndex);
     obj.geometry = merged;
+    original.dispose();
   });
 }
 
@@ -500,7 +517,10 @@ export function AvatarContactShadows({
   return (
     <ContactShadows
       position={[0, y, 0]}
-      rotation={[-Math.PI / 2, 0, 0]}
+      // No `rotation` here: drei lays the plane flat with its own `rotation-x`
+      // and points the shadow camera up at the subject. Passing `rotation`
+      // replaces that, aiming the camera down through the floor, and its depth
+      // pass then captures nothing (CR-01).
       opacity={opacity}
       blur={blur}
       scale={scale}

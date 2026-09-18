@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { deriveRimColor, toHex } from "./deriveRimColor";
 import type { AvatarBackground } from "./AvatarBackdrop";
 import type { LightRigOptions, LightSpec } from "./renderQuality";
@@ -81,12 +81,15 @@ export function useBackgroundRimColor(
 ): string | undefined {
   const [derivedColor, setDerivedColor] = useState<string | undefined>(undefined);
 
+  // Kept in a ref so an inline callback — the ordinary way to pass one — does
+  // not re-run this effect on every parent render, re-downloading the image and
+  // re-reporting the same failure each time (CR-02).
+  const onErrorRef = useRef(onError);
   useEffect(() => {
-    // Guard against server-side execution.
-    if (typeof document === "undefined") {
-      return;
-    }
+    onErrorRef.current = onError;
+  }, [onError]);
 
+  useEffect(() => {
     // No background → no derivation.
     if (!background) {
       setDerivedColor(undefined);
@@ -103,10 +106,12 @@ export function useBackgroundRimColor(
     // IMAGE background → load, downsample, readback, derive.
     const { url } = background;
 
-    // Validate URL scheme before attempting load.
+    // Validate URL scheme before attempting load. Clearing the colour matters:
+    // otherwise switching from a valid image to a rejected one leaves the rim
+    // tinted by the previous background while nothing renders (WR-07).
     if (!isValidUrl(url)) {
-      const err = new Error(`Invalid or unsupported URL: ${url}`);
-      onError?.(err);
+      setDerivedColor(undefined);
+      onErrorRef.current?.(new Error(`Invalid or unsupported URL: ${url}`));
       return;
     }
 
@@ -121,10 +126,12 @@ export function useBackgroundRimColor(
 
       // Reject oversized images to prevent exhaustion (T-16-13).
       if (img.width * img.height > MAX_MEGAPIXELS) {
-        const err = new Error(
-          `Image too large: ${img.width}×${img.height} exceeds ${MAX_MEGAPIXELS} pixels`,
+        setDerivedColor(undefined);
+        onErrorRef.current?.(
+          new Error(
+            `Image too large: ${img.width}×${img.height} exceeds ${MAX_MEGAPIXELS} pixels`,
+          ),
         );
-        onError?.(err instanceof Error ? err : new Error(String(err)));
         return;
       }
 
@@ -140,8 +147,10 @@ export function useBackgroundRimColor(
         canvas.height = h;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
-          const err = new Error("Failed to get 2D context for rim color sampling");
-          onError?.(err instanceof Error ? err : new Error(String(err)));
+          setDerivedColor(undefined);
+          onErrorRef.current?.(
+            new Error("Failed to get 2D context for rim color sampling"),
+          );
           return;
         }
 
@@ -159,19 +168,18 @@ export function useBackgroundRimColor(
           setDerivedColor(undefined);
         }
       } catch (error) {
-        // Normalize error before reporting (repo pattern).
-        const err =
-          error instanceof Error ? error : new Error(String(error));
-        onError?.(err);
+        // getImageData throws SecurityError on a tainted canvas (CORS failure).
         setDerivedColor(undefined);
+        onErrorRef.current?.(
+          error instanceof Error ? error : new Error(String(error)),
+        );
       }
     };
 
     img.onerror = () => {
       if (cancelled) return;
-      const err = new Error(`Failed to load image: ${url}`);
-      onError?.(err instanceof Error ? err : new Error(String(err)));
       setDerivedColor(undefined);
+      onErrorRef.current?.(new Error(`Failed to load image: ${url}`));
     };
 
     img.src = url;
@@ -185,7 +193,6 @@ export function useBackgroundRimColor(
     background?.type,
     background?.type === "color" ? background.value : null,
     background?.type === "image" ? background.url : null,
-    onError,
   ]);
 
   return derivedColor;

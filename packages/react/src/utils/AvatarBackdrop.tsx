@@ -94,6 +94,21 @@ export function AvatarBackdrop({
   const distance = background.type === "image" ? background.distance ?? 6 : 6;
   const fit = background.type === "image" ? background.fit ?? "cover" : "cover";
 
+  // Kept in a ref so an inline callback — the ordinary way to pass one — does
+  // not re-run the load effect on every parent render, disposing and
+  // re-fetching the texture each time (CR-02).
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  // Owns the texture's GPU allocation: disposal follows the texture itself, so
+  // it cannot run against a value the effect no longer holds.
+  useEffect(() => {
+    if (!texture) return;
+    return () => texture.dispose();
+  }, [texture]);
+
   // ── Load image texture ──
   useEffect(() => {
     if (background.type !== "image") {
@@ -102,6 +117,9 @@ export function AvatarBackdrop({
     }
 
     const { url } = background;
+    // A slow earlier URL must not replace a newer one, and a load that lands
+    // after unmount must not leak its texture (CR-03).
+    let cancelled = false;
 
     // Validate URL scheme before attempting load (T-16-14).
     const validationError = validateUrl(url);
@@ -118,13 +136,18 @@ export function AvatarBackdrop({
     loader.load(
       url,
       (tex) => {
+        if (cancelled) {
+          tex.dispose();
+          return;
+        }
+
         // Reject oversized images to prevent GPU allocation exhaustion (T-16-13).
         const img = tex.image as HTMLImageElement;
         if (img.width * img.height > MAX_MEGAPIXELS) {
           const err = new Error(
             `Image too large: ${img.width}×${img.height} exceeds ${MAX_MEGAPIXELS} pixels`,
           );
-          onError?.(err instanceof Error ? err : new Error(String(err)));
+          onErrorRef.current?.(err);
           tex.dispose();
           return;
         }
@@ -139,20 +162,17 @@ export function AvatarBackdrop({
       },
       undefined,
       (error) => {
+        if (cancelled) return;
         const err =
           error instanceof Error ? error : new Error(String(error));
-        onError?.(err);
+        onErrorRef.current?.(err);
       },
     );
 
-    // Dispose texture on URL change or unmount (T-16-15).
     return () => {
-      setTexture((prev) => {
-        if (prev) prev.dispose();
-        return null;
-      });
+      cancelled = true;
     };
-  }, [background.type === "image" ? background.url : null, onError]);
+  }, [background.type === "image" ? background.url : null]);
 
   // ── Compute layout and apply to mesh ──
   useEffect(() => {
@@ -207,13 +227,43 @@ export function AvatarBackdrop({
   // must sit at that distance along the camera's view axis and face it. A fixed
   // world position only matches when the camera sits at the origin (spike 004's
   // original framing); with the camera at z=4 it rendered at ~60% size.
-  const forward = useMemo(() => new THREE.Vector3(), []);
+  // Reused per frame; allocating inside useFrame would churn GC.
+  const scratch = useMemo(
+    () => ({
+      pos: new THREE.Vector3(),
+      forward: new THREE.Vector3(),
+      camQuat: new THREE.Quaternion(),
+      parentQuat: new THREE.Quaternion(),
+      parentInverse: new THREE.Matrix4(),
+    }),
+    [],
+  );
+
   useFrame(({ camera: cam }) => {
     const mesh = meshRef.current;
     if (!mesh) return;
+    const { pos, forward, camQuat, parentQuat, parentInverse } = scratch;
+    cam.getWorldPosition(pos);
     cam.getWorldDirection(forward);
-    mesh.position.copy(cam.position).addScaledVector(forward, distance);
-    mesh.quaternion.copy(cam.quaternion);
+    cam.getWorldQuaternion(camQuat);
+    pos.addScaledVector(forward, distance);
+
+    // The backdrop inherits every ancestor of the avatar component, and the
+    // camera may itself be parented to a rig, so the world-space pose has to be
+    // converted into the parent's space rather than copied straight across (CR-04).
+    const parent = mesh.parent;
+    if (parent) {
+      parent.updateWorldMatrix(true, false);
+      mesh.position
+        .copy(pos)
+        .applyMatrix4(parentInverse.copy(parent.matrixWorld).invert());
+      mesh.quaternion.copy(
+        parent.getWorldQuaternion(parentQuat).invert().multiply(camQuat),
+      );
+    } else {
+      mesh.position.copy(pos);
+      mesh.quaternion.copy(camQuat);
+    }
   });
 
   // ── Render ──

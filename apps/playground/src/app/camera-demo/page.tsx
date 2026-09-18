@@ -6,7 +6,6 @@ import {
   KhaveeProvider,
   VRMAvatar,
   AvatarCamera,
-  AvatarPostFX,
   AvatarContactShadows,
   type CameraPreset,
   type OrbitMode,
@@ -36,7 +35,6 @@ function CameraDemoScene({ preset, orbit, drift, reframe }: CameraDemoSceneProps
       <AvatarCamera preset={preset} orbit={orbit} drift={drift} reframe={reframe} />
       <VRMAvatar src="/models/male.vrm" materialPreset="repair" />
       <AvatarContactShadows />
-      <AvatarPostFX dof={{ enabled: true }} />
       <ambientLight intensity={0.7} />
       <directionalLight position={[10, 10, 5]} castShadow />
     </>

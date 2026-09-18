@@ -30,10 +30,10 @@ Phase 16-18 scope outlines, plus the deferred asset/product tracks.
 ## Current Position
 
 Phase: 17
-Plan: 17-02 (Wave 2, Task 1 complete, Task 2 PENDING checkpoint)
-Status: Checkpoint
+Plan: Complete (2/2)
+Status: Phase 17 execution complete
 Branch: `feat/mtoon-render-quality` (branched off `main`; nothing merged yet)
-Last activity: 2026-09-18 -- Phase 17 Plan 02 Task 1 complete, Task 2 awaiting human verification
+Last activity: 2026-09-18 -- Phase 17 execution complete, human-verified
 
 ### How Phase 15 was grounded
 

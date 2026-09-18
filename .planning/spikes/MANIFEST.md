@@ -96,6 +96,18 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
 - **Known limit, to document rather than tune away:** a background split evenly between two
   opposing saturated hues defeats every derivation — no single rim colour is right for it. (from 007)
 
+- **three-vrm only generates an outline when the asset authors a width above 0, and the drawn
+  outline is a clone with its own uniforms.** `male.vrm` sets an outline mode on 6 materials but
+  width 0, so it has no outline at all; writing the surface material's width changes nothing on
+  screen. An outline toggle must act on the clone. Spike 001's 18/10 count for
+  `262410318834873893.vrm` included the clones themselves (13 surfaces, 5 outlined). (from 16-06)
+- **Anything mounted inside `VRMAvatar`'s group inherits its 180° default rotation.** A light rig
+  placed there lit VRM0 models from behind and put the rim on the face; contrast then tracked rim
+  intensity rather than key shape. VRM1 assets face the other way (review WR-06, still open).
+  (from 16-06)
+- **DepthOfField's `worldFocusDistance` is view-space depth, not straight-line distance.** Feeding
+  `distanceTo` focuses an off-axis subject behind itself. (from 16-06)
+
 ## Spikes
 
 | # | Name | Type | Validates | Verdict | Tags |
@@ -105,5 +117,5 @@ Design decisions that emerged during spiking. Non-negotiable for the real build.
 | 003 | tonemapping-toon | standard | Given the same MToon avatar, when renderer tone mapping is switched live across six curves, then a curve is found that preserves toon saturation better than the current ACES default | **VALIDATED** — Cineon chosen (+35% sat, ~equal contrast); NoToneMapping refuted as a "flat look" option | mtoon, tonemapping, rendering, measurement |
 | 004 | backdrop-plane-dof | standard | Given real customer background images at several aspect ratios, when a backdrop plane is placed in-canvas behind the avatar and DOF is enabled, then `background-size: cover` equivalence holds across resizes and DOF separates background from subject without blurring the avatar | **VALIDATED** — cover holds; DOF works but ONLY with subject-tracking focus; `cover` keeps just 31.6% of a 9:16 upload | lighting, dof, background, composition |
 | 005 | lighting-contrast-rebaseline | standard | Given a prototype three-point rig with a rim light, when contrast and saturation are re-measured under it for both ACESFilmic and Cineon, then the correct Phase 16 contrast gate is known (superseding the 0.3041 figure measured under old lighting) | **PARTIAL** — gate must become a same-harness delta, not an absolute threshold; 003's number is not portable (4 conditions differ). Numbers themselves still untrusted and withheld | lighting, measurement, tonemapping, rebaseline |
-| 006 | outline-draw-cost | standard | Given `male.vrm`'s 19 materials, when MToon outlines are enabled, then the real frame-time and draw-call cost is measured on a representative device rather than assumed | PENDING | mtoon, outlines, performance |
+| 006 | outline-draw-cost | standard | Given `male.vrm`'s 19 materials, when MToon outlines are enabled, then the real frame-time and draw-call cost is measured on a representative device rather than assumed | **DISCHARGED by plan 16-06** — `male.vrm` authors no drawable outline (width 0, so three-vrm generates none); with `outlineWidth={0.003}` draw calls go 104 → 200 (+96), and hiding outlines returns them to 104. Frame time unmeasurable on the dev machine: 120 FPS vsync cap in every state | mtoon, outlines, performance |
 | 007 | rim-from-background | standard | Given both a flat COLOR background and an uploaded IMAGE background, when the rim tint is derived from it, then the result reads as belonging to the same scene rather than merely measuring as more saturated | **VALIDATED** — ship saturation-weighted upper-region; `mean` reproduces the MTOON-03 grey-rim defect, `dominant` picks the wrong half | lighting, rim, background, colour |

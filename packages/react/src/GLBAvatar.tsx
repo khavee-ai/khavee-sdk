@@ -266,8 +266,19 @@ export function GLBAvatar({
     // directly (chest/spine/hips/neck/head), so a literal lookup is correct
     // here specifically — this is a property of that bundled asset, not a
     // general GLB guarantee.
-    getHumanoidBoneNode: (role) => groupRef.current?.getObjectByName(role) ?? null,
+    //
+    // Eye gaze and jaw motion are VRM-only by construction (Phase 18,
+    // RESEARCH A3/Pitfall 4): GLB has no eye/jaw bone-naming convention in
+    // this SDK and no `lookAt`-equivalent controller, so these three roles
+    // explicitly return null rather than attempting a literal-name guess.
+    getHumanoidBoneNode: (role) => {
+      if (role === "leftEye" || role === "rightEye" || role === "jaw") return null;
+      return groupRef.current?.getObjectByName(role) ?? null;
+    },
     getExpressionManager: () => null, // GLB has no expression/blendshape system.
+    // No getLookAt: GLB has no lookAt-equivalent controller (eye gaze
+    // bone-fallback path applies instead, but getHumanoidBoneNode above
+    // returns null for leftEye/rightEye so eye gaze is a full no-op on GLB).
   };
 
   // Memoized so identity is stable across unrelated re-renders (defense-in-

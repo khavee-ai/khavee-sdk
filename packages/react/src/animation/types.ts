@@ -63,13 +63,17 @@ export interface AvatarFormatAdapter {
    * directly (e.g. `happy.glb`'s `chest`/`spine`/`hips`/`neck`/`head` nodes)
    * — this is a property of that specific asset, not a general guarantee.
    *
-   * @param role - One of the six VRM humanoid bone roles used by this SDK's
-   *   procedural motion layer (breathing, sway, etc.).
+   * @param role - One of the six VRM humanoid body-procedural-motion roles
+   *   (breathing, sway, etc.), plus (Phase 18) `"leftEye"`/`"rightEye"` for
+   *   the eye-gaze bone-fallback path (EYE-01) and `"jaw"` for jaw motion
+   *   (VIS-03). All three are valid VRM humanoid bone names (confirmed in
+   *   `@pixiv/three-vrm-core`'s `VRMHumanBoneName.d.ts`), the gap was purely
+   *   in this SDK's own adapter type (RESEARCH Pitfall 4).
    * @returns The matching `THREE.Object3D`, or `null` if the role cannot be
    *   resolved (e.g. scene not yet loaded, or format has no mapping for it).
    */
   getHumanoidBoneNode(
-    role: "hips" | "spine" | "chest" | "upperChest" | "neck" | "head",
+    role: "hips" | "spine" | "chest" | "upperChest" | "neck" | "head" | "leftEye" | "rightEye" | "jaw",
   ): THREE.Object3D | null;
 
   /**
@@ -81,4 +85,43 @@ export interface AvatarFormatAdapter {
    * per wayfinder ticket #8, this is "a null-check, not a capability flag."
    */
   getExpressionManager(): VRMExpressionManager | null;
+
+  /**
+   * Returns the VRM `lookAt` controller (`vrm.lookAt`), or `null`/`undefined`
+   * for formats with no such controller (GLB, or a VRM whose applier has no
+   * eye-bone mapping). Optional so every pre-Phase-18 adapter object and
+   * test stub adapter still compiles without change.
+   *
+   * `eyeGaze.ts` (EYE-01) uses this as its PRIMARY path — it sets
+   * `lookAt.yaw`/`.pitch` directly (with `autoUpdate = false`) rather than
+   * writing eye bones, because `VRMCore.update()` runs `lookAt.update()`
+   * AFTER `humanoid.update()`, so any bone write eye-gaze made would be
+   * absolutely overwritten by three-vrm's own lookAt-to-bone application
+   * that same frame (RESEARCH Pitfall 3). When this method is absent or
+   * returns `null`, eye-gaze falls back to rotating `leftEye`/`rightEye`
+   * bones directly (D-04).
+   */
+  getLookAt?(): LookAtController | null;
+}
+
+/**
+ * Structural subset of three-vrm's `VRMLookAt` (`@pixiv/three-vrm-core`).
+ * Declared locally (rather than importing the concrete three-vrm type) so
+ * `eyeGaze.test.ts` and other unit tests can stub it with a plain object,
+ * with no dependency on the `@pixiv/three-vrm` package at test time.
+ */
+export interface LookAtController {
+  /**
+   * When `true` (three-vrm's default), `VRMLookAt.update()` recomputes
+   * yaw/pitch from `target` every frame and overwrites any external write.
+   * `eyeGaze.ts`'s primary path sets this to `false` so its own yaw/pitch
+   * writes are not immediately clobbered (RESEARCH Pitfall 3).
+   */
+  autoUpdate: boolean;
+  /** Horizontal look angle in degrees. Positive/negative sign convention matches three-vrm's own `VRMLookAt.yaw`. */
+  yaw: number;
+  /** Vertical look angle in degrees. Positive = up, matching three-vrm's own `VRMLookAt.pitch`. */
+  pitch: number;
+  /** Points the controller at a world-space position, setting `yaw`/`.pitch` accordingly. */
+  lookAt(position: THREE.Vector3): void;
 }

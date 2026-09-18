@@ -405,7 +405,7 @@
  *   re-verify pattern.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { ChatStatus } from "@khaveeai/core";
 import {
@@ -421,7 +421,8 @@ import { useBlink } from "./blink";
 import { useBreathing } from "./breathing";
 import { useSway } from "./sway";
 import { useExpressionDrift } from "./expressionDrift";
-import { useTalkCycle } from "./talkCycle";
+import { useClipCycle, CYCLING_STATUSES, MIN_TALK_DWELL_SECONDS, pickRandomVariantIndex, type AnimationCycleOrder } from "./talkCycle";
+export type { AnimationCycleOrder } from "./talkCycle";
 import { useGaze } from "./gaze";
 import { useGesture, type GestureHint } from "./gesture";
 import { volumeToAmplitudeScale } from "./audioAmplitude";
@@ -700,20 +701,30 @@ const STATUS_CLIP_PATTERNS: Partial<Record<ChatStatus, RegExp>> = {
  * for this status, or no matching clip name) falls back to the manually-set
  * `currentAnimation`, then the first available clip, then null.
  *
- * Phase 11 (TRANS-01/02, TALK-01/02) still owns the richer systems this
- * table does not attempt: loop-boundary-driven cycling, minimum-duration
- * enforcement for starting/stopped, and multiple talk-clip variants — this
- * is naming-convention resolution only, not those systems.
+ * When `options.order` is `"random"` and the status is a cycling status with
+ * 2+ matching clips, the entry clip is picked randomly instead of always the
+ * first `.find()` match. Loop-boundary-driven cycling across those clips is
+ * handled by `stepClipCycle` (talkCycle.ts), not by this function.
  */
 export function resolveBaseClip(
   chatStatus: ChatStatus,
   currentAnimation: string | null,
   availableNames: string[],
+  options?: { order?: AnimationCycleOrder; rng?: () => number },
 ): string | null {
   const pattern = STATUS_CLIP_PATTERNS[chatStatus];
   if (pattern) {
-    const match = availableNames.find((name) => pattern.test(name));
-    if (match) return match;
+    const matches = availableNames.filter((name) => pattern.test(name));
+    if (matches.length > 0) {
+      if (
+        options?.order === "random" &&
+        matches.length >= 2 &&
+        (CYCLING_STATUSES as readonly string[]).includes(chatStatus)
+      ) {
+        return matches[pickRandomVariantIndex(-1, matches.length, options.rng ?? Math.random)];
+      }
+      return matches[0];
+    }
   }
   return currentAnimation ?? availableNames[0] ?? null;
 }
@@ -722,28 +733,20 @@ export function resolveBaseClip(
  * 11-13 gap-closure fix (G1 pre-connect T-pose / G3 Y-drop-on-connect — see
  * the file-header 11-13 diagnosis block). Pure decision: should
  * `switchToClip(targetName)` (re-)run right now? Centralizes the FULL
- * "should switchToClip run" decision — including the TALK-01/TRANS-01
- * speaking-variant ownership guard — so the crossfade-trigger `useEffect`
- * AND `update()`'s per-frame retry (added below to close G1) call the
- * EXACT SAME logic. This is deliberately not duplicated inline in two
- * places: a hand-rolled test-only replay of "what the effect does" could
- * silently diverge from what the real hook does — which is exactly how a
- * wrong G1 fix could pass its own test while the live app stayed broken
- * (the failure mode 11-12's human re-check exposed for 11-11's fix, and
- * 11-10's before it). Exported and pure so it is unit-testable without
- * rendering a React component or scene — see `AnimationStateEngine.test.ts`.
+ * "should switchToClip run" decision — including the cycling-status variant
+ * ownership guard — so the crossfade-trigger `useEffect` AND `update()`'s
+ * per-frame retry (added below to close G1) call the EXACT SAME logic.
+ * Exported and pure so it is unit-testable without rendering a React
+ * component or scene — see `AnimationStateEngine.test.ts`.
  *
  * Returns `false` when: `targetName` is null; `targetName` already matches
  * `currentClipName` (already showing this clip — nothing to do);
  * `canResolveAction` or `canResolveRoot` is false (clips/root not yet
- * resolvable — the exact case that silently stalled G1 before this fix,
- * since neither `targetName` nor `chatStatus` change once they DO become
- * resolvable, so a plain `useEffect` alone never gets a chance to re-fire);
- * or the speaking-variant ownership guard applies (while `speaking`,
- * `talkCycle` inside `update()` is the SOLE owner of which talk variant is
- * showing — re-asserting `resolveBaseClip`'s always-first-matched speaking
- * clip here would fight an already-advanced variant, the bug reported in
- * 11-06/TALK-01).
+ * resolvable); or the cycling-status variant ownership guard applies (while
+ * in any cycling status — ready/listening/thinking/speaking — `clipCycle`
+ * inside `update()` is the SOLE owner of which variant is showing —
+ * re-asserting `resolveBaseClip`'s entry clip here would fight an
+ * already-advanced variant).
  */
 export function shouldTriggerClipSwitch(params: {
   targetName: string | null;
@@ -756,12 +759,17 @@ export function shouldTriggerClipSwitch(params: {
   if (!targetName) return false;
   if (targetName === currentClipName) return false;
   if (!canResolveAction || !canResolveRoot) return false;
+  // Cycling-status variant ownership guard: if the current clip already
+  // matches this status's pattern, the clip cycler inside update() owns
+  // variant selection — don't snap back to resolveBaseClip's entry pick.
   if (
-    chatStatus === "speaking" &&
-    currentClipName !== null &&
-    STATUS_CLIP_PATTERNS.speaking!.test(currentClipName)
+    (CYCLING_STATUSES as readonly string[]).includes(chatStatus) &&
+    currentClipName !== null
   ) {
-    return false;
+    const pattern = STATUS_CLIP_PATTERNS[chatStatus];
+    if (pattern && pattern.test(currentClipName)) {
+      return false;
+    }
   }
   return true;
 }
@@ -860,6 +868,10 @@ export function useAnimationController(params: {
    * so the consumed hint is cleared and cannot re-trigger.
    */
   onGestureConsumed?: () => void;
+  /** How clips rotate when a status has 2+ matching clips. "random" never repeats back-to-back and picks a random entry; "sequential" keeps round-robin and first-match entry. Default: "random". */
+  cycleOrder?: AnimationCycleOrder;
+  /** Minimum seconds a clip plays before the cycle may swap it (swap still waits for a loop boundary). Default: 2. */
+  minDwellSeconds?: number;
 }): { update: (delta: number) => void } {
   const {
     adapter,
@@ -874,13 +886,21 @@ export function useAnimationController(params: {
     camera,
     gestureHint,
     onGestureConsumed,
+    cycleOrder = "random",
+    minDwellSeconds: rawMinDwell,
   } = params;
+
+  // Sanitize minDwellSeconds: non-finite or negative → default (T-gzb-01).
+  const minDwellSeconds =
+    rawMinDwell !== undefined && Number.isFinite(rawMinDwell) && rawMinDwell >= 0
+      ? rawMinDwell
+      : MIN_TALK_DWELL_SECONDS;
 
   const blink = useBlink();
   const breathing = useBreathing();
   const sway = useSway();
   const expressionDrift = useExpressionDrift();
-  const talkCycle = useTalkCycle();
+  const clipCycle = useClipCycle();
   const gaze = useGaze();
   const gesture = useGesture();
 
@@ -923,7 +943,15 @@ export function useAnimationController(params: {
   // read) when GATE_DEBUG is false.
   const gateDebugElapsedRef = useRef(0);
 
-  const targetName = resolveBaseClip(chatStatus, currentAnimation, availableNames);
+  // Memoized: with random entry, calling resolveBaseClip every render would
+  // re-roll the target each render and thrash crossfades (T-gzb-02). The
+  // joined string key stabilizes against a fresh availableNames array each
+  // render (VRMAvatar builds it from processedClips.map()).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const targetName = useMemo(
+    () => resolveBaseClip(chatStatus, currentAnimation, availableNames, { order: cycleOrder }),
+    [chatStatus, currentAnimation, availableNames.join(" "), cycleOrder],
+  );
 
   // Single-owner crossfade-trigger helper: starts (or no-ops on) a
   // pose-gap-adaptive crossfade to the clip named `name` and updates
@@ -962,9 +990,9 @@ export function useAnimationController(params: {
     // top of the 0.3-0.9s pose-gap-adaptive range, so the transition into/
     // out of a session always reads as a deliberate moment rather than a
     // snap-fast pose-gap-driven blend (1.2s sits within the locked
-    // 1.0-1.5s range). Talk-cycle-triggered switches (chatStatus ===
-    // "speaking") never hit this branch, so they use the normal 0.3-0.9s
-    // pose-gap-adaptive range like any other clip switch.
+    // 1.0-1.5s range). Clip-cycle-triggered switches (any cycling status)
+    // never hit this branch, so they use the normal 0.3-0.9s
+    // pose-gap-adaptive range.
     const floor = chatStatus === "starting" || chatStatus === "stopped" ? 1.2 : undefined;
 
     const newBlend = beginCrossfade(currentActionRef.current, toAction, root, floor);
@@ -1035,7 +1063,7 @@ export function useAnimationController(params: {
     //   1. crossfade ramp -> 2. blink -> 3. amplitude/settle scale compute
     //   -> 4a. lazily capture rest-pose anchor -> 4b. reset-if-not-driven
     //   -> 4c. capture spine base -> 5. breathing -> 6. sway -> 7. spine
-    //   clamp -> 8. expression drift -> 9. talk-cycle -> 10. gaze ->
+    //   clamp -> 8. expression drift -> 9. status clip-cycle -> 10. gaze ->
     //   11. gesture.
     // Any future addition to this stack should extend this list, not
     // reorder it silently. 11-11: steps 4a-7 now run UNCONDITIONALLY every
@@ -1264,20 +1292,25 @@ export function useAnimationController(params: {
     // body instead of hard-cutting on/off at the `stopped` boundary.
     expressionDrift.step(adapter, delta, settleScale);
 
-    // 9. Talk-cycle (TALK-01/02): the ONLY place talk variants advance,
-    // driven by loop-boundary + dwell floor detection inside talkCycle.ts,
-    // never a timer. Deliberately NOT gated on proceduralScale/
-    // amplitudeScale — audio only scales procedural amplitude (step 3
-    // above), never clip selection.
-    const speakingVariants = availableNames.filter((name) =>
-      STATUS_CLIP_PATTERNS.speaking!.test(name),
-    );
-    const nextVariant = talkCycle.step({
+    // 9. Status clip-cycle (generalized from TALK-01/02 by 260918-gzb):
+    // the ONLY place clip variants advance for any cycling status
+    // (ready/listening/thinking/speaking), driven by loop-boundary + dwell
+    // floor detection inside talkCycle.ts, never a timer. Deliberately NOT
+    // gated on proceduralScale/amplitudeScale — audio only scales procedural
+    // amplitude (step 3 above), never clip selection.
+    const cyclePattern = STATUS_CLIP_PATTERNS[chatStatus];
+    const variants =
+      (CYCLING_STATUSES as readonly string[]).includes(chatStatus) && cyclePattern
+        ? availableNames.filter((name) => cyclePattern.test(name))
+        : [];
+    const nextVariant = clipCycle.step({
       chatStatus,
       currentAction: currentActionRef.current,
       currentClipName: currentClipNameRef.current,
-      speakingVariants,
+      variants,
       delta,
+      order: cycleOrder,
+      minDwellSeconds,
     });
     if (nextVariant) {
       switchToClip(nextVariant);

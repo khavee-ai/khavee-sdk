@@ -10,7 +10,7 @@
  * vitest.config.ts's `environment: "node"` and this package's package.json —
  * adding one is a package-manager install, out of this plan's scope). Every
  * hook this controller composes (directly, and via useGaze/useGesture/
- * useBlink/useBreathing/useSway/useExpressionDrift/useTalkCycle) uses ONLY
+ * useBlink/useBreathing/useSway/useExpressionDrift/useClipCycle) uses ONLY
  * `useRef`/`useEffect` from "react" — never `useState` or anything requiring
  * true React reconciliation (verified via `grep -n "^import.*react"` across
  * every animation/*.ts module). Since this suite only ever calls
@@ -57,6 +57,7 @@ vi.mock("react", async (importOriginal) => {
     useEffect: (fn: () => void | (() => void)) => {
       fn();
     },
+    useMemo: <T,>(fn: () => T) => fn(),
   };
 });
 
@@ -163,6 +164,113 @@ describe("resolveBaseClip", () => {
     // explicit, non-matching currentAnimation choice.
     const result = resolveBaseClip("ready", "customAnim42", ["customAnim42", "OtherClip"]);
     expect(result).toBe("customAnim42");
+  });
+});
+
+describe("resolveBaseClip with options (260918-gzb cycling)", () => {
+  it("no options: behaves exactly as before (first match)", () => {
+    const result = resolveBaseClip("ready", null, ["idle_0", "idle_1", "idle_2"]);
+    expect(result).toBe("idle_0");
+  });
+
+  it('order "random" picks a random entry for a cycling status with 2+ matches', () => {
+    const result = resolveBaseClip("ready", null, ["idle_0", "idle_1", "idle_2"], {
+      order: "random",
+      rng: () => 0.5,
+    });
+    expect(result).toBe("idle_1");
+  });
+
+  it('order "sequential" returns the first match (same as no options)', () => {
+    const result = resolveBaseClip("ready", null, ["idle_0", "idle_1", "idle_2"], {
+      order: "sequential",
+    });
+    expect(result).toBe("idle_0");
+  });
+
+  it('order "random" for a non-cycling status (starting) still returns first match', () => {
+    const result = resolveBaseClip("starting", null, ["welcome_a", "welcome_b"], {
+      order: "random",
+      rng: () => 0.99,
+    });
+    expect(result).toBe("welcome_a");
+  });
+
+  it('order "random" with only 1 match returns that match (no randomization needed)', () => {
+    const result = resolveBaseClip("ready", null, ["idle_0", "talk_01"], {
+      order: "random",
+      rng: () => 0.99,
+    });
+    expect(result).toBe("idle_0");
+  });
+
+  it("all existing resolveBaseClip tests pass unchanged (no 4th arg = legacy behavior)", () => {
+    // Spot-check: speaking still prefers first talk clip
+    expect(resolveBaseClip("speaking", "idle", ["idle", "talk_01", "wave"])).toBe("talk_01");
+    // Null currentAnimation falls back to availableNames[0]
+    expect(resolveBaseClip("ready", null, ["idle", "wave"])).toBe("idle");
+  });
+});
+
+describe("shouldTriggerClipSwitch — generalized cycling-status guard (260918-gzb)", () => {
+  it("returns false for ready when current clip matches the ready pattern (cycling guard)", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "idle_0",
+        chatStatus: "ready",
+        currentClipName: "idle_2",
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for listening when current clip matches the listen pattern", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "listen_0",
+        chatStatus: "listening",
+        currentClipName: "listen_1",
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for thinking when current clip matches the think pattern", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "think_a",
+        chatStatus: "thinking",
+        currentClipName: "think_b",
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true for listening when current clip is idle (entry switch, not yet in the status pattern)", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "listen_0",
+        chatStatus: "listening",
+        currentClipName: "idle_0",
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true for starting even when current clip matches (starting is NOT a cycling status)", () => {
+    expect(
+      shouldTriggerClipSwitch({
+        targetName: "welcome_a",
+        chatStatus: "starting",
+        currentClipName: "welcome_b",
+        canResolveAction: true,
+        canResolveRoot: true,
+      }),
+    ).toBe(true);
   });
 });
 

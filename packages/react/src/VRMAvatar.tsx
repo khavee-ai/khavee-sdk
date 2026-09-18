@@ -137,6 +137,10 @@ interface VRMAvatarProps {
   autoLighting?: boolean;
   /** Weld coincident vertices + recompute normals for smooth (non-faceted) shading. Mutates geometry — opt-in, NOT forced by default (some assets are deliberately low-poly). Default: false */
   smoothShading?: boolean;
+  /** How clips rotate when a status has 2+ matching clips. "random" never repeats back-to-back; "sequential" keeps round-robin. Default: "random" */
+  animationCycleOrder?: AnimationCycleOrder;
+  /** Minimum seconds a clip plays before the cycle may swap it (swap still waits for a loop boundary). Default: 2 */
+  animationMinDwellSeconds?: number;
   /**
    * Called once this avatar's model has finished loading (scene + VRM data
    * available). Fires again if `src` changes and the new model finishes
@@ -161,51 +165,32 @@ interface VRMAvatarProps {
   onLoad?: () => void;
 }
 
-/**
- * AnimationConfig - Simple animation configuration using URLs
- *
- * Just provide URLs to your animation files (FBX or GLB). The SDK automatically:
- * - Loads FBX or GLB files based on file extension
- * - For FBX files: Remaps Mixamo bone names to VRM bone names
- * - For GLB files: Uses embedded animations directly (with optional Mixamo remapping)
- * - Creates AnimationClips
- * - Auto-plays the "idle" animation if present
- *
- * @example
- * ```tsx
- * const animations: AnimationConfig = {
- *   idle: '/animations/idle.fbx',      // FBX file - Auto-plays on load
- *   walk: '/animations/walk.glb',      // GLB file with embedded animation
- *   dance: '/animations/dance.fbx',
- * };
- *
- * <VRMAvatar src="/model.vrm" animations={animations} />
- * ```
- */
-export interface AnimationConfig {
-  [name: string]: string; // URL to FBX or GLB file! SDK handles loading & remapping
-}
+// Re-export for backward compatibility (index.ts re-exports from here).
+export type { AnimationConfig } from "./animation/animationConfig";
+import { expandAnimationConfig, type AnimationConfig } from "./animation/animationConfig";
+import type { AnimationCycleOrder } from "./animation/AnimationStateEngine";
 
-// Internal component to load FBX and GLB animation files
+// Internal component to load FBX and GLB animation files.
+// expandAnimationConfig flattens string[] entries into indexed names before
+// the hook loop, keeping hook count a pure function of the config shape.
 function useAnimationFiles(animationUrls: AnimationConfig | undefined) {
   const entries: Array<
     [string, 'fbx' | 'glb', THREE.Group | GLTFResult]
   > = [];
 
-  if (animationUrls) {
-    Object.entries(animationUrls).forEach(([name, url]) => {
-      const extension = url.toLowerCase().split('.').pop();
+  const expanded = expandAnimationConfig(animationUrls);
+  for (const [name, url] of expanded) {
+    const extension = url.toLowerCase().split('.').pop();
 
-      if (extension === 'fbx') {
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        const fbxData = useFBX(url);
-        entries.push([name, 'fbx', fbxData]);
-      } else if (extension === 'glb' || extension === 'gltf') {
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        const gltfData = useGLTF(url) as GLTFResult;
-        entries.push([name, 'glb', gltfData]);
-      }
-    });
+    if (extension === 'fbx') {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const fbxData = useFBX(url);
+      entries.push([name, 'fbx', fbxData]);
+    } else if (extension === 'glb' || extension === 'gltf') {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const gltfData = useGLTF(url) as GLTFResult;
+      entries.push([name, 'glb', gltfData]);
+    }
   }
 
   // useFBX/useGLTF return stable references for the same URL (drei's
@@ -355,6 +340,8 @@ export function VRMAvatar({
   toneMapping,
   autoLighting = true,
   smoothShading = false,
+  animationCycleOrder,
+  animationMinDwellSeconds,
   onLoad,
   ...props
 }: VRMAvatarProps) {
@@ -574,6 +561,8 @@ export function VRMAvatar({
     camera,
     gestureHint,
     onGestureConsumed: () => setGestureHint(null),
+    cycleOrder: animationCycleOrder,
+    minDwellSeconds: animationMinDwellSeconds,
   });
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {

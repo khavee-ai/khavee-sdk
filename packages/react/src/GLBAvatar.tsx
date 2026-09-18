@@ -4,7 +4,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useKhavee } from "./KhaveeProvider";
-import { useAnimationController } from "./animation/AnimationStateEngine";
+import { useAnimationController, type AnimationCycleOrder } from "./animation/AnimationStateEngine";
 import type { AvatarFormatAdapter } from "./animation/types";
 import {
   applyMeshRenderFlags,
@@ -32,6 +32,10 @@ interface GLBAvatarProps {
   autoLighting?: boolean;
   /** Weld coincident vertices + recompute normals for smooth (non-faceted) shading. Mutates geometry — opt-in, NOT forced by default (some assets are deliberately low-poly). Default: false */
   smoothShading?: boolean;
+  /** How clips rotate when a status has 2+ matching clips. "random" never repeats back-to-back; "sequential" keeps round-robin. Default: "random" */
+  animationCycleOrder?: AnimationCycleOrder;
+  /** Minimum seconds a clip plays before the cycle may swap it (swap still waits for a loop boundary). Default: 2 */
+  animationMinDwellSeconds?: number;
 }
 
 /**
@@ -123,6 +127,8 @@ export function GLBAvatar({
   toneMapping,
   autoLighting = true,
   smoothShading = false,
+  animationCycleOrder,
+  animationMinDwellSeconds,
   ...props
 }: GLBAvatarProps) {
   const { currentAnimation, chatStatus, setAvailableAnimations, currentVolume, gestureHint, setGestureHint } =
@@ -243,6 +249,8 @@ export function GLBAvatar({
     camera,
     gestureHint,
     onGestureConsumed: () => setGestureHint(null),
+    cycleOrder: animationCycleOrder,
+    minDwellSeconds: animationMinDwellSeconds,
   });
 
   // drei's useAnimations already runs mixer.update(delta) internally via its

@@ -8,6 +8,7 @@ export {
 } from "./VRMAvatar";
 export { GLBAvatar } from "./GLBAvatar";
 export type { AnimationConfig } from "./VRMAvatar";
+export type { AnimationCycleOrder } from "./animation/AnimationStateEngine";
 export { AvatarPostFX, ShadowFloor } from "./utils/renderQuality";
 export type { AvatarPostFXProps, ShadowFloorProps } from "./utils/renderQuality";
 export * from "./hooks";

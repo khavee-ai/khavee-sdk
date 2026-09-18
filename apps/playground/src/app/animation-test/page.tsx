@@ -48,9 +48,8 @@ const openaiProvider = new OpenAIRealtimeProvider({
 // wave.fbx/sad.fbx; swap freely once real clips land.
 const VRM_ANIMATIONS: AnimationConfig = {
   idle: '/models/animations/mk.fbx', // ready (/idle|ready|rest/i)
-  // talking: '/models/animations/talk.fbx', // speaking (/talk|gesture|speak|taking/i)
-  // talking1: '/models/animations/talk2.fbx', // TALK-01 variant cycling
-  // talking2: '/models/animations/talk3.fbx', // TALK-01 variant cycling
+  // talking: ['/models/animations/talk.fbx', '/models/animations/talk2.fbx', '/models/animations/talk3.fbx'], // speaking variants cycle (list syntax)
+  // Or individual keys: talking: '/models/animations/talk.fbx', talking1: '/models/animations/talk2.fbx',
   // thinking: '/models/animations/thinking.fbx', // thinking (/think/i)
   // welcome: '/models/animations/wave.fbx', // starting (/welcome|greet|hello|intro/i)
   // listening: '/models/animations/thinking2.fbx', // listening (/listen|hear/i)

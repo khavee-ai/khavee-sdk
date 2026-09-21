@@ -183,7 +183,7 @@ describe("stepGesture", () => {
       chatStatus: "ready",
       gestureHint: "nod",
       currentAction: null,
-      delta: 0.25, // mid-pulse, non-trivial envelope value
+      delta: 0.15, // quarter-point of 0.6s duration — peak of the full-cycle envelope
       onConsume: () => {},
     });
 
@@ -203,7 +203,7 @@ describe("stepGesture", () => {
       chatStatus: "ready",
       gestureHint: "shake",
       currentAction: null,
-      delta: 0.25,
+      delta: 0.15, // quarter-point of 0.6s duration — peak of the full-cycle envelope
       onConsume: () => {},
     });
 

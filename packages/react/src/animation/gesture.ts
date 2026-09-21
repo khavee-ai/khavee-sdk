@@ -46,16 +46,16 @@ const NOD_AXIS = new THREE.Vector3(1, 0, 0);
 // shake = a head-YAW delta (rotation about the vertical/Y axis — a "no" shake).
 const SHAKE_AXIS = new THREE.Vector3(0, 1, 0);
 
-// Bounded pulse magnitude (radians). ~0.25rad ≈ 14 degrees — visibly a
-// deliberate nod/shake (larger than breathing's ~0.03rad "alive" idle
-// amplitude) while remaining a subtle procedural delta, not a full head turn.
-const GESTURE_AMPLITUDE = 0.25;
+// Bounded pulse magnitude (radians). The windowed envelope (sin*sin) peaks
+// at ~0.707× this value, so 0.35 gives an effective ~0.25rad ≈ 14 degrees —
+// visibly a deliberate nod/shake while remaining a subtle procedural delta.
+const GESTURE_AMPLITUDE = 0.35;
 
-// Total pulse duration (seconds), rise-then-fall. ~0.5s reads as one
-// deliberate nod/shake beat — noticeably longer than blink's ~150ms envelope
-// (a much smaller, purely cosmetic motion) since a gesture must be legible
-// as an intentional communicative signal.
-const GESTURE_DURATION_SECONDS = 0.5;
+// Total pulse duration (seconds), full bidirectional cycle. ~0.6s reads as
+// one deliberate nod/shake beat — noticeably longer than blink's ~150ms
+// envelope (a much smaller, purely cosmetic motion) since a gesture must be
+// legible as an intentional communicative signal.
+const GESTURE_DURATION_SECONDS = 0.6;
 
 /** The two gesture kinds this module can play. `"none"`/null/anything else is a no-op. */
 export type GestureHint = "nod" | "shake" | "none" | null;
@@ -137,9 +137,10 @@ export function stepGesture(state: GestureState, params: GestureStepParams): voi
 
   state.elapsed += delta;
   const progress = Math.min(state.elapsed / GESTURE_DURATION_SECONDS, 1);
-  // Rise-then-fall envelope over the pulse's duration, mirroring blink.ts's
-  // sin(anim * PI) shape: 0 at start, peaks at the midpoint, back to 0 at end.
-  const envelope = Math.sin(progress * Math.PI);
+  // Windowed bidirectional envelope: sin(2πt) oscillates both directions
+  // while sin(πt) ensures zero position AND zero velocity at both endpoints,
+  // so the gesture eases in and out without a snap.
+  const envelope = Math.sin(progress * 2 * Math.PI) * Math.sin(progress * Math.PI);
 
   const axis = state.activeGesture === "nod" ? NOD_AXIS : SHAKE_AXIS;
   _scratchGesture.setFromAxisAngle(axis, envelope * GESTURE_AMPLITUDE);

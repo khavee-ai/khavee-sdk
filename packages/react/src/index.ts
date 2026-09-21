@@ -43,6 +43,9 @@ export type {
   MToonSnapshot,
   OutlineCounts,
 } from "./utils/renderQuality";
+// Phase 18: LLM-driven emotion + viseme lip-sync public types.
+export type { EmotionHint, EmotionName } from "./animation/emotion";
+export type { VisemeChannel } from "./animation/viseme";
 export { AvatarBackdrop } from "./utils/AvatarBackdrop";
 export type {
   AvatarBackdropProps,

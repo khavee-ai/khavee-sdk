@@ -25,6 +25,12 @@ import type { AvatarBackground } from "./utils/AvatarBackdrop";
 import { useBackgroundRimColor, mergeRimColor } from "./utils/backgroundRim";
 import { useAnimationController } from "./animation/AnimationStateEngine";
 import type { AvatarFormatAdapter } from "./animation/types";
+import { VISEME_KEYS } from "./animation/viseme";
+
+// Phase 18 (D-08): fixed set of expression names owned by the viseme step
+// while its channel has recent data. Module-level so the Set is created
+// once, not per-render.
+const VISEME_KEY_SET = new Set<string>(VISEME_KEYS);
 
 // ── Per-instance VRM loading (bypasses drei's useGLTF global cache) ──
 //
@@ -410,8 +416,19 @@ export function VRMAvatar({
   onBackgroundError,
   ...props
 }: VRMAvatarProps) {
-  const { setVrm, expressions, currentAnimation, animate, chatStatus, currentVolume, gestureHint, setGestureHint } =
-    useKhavee();
+  const {
+    setVrm,
+    expressions,
+    currentAnimation,
+    animate,
+    chatStatus,
+    currentVolume,
+    gestureHint,
+    setGestureHint,
+    emotionHint,
+    setEmotionHint,
+    visemeChannel,
+  } = useKhavee();
   // D-04: read the R3F active scene camera once per render (NOT inside
   // useFrame) so camera-relative gaze (GAZE-01) has a moving reference to
   // track. `useThree((state) => state.camera)` and `useFrame`'s first-arg
@@ -664,6 +681,11 @@ export function VRMAvatar({
     getBoneNode: (name) => scene?.getObjectByName(name) ?? null,
     getHumanoidBoneNode: (role) => currentVrm?.humanoid?.getNormalizedBoneNode(role) ?? null,
     getExpressionManager: () => currentVrm?.expressionManager ?? null,
+    // D-04: primary eye-gaze path. three-vrm's VRMLookAt structurally
+    // satisfies LookAtController, and eyeGaze.ts sets yaw/pitch inside
+    // controller.update(), which runs BEFORE currentVrm.update() below
+    // applies lookAt.update() to bones (RESEARCH Pitfall 3).
+    getLookAt: () => currentVrm?.lookAt ?? null,
   };
 
   // Memoized so identity is stable across unrelated re-renders (defense-in-
@@ -695,6 +717,9 @@ export function VRMAvatar({
     onGestureConsumed: () => setGestureHint(null),
     cycleOrder: animationCycleOrder,
     minDwellSeconds: animationMinDwellSeconds,
+    emotionHint,
+    onEmotionConsumed: () => setEmotionHint(null),
+    visemeChannel,
   });
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {
@@ -720,8 +745,16 @@ export function VRMAvatar({
       mixerRef.current.update(delta);
     }
 
+    // D-08: the mouth has one owner per frame. While the viseme channel has
+    // recent data, the viseme step (AnimationStateEngine step 13) owns
+    // aa/ih/ou/ee/oh and this legacy lerp skips them; otherwise (no channel,
+    // or a deprecated useAudioLipSync consumer with no recent pushes) this
+    // loop's pre-Phase-18 behavior is unchanged.
+    const visemeOwnsMouth = visemeChannel.isActive(performance.now());
+
     // Apply expressions from the hook with smooth lerping
     Object.entries(expressions).forEach(([name, value]) => {
+      if (visemeOwnsMouth && VISEME_KEY_SET.has(name)) return;
       if (typeof value === "number") {
         lerpExpression(name, value, delta * 8);
       }

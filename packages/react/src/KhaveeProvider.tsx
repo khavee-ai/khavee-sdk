@@ -2,6 +2,8 @@
 import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
 import { KhaveeConfig, RealtimeProvider } from '@khaveeai/core';
 import { VRM } from '@pixiv/three-vrm';
+import { normalizeEmotionHint, type EmotionHint } from './animation/emotion';
+import { createVisemeChannel, type VisemeChannel } from './animation/viseme';
 
 interface KhaveeContextType {
   config?: KhaveeConfig; // Optional
@@ -28,6 +30,15 @@ interface KhaveeContextType {
   // setter here is PUBLIC (see setGestureHint's own doc comment for why).
   gestureHint: "nod" | "shake" | null;
   setGestureHint: (gesture: string | null) => void;
+  // Emotion hint (Phase 18 EMO-01) + viseme channel (Phase 18 VIS-01): the
+  // LLM-triggered emotion signal and the mutable lip-sync event sink
+  // consumed by useAnimationController/VRMAvatar. The setter is PUBLIC for
+  // the same reason as setGestureHint (the writer is an LLM tool's execute
+  // outside the tree). The channel is a mutable object, not state, so 80 Hz
+  // lip-sync pushes never re-render context consumers.
+  emotionHint: EmotionHint;
+  setEmotionHint: (emotion: string | null, intensity?: number) => void;
+  visemeChannel: VisemeChannel;
 }
 
 const KhaveeContext = createContext<KhaveeContextType | null>(null);
@@ -102,6 +113,8 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
   const [chatStatus, setChatStatus] = useState<import('@khaveeai/core').ChatStatus>("stopped");
   const [currentVolume, setCurrentVolume] = useState(0);
   const [gestureHint, setGestureHintState] = useState<"nod" | "shake" | null>(null);
+  const [emotionHint, setEmotionHintState] = useState<EmotionHint>(null);
+  const [visemeChannel] = useState(() => createVisemeChannel());
 
   // Note: Realtime provider connection is now manual - user must call connect() explicitly
 
@@ -311,6 +324,39 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
     }
   }, []);
 
+  /**
+   * setEmotionHint - Trigger an LLM-driven emotion on the avatar (EMO-01)
+   *
+   * Like `setGestureHint`, this setter is PUBLIC on useKhavee()'s return: the
+   * writer is typically an LLM tool's `execute` callback, supplied by app
+   * code at provider-construction time OUTSIDE the React tree — there is no
+   * other way for that code to reach this state.
+   *
+   * Delegates entirely to `normalizeEmotionHint`: `emotion` is validated
+   * against a strict, case-sensitive 6-name allow-list (happy, sad, angry,
+   * surprised, neutral, thinking); any other value stores `null`. `intensity`
+   * is clamped to [0,1] with a 0.7 default when missing/non-finite. Never
+   * throws (T-18-03 tampering mitigation, mirroring T-12-04).
+   *
+   * `setEmotionHint(null)` clears the current emotion (fades back to
+   * neutral/drift). Every call creates a NEW hint object, which the emotion
+   * step's identity-based consume-dedupe relies on.
+   *
+   * @param emotion - One of the 6 emotion names, `null`, or any other
+   *   string/invalid value (stored as `null`).
+   * @param intensity - Optional intensity in [0,1]. Defaults to 0.7.
+   *
+   * @example
+   * ```tsx
+   * const { setEmotionHint } = useKhavee();
+   * const { tool, systemPromptAddition } = createEmotionTool(setEmotionHint);
+   * provider.registerFunction(tool);
+   * ```
+   */
+  const setEmotionHint = useCallback((emotion: string | null, intensity?: number) => {
+    setEmotionHintState(normalizeEmotionHint(emotion, intensity));
+  }, []);
+
   return (
     <KhaveeContext.Provider value={{
       config,
@@ -330,6 +376,9 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
       currentVolume,
       gestureHint,
       setGestureHint,
+      emotionHint,
+      setEmotionHint,
+      visemeChannel,
     }}>
       {children}
     </KhaveeContext.Provider>

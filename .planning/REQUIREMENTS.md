@@ -132,10 +132,10 @@ Derived at planning time (2026-09-18) from the locked decisions in
 
 - [ ] **EYE-01**: Eye gaze lives in a new module separate from head-bone `gaze.ts`. It drives `vrm.lookAt` yaw/pitch when the avatar has one, and falls back to additive `leftEye`/`rightEye` bone rotation when it doesn't. Eyes follow the camera smoothly with occasional subtle micro-saccades in an anime-natural style (D-01, D-03, D-04).
 - [ ] **EYE-02**: Blinks are coupled to significant eye-target shifts. A large gaze change forces a blink. The independent random timer survives only as a long safety net that every coupled blink pushes back (D-02).
-- [ ] **VIS-01**: Hybrid viseme source. A vendor-neutral timing path (`TTSProvider.speak` `onViseme` → `PhonemeData` with `source: "timing"`) is used whenever timing data covers the current time. Otherwise the client-side audio-analysis stream is used, now debounced and smoothed (D-05).
-- [ ] **VIS-02**: Coarticulation smoothing. Neighboring visemes blend into each other's mouth shape through a continuous weighted neighbor blend with lip-rounding anticipation. This replaces a plain crossfade (D-06).
-- [ ] **VIS-03**: Additive jaw-bone rotation driven by mouth openness, layered on top of the mouth blendshapes (D-07).
-- [ ] **VIS-04**: `useAudioLipSync` is marked `@deprecated` and keeps working unchanged. The new viseme layer takes ownership of the mouth only while it is receiving data (D-08).
+- [x] **VIS-01**: Hybrid viseme source. A vendor-neutral timing path (`TTSProvider.speak` `onViseme` → `PhonemeData` with `source: "timing"`) is used whenever timing data covers the current time. Otherwise the client-side audio-analysis stream is used, now debounced and smoothed (D-05).
+- [x] **VIS-02**: Coarticulation smoothing. Neighboring visemes blend into each other's mouth shape through a continuous weighted neighbor blend with lip-rounding anticipation. This replaces a plain crossfade (D-06).
+- [x] **VIS-03**: Additive jaw-bone rotation driven by mouth openness, layered on top of the mouth blendshapes (D-07).
+- [ ] **VIS-04**: `useAudioLipSync` is marked `@deprecated` and keeps working unchanged. The new viseme layer takes ownership of the mouth only while it is receiving data (D-08). (18-03: zero-write-without-data ownership rule proven by tests; the `@deprecated` marker itself lands in 18-05 per the plan's own success criteria.)
 - [ ] **EMO-01**: `createEmotionTool(setEmotionHint)` returns a ready-to-register `set_emotion` `RealtimeTool` (plain JS objects, `ToolExecutor`-dispatchable) plus a system-prompt addition telling the LLM to call it before the spoken reply. `{ emotion, intensity }` arguments are allow-list validated and clamped at both the tool and the React-context boundary (D-09, D-10, D-11, D-16).
 - [ ] **EMO-02**: Six core emotions (happy, sad, angry, surprised, neutral, thinking) map to VRM expressions with intensity-scaled weights. Transitions crossfade with `easeInOutCubic` over 0.4s in and 0.5s out. `expressionDrift` stays running underneath as the base layer and is suppressed only while an emotion is present (D-13, D-14, D-15, D-16).
 - [ ] **EMO-03**: The active emotion also biases eye-gaze behavior (offset, aversion frequency, saccade scale) and selects a head gesture (nod/shake) when no explicit gesture hint is pending (D-12).
@@ -197,10 +197,10 @@ Derived at planning time (2026-09-18) from the locked decisions in
 | MEASURE-01 | Phase 16 | Complete |
 | EYE-01 | Phase 18 | Pending |
 | EYE-02 | Phase 18 | Pending |
-| VIS-01 | Phase 18 | Pending |
-| VIS-02 | Phase 18 | Pending |
-| VIS-03 | Phase 18 | Pending |
-| VIS-04 | Phase 18 | Pending |
+| VIS-01 | Phase 18 | Complete |
+| VIS-02 | Phase 18 | Complete |
+| VIS-03 | Phase 18 | Complete |
+| VIS-04 | Phase 18 | Pending (ownership rule proven by tests in 18-03; `@deprecated` marker lands in 18-05) |
 | EMO-01 | Phase 18 | Pending |
 | EMO-02 | Phase 18 | Pending |
 | EMO-03 | Phase 18 | Pending |

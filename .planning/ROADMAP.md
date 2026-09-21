@@ -581,7 +581,7 @@ Plans:
   2. **Viseme lip-sync from TTS timing** replacing the MFCC/formant classifier in `useRealtime.ts` and `useAudioLipSync.ts`, which guesses phonemes from the audio spectrum and is inherently jittery. Add coarticulation smoothing and additive jaw-bone motion rather than blendshapes alone.
   3. **Emotion channel** — have the LLM emit emotion tags and drive expression, gesture and gaze from them. Today `expressionDrift.ts` is random drift with no relationship to what is being said. This is the capability Animates markets as "emotional range".
 
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 Plans:
 **Wave 1**
@@ -591,7 +591,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 18-03-PLAN.md — Vendor-neutral viseme timing interface, GenericPipelineProvider forwarding, viseme module (hybrid, coarticulation, jaw) (wave 2)
+- [x] 18-03-PLAN.md — Vendor-neutral viseme timing interface, GenericPipelineProvider forwarding, viseme module (hybrid, coarticulation, jaw) (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -656,4 +656,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 15. MToon Material Repair & Tone Mapping | 4/4 | Complete    | 2026-09-12 |
 | 16. Lighting, Shadows & Post-Processing | 6/6 | Complete    | 2026-09-18 |
 | 17. Camera Direction & Scene Composition | 2/2 | Complete   | 2026-09-18 |
-| 18. Facial Performance — Eyes, Visemes & Emotion | 2/6 | In Progress|  |
+| 18. Facial Performance — Eyes, Visemes & Emotion | 3/6 | In Progress|  |

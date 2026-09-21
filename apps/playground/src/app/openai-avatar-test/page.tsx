@@ -17,7 +17,7 @@ import { Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { OpenAIRealtimeProvider } from '@khaveeai/providers-openai-realtime';
-import { toolGesture } from '@khaveeai/core';
+import { toolGesture, createEmotionTool, emotionSystemPrompt, EMOTION_NAMES } from '@khaveeai/core';
 import { KhaveeProvider, VRMAvatar, useRealtime, useKhavee, type AnimationConfig } from '@khaveeai/react';
 
 const openaiProvider = new OpenAIRealtimeProvider({
@@ -25,7 +25,8 @@ const openaiProvider = new OpenAIRealtimeProvider({
   proxyEndpoint: '/api/negotiate',
   voice: 'shimmer',
   instructions:
-    'You are a helpful, conversational AI assistant. Keep responses natural and not too long, so lipsync and animation transitions are easy to observe.',
+    'You are a helpful, conversational AI assistant. Keep responses natural and not too long, so lipsync and animation transitions are easy to observe. ' +
+    emotionSystemPrompt,
 });
 
 // Bundled Mixamo FBX fixtures (D-03) — without clips loaded, resolveBaseClip
@@ -51,7 +52,7 @@ function Scene() {
 
 function OpenAIAvatarTestPage() {
   const { connect, disconnect, sendMessage, conversation, isConnected, chatStatus } = useRealtime();
-  const { setGestureHint } = useKhavee();
+  const { setGestureHint, setEmotionHint } = useKhavee();
 
   // GEST-01/02 end-to-end wiring: register the LLM tool inside the React
   // tree (not at module scope, per RESEARCH Open Question 3 / T-12-04) so
@@ -68,6 +69,14 @@ function OpenAIAvatarTestPage() {
       },
     });
   }, [setGestureHint]);
+
+  // EMO-01/02/03 end-to-end wiring: register the LLM's set_emotion tool.
+  // D-11 zero-config path — createEmotionTool(setEmotionHint) returns a
+  // fully wired RealtimeTool (validation + execute already built in), unlike
+  // toolGesture above which needs a hand-written execute.
+  useEffect(() => {
+    openaiProvider.registerFunction(createEmotionTool(setEmotionHint).tool);
+  }, [setEmotionHint]);
 
   return (
     <div className="flex h-screen">
@@ -89,6 +98,11 @@ function OpenAIAvatarTestPage() {
             softly track your viewpoint as you orbit the camera — this is automatic, no button
             needed), and a nod/shake head gesture as the assistant affirms or disagrees during
             conversation (GEST-01/02, driven by the <code>set_gesture</code> tool call above).
+            Phase 18 adds: the eyes should track your viewpoint with small saccades, and blink on
+            big gaze shifts; the mouth should look smoother with visible jaw motion while the AI
+            speaks; and the expression should crossfade to whichever emotion the assistant chose
+            before it starts speaking, with sad/thinking also shifting where the eyes look and
+            happy triggering a nod.
           </p>
 
           <div className="flex gap-4 mb-6">
@@ -126,6 +140,21 @@ function OpenAIAvatarTestPage() {
             >
               Shake
             </button>
+          </div>
+
+          {/* Manual emotion triggers: verify EMO-02/03 crossfade/expression
+              playback deterministically without depending on the LLM
+              emitting a set_emotion tool call. */}
+          <div className="flex gap-4 mb-6 flex-wrap">
+            {EMOTION_NAMES.map((name) => (
+              <button
+                key={name}
+                onClick={() => setEmotionHint(name, 0.8)}
+                className="px-6 py-2 bg-teal-600 text-white rounded-lg"
+              >
+                {name}
+              </button>
+            ))}
           </div>
         </div>
 

@@ -581,13 +581,13 @@ Plans:
   2. **Viseme lip-sync from TTS timing** replacing the MFCC/formant classifier in `useRealtime.ts` and `useAudioLipSync.ts`, which guesses phonemes from the audio spectrum and is inherently jittery. Add coarticulation smoothing and additive jaw-bone motion rather than blendshapes alone.
   3. **Emotion channel** — have the LLM emit emotion tags and drive expression, gesture and gaze from them. Today `expressionDrift.ts` is random drift with no relationship to what is being said. This is the capability Animates markets as "emotional range".
 
-**Plans:** 6 plans
+**Plans:** 2/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 18-01-PLAN.md — Eye gaze module (vrm.lookAt primary, eye-bone fallback, saccades, glance-aways), blink coupling surface, additive bone helper (wave 1)
-- [ ] 18-02-PLAN.md — createEmotionTool() in core + react emotion crossfade module with gaze bias and gesture suggestion (wave 1)
+- [x] 18-01-PLAN.md — Eye gaze module (vrm.lookAt primary, eye-bone fallback, saccades, glance-aways), blink coupling surface, additive bone helper (wave 1)
+- [x] 18-02-PLAN.md — createEmotionTool() in core + react emotion crossfade module with gaze bias and gesture suggestion (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -656,4 +656,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 15. MToon Material Repair & Tone Mapping | 4/4 | Complete    | 2026-09-12 |
 | 16. Lighting, Shadows & Post-Processing | 6/6 | Complete    | 2026-09-18 |
 | 17. Camera Direction & Scene Composition | 2/2 | Complete   | 2026-09-18 |
-| 18. Facial Performance — Eyes, Visemes & Emotion | 0/TBD | Not started | - |
+| 18. Facial Performance — Eyes, Visemes & Emotion | 2/6 | In Progress|  |

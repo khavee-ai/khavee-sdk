@@ -4,8 +4,8 @@ milestone: v3.1
 milestone_name: Avatar Render Quality
 status: executing
 stopped_at: Phase 18 context gathered
-last_updated: "2026-09-18T10:49:30.870Z"
-last_activity: 2026-09-18 -- Phase 18 planning complete
+last_updated: "2026-09-18T10:51:16.537Z"
+last_activity: 2026-09-18 -- Phase 18 execution started
 progress:
   total_phases: 4
   completed_phases: 3
@@ -25,15 +25,15 @@ See: .planning/PROJECT.md (updated 2026-07-11)
 system — the bottleneck is shading, lighting, composition and facial performance, not animation.
 See `.planning/ROADMAP.md` -> "### v3.1 Avatar Render Quality" for the full rationale and the
 Phase 16-18 scope outlines, plus the deferred asset/product tracks.
-**Current focus:** Phase 17 — camera direction & scene composition
+**Current focus:** Phase 18 — facial-performance-eyes-visemes-emotion
 
 ## Current Position
 
-Phase: 17
-Plan: Complete (2/2)
-Status: Ready to execute
+Phase: 18 (facial-performance-eyes-visemes-emotion) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 18
 Branch: `feat/mtoon-render-quality` (branched off `main`; nothing merged yet)
-Last activity: 2026-09-18 -- Phase 18 planning complete
+Last activity: 2026-09-18 -- Phase 18 execution started
 
 ### How Phase 15 was grounded
 

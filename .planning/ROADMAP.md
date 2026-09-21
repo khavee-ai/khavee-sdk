@@ -581,7 +581,7 @@ Plans:
   2. **Viseme lip-sync from TTS timing** replacing the MFCC/formant classifier in `useRealtime.ts` and `useAudioLipSync.ts`, which guesses phonemes from the audio spectrum and is inherently jittery. Add coarticulation smoothing and additive jaw-bone motion rather than blendshapes alone.
   3. **Emotion channel** — have the LLM emit emotion tags and drive expression, gesture and gaze from them. Today `expressionDrift.ts` is random drift with no relationship to what is being said. This is the capability Animates markets as "emotional range".
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans executed — COMPLETE
 
 Plans:
 **Wave 1**
@@ -600,7 +600,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 18-06-PLAN.md — VRMAvatar wiring, type exports, openai-avatar-test demo, human verification checkpoint (wave 4)
+- [x] 18-06-PLAN.md — VRMAvatar wiring, type exports, openai-avatar-test demo, human verification checkpoint (wave 4)
 
 ## Deferred Tracks (v3.1, not scheduled as phases)
 

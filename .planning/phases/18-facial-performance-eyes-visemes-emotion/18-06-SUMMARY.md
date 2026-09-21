@@ -61,7 +61,7 @@ completed: 2026-09-21
 - **Duration:** ~20 min (Tasks 1-2 automated work)
 - **Started:** 2026-09-21 (session start)
 - **Completed (implementation):** 2026-09-21T04:48:00Z
-- **Tasks:** 2/3 complete (Task 3 is the blocking human-verify checkpoint, not yet resolved)
+- **Tasks:** 3/3 complete
 - **Files modified:** 3
 
 ## Accomplishments
@@ -82,9 +82,9 @@ Each task was committed atomically:
 
 1. **Task 1: Wire VRMAvatar (lookAt adapter, emotion/viseme params, mouth-key ownership) and export public types** - `829a349` (feat)
 2. **Task 2: Expose Phase 18 on the openai-avatar-test verification page** - `a085d83` (feat)
-3. **Task 3: Human verification checkpoint** - PENDING (not yet resolved; see "Next Phase Readiness")
+3. **Task 3: Human verification checkpoint** — `589deb8` (fix: bidirectional nod/shake) + APPROVED
 
-**Plan metadata:** this commit (docs: complete plan) — deferred until the checkpoint resolves; see note below.
+**Checkpoint verdict (2026-09-21):** User approved all 8 steps. Two issues raised during verification — nod/shake gestures were unidirectional (single half-sine bump) — fixed in `589deb8` by switching to a windowed bidirectional envelope `sin(2πt)·sin(πt)` with smooth easing at both endpoints. Re-verified and approved.
 
 ## Files Created/Modified
 
@@ -124,9 +124,9 @@ None. `EMOTION_NAMES.map(...)` renders one real, functional button per emotion n
 
 ## Next Phase Readiness
 
-- Tasks 1 and 2 (all code changes) are complete, committed, and pass every automated gate specified in the plan's `<verification>` block: `@khaveeai/core` (23/23), `@khaveeai/react` (289/289), `@khaveeai/providers-generic-stt-tts` (40/40) vitest suites; `@khaveeai/core` and `@khaveeai/react` `tsc`/build; `openai-stt-tts` untouched by this plan's own commits.
-- Task 3 (`checkpoint:human-verify`, `gate="blocking"`) is **not resolved**. All 9 of this phase's requirements (EYE-01/02, VIS-01..04, EMO-01..03) are code-complete and ready for the user's own dev-server-driven visual check at `/openai-avatar-test`, per the plan's 8-step `<how-to-verify>` script. This plan cannot be marked complete, and STATE.md/ROADMAP.md must not be advanced, until the user replies "approved" or lists failing step numbers (to become gaps for a future `/gsd:plan-phase --gaps` round).
-- This SUMMARY documents Tasks 1-2 only; it will need a follow-up append (or the orchestrator's own continuation-agent run) once the checkpoint resolves, to record the verdict and finalize plan completion, per the plan's own instruction: "Record the user's verdict per step in the SUMMARY."
+- All 3 tasks complete. All automated gates pass: `@khaveeai/core` (23/23), `@khaveeai/react` (289/289), `@khaveeai/providers-generic-stt-tts` (40/40) vitest suites; `@khaveeai/core` and `@khaveeai/react` `tsc`/build; `openai-stt-tts` untouched by this plan's commits.
+- Human checkpoint (Task 3) resolved: APPROVED (2026-09-21). All 8 verification steps passed after the nod/shake bidirectional fix (`589deb8`).
+- Phase 18 (6/6 plans) is ready for code review gate and phase completion.
 
 ## Self-Check: PASSED
 
@@ -139,4 +139,4 @@ a085d83 feat(18-06): expose emotion tool and manual triggers on avatar test page
 
 ---
 *Phase: 18-facial-performance-eyes-visemes-emotion*
-*Completed: pending human checkpoint (Tasks 1-2 done 2026-09-21)*
+*Completed: 2026-09-21 (all 3 tasks, checkpoint approved)*

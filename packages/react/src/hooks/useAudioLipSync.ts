@@ -6,6 +6,15 @@ import { useVRMExpressions } from "../VRMAvatar";
 /**
  * Hook for lip-sync analysis from audio files
  * Analyzes pre-recorded audio for phoneme detection and mouth states
+ *
+ * @deprecated Since Phase 18, this hook is superseded by the viseme
+ * lip-sync layer: VRMAvatar's built-in viseme step, fed automatically by
+ * useRealtime's auto lip-sync, with coarticulation smoothing, debounced
+ * analysis and additive jaw motion (VIS-04, D-08). This hook keeps working
+ * unchanged — VRMAvatar only takes over mouth expressions while the viseme
+ * channel is actively receiving data, so a consumer of this hook that never
+ * wires up the viseme channel is unaffected. Removal is planned for a
+ * future major version.
  */
 export function useAudioLipSync() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);

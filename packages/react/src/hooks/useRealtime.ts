@@ -9,13 +9,14 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useKhavee } from "../KhaveeProvider";
 import { useVRMExpressions } from "../VRMAvatar";
+import type { TimedPhoneme } from "../animation/viseme";
 
 /**
  * Hook for real-time chat with OpenAI Realtime API
  * Based on your WebRTC implementation
  */
 export function useRealtime() {
-  const { realtimeProvider } = useKhavee();
+  const { realtimeProvider, visemeChannel } = useKhavee();
   const { setMultipleExpressions } = useVRMExpressions();
 
   // State from provider
@@ -54,6 +55,12 @@ export function useRealtime() {
   );
   const lipSyncRafIdRef = useRef<number | null>(null);
 
+  // Tracks the previous chatStatus so the viseme channel is cleared only on
+  // LEAVING "speaking" (Phase 18 VIS-01/D-05) — never on entering a
+  // non-speaking state, because vendor timing visemes can arrive before
+  // playback actually flips chatStatus to "speaking".
+  const prevChatStatusRef = useRef<ChatStatus>("stopped");
+
   if (!realtimeProvider) {
     throw new Error(
       "useRealtime must be used within KhaveeProvider with realtime config"
@@ -70,6 +77,10 @@ export function useRealtime() {
     // set when this runs.
     const upstreamChatStatusChange = provider.onChatStatusChange;
     const upstreamOnError = provider.onError;
+    // D-05 primary path: preserve any existing onPhonemeDetected subscriber
+    // (matching the onChatStatusChange/onError preservation pattern, T-18-12)
+    // so both receive events.
+    const upstreamPhonemeDetected = provider.onPhonemeDetected;
 
     provider.onConnect = () => {
       setIsConnected(true);
@@ -88,6 +99,7 @@ export function useRealtime() {
       }
       setCurrentPhoneme(null);
       setMultipleExpressions({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+      visemeChannel.clear();
     };
 
     provider.onConversationUpdate = (conv) => setConversation(conv);
@@ -100,6 +112,28 @@ export function useRealtime() {
       // Reset mouth expressions whenever TTS stops so the avatar closes its mouth
       if (status !== "speaking") {
         setMultipleExpressions({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+      }
+      // Clear the viseme channel only when LEAVING "speaking" (Phase 18
+      // VIS-01/D-05) — clearing on every non-speaking status would drop
+      // vendor timing visemes that can legitimately arrive before playback
+      // flips chatStatus to "speaking".
+      if (prevChatStatusRef.current === "speaking" && status !== "speaking") {
+        visemeChannel.clear();
+      }
+      prevChatStatusRef.current = status;
+    };
+
+    // D-05 primary path: providers that forward vendor TTS timing
+    // (GenericPipelineProvider -> onViseme, Phase 18 Plan 03) land in the
+    // timeline; anything else falls back to the analysis path. No currently
+    // wired vendor emits timing yet (RESEARCH Pitfall 1).
+    provider.onPhonemeDetected = (phoneme) => {
+      upstreamPhonemeDetected?.(phoneme);
+      const p = phoneme as TimedPhoneme;
+      if (p.source === "timing") {
+        visemeChannel.pushTimed(p);
+      } else {
+        visemeChannel.pushAnalysis(p, performance.now());
       }
     };
 
@@ -145,6 +179,7 @@ export function useRealtime() {
       provider.onError = upstreamOnError;
       provider.onVolumeChange = undefined;
       provider.onAudioData = undefined;
+      provider.onPhonemeDetected = upstreamPhonemeDetected;
 
       // Cleanup state sync interval
       clearInterval(stateSyncInterval);
@@ -158,7 +193,7 @@ export function useRealtime() {
         lipSyncRafIdRef.current = null;
       }
     };
-  }, [realtimeProvider]); // Remove lipSyncAnalyzer from dependencies to prevent recreation
+  }, [realtimeProvider, visemeChannel]); // Remove lipSyncAnalyzer from dependencies to prevent recreation
 
   // Backgrounding (tab switch, app switch, screen lock) just mutes the mic —
   // the session/connection stays alive so coming back doesn't cost a full
@@ -278,6 +313,15 @@ export function useRealtime() {
         minIntensity: 0.1,
         realtimeProvider: realtimeProvider,
         onPhonemeDetected: (phoneme: PhonemeData) => {
+          // Feed the viseme channel directly (D-05 improved fallback), NOT
+          // rAF-coalesced like the legacy mouth path below — the channel is
+          // not React state, and the viseme step (Phase 18 Plan 03) already
+          // debounces and smooths it on its own per-frame cadence.
+          visemeChannel.pushAnalysis(
+            { ...phoneme, source: "audio-analysis" } as TimedPhoneme,
+            performance.now()
+          );
+
           // Convert phoneme to mouth state and apply to VRM
           const newMouthState = phonemeToMouthState(phoneme, 6.0);
           pendingPhonemeRef.current = phoneme;
@@ -304,7 +348,7 @@ export function useRealtime() {
     } catch (error) {
       console.error("Auto lip sync failed:", error);
     }
-  }, [realtimeProvider, flushPendingLipSyncUpdate]);
+  }, [realtimeProvider, flushPendingLipSyncUpdate, visemeChannel]);
 
   const stopAutoLipSync = useCallback(() => {
     if (lipSyncAnalyzer) {
@@ -319,7 +363,8 @@ export function useRealtime() {
     pendingExpressionUpdateRef.current = null;
     setCurrentPhoneme(null);
     setMultipleExpressions({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
-  }, [lipSyncAnalyzer, setMultipleExpressions]);
+    visemeChannel.clear();
+  }, [lipSyncAnalyzer, setMultipleExpressions, visemeChannel]);
 
   return {
     // State

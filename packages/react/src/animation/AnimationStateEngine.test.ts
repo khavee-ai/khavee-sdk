@@ -35,6 +35,7 @@ import {
   shouldDisableProceduralForManualClip,
   resolveOrphanedBlendAction,
   useAnimationController,
+  selectGestureHint,
   type RestPoseAnchor,
 } from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
@@ -47,7 +48,9 @@ import {
   stepOrphanFade,
   type BlendState,
 } from "./crossfade";
+import { createVisemeChannel } from "./viseme";
 import type { AvatarFormatAdapter } from "./types";
+import type { LookAtController } from "./types";
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -1156,6 +1159,258 @@ describe("useAnimationController — gaze/gesture integration (12-04)", () => {
     controller.update(1 / 30);
 
     expect(onGestureConsumed).not.toHaveBeenCalled();
+  });
+});
+
+describe("Phase 18 facial steps 12-14 (EYE/VIS/EMO)", () => {
+  // ── Shared stub helpers (18-04) — mirrors eyeGaze.test.ts's makeStubLookAt
+  // and viseme.test.ts's/emotion.test.ts's Map-backed expression manager
+  // convention, combined into one adapter so a single `useAnimationController`
+  // call can exercise steps 2 (blink), 8 (drift/emotion), 11 (gesture),
+  // 12 (eye gaze), 13 (viseme) and 14 (emotion) together.
+
+  /** Mirrors three-vrm's own yaw/pitch=atan2(...) convention (eyeGaze.test.ts's makeStubLookAt). */
+  function makeStubLookAt(): LookAtController {
+    return {
+      autoUpdate: true,
+      yaw: 0,
+      pitch: 0,
+      lookAt(position: THREE.Vector3): void {
+        this.yaw = THREE.MathUtils.radToDeg(Math.atan2(position.x, position.z));
+        this.pitch = THREE.MathUtils.radToDeg(
+          Math.atan2(position.y, Math.hypot(position.x, position.z)),
+        );
+      },
+    };
+  }
+
+  const P18_PRESENT_EXPRESSIONS = [
+    "happy",
+    "relaxed",
+    "sad",
+    "aa",
+    "ih",
+    "ou",
+    "ee",
+    "oh",
+    "blinkLeft",
+    "blinkRight",
+  ];
+
+  function makeStubExpressionManagerP18(present: string[] = P18_PRESENT_EXPRESSIONS) {
+    const values = new Map<string, number>();
+    return {
+      blinkExpressionNames: ["blinkLeft", "blinkRight"],
+      getExpression: (name: string) => (present.includes(name) ? {} : null),
+      getValue: (name: string) => (values.has(name) ? values.get(name)! : 0),
+      setValue: vi.fn((name: string, weight: number) => {
+        values.set(name, weight);
+      }),
+    };
+  }
+
+  function makeStubAdapterP18(
+    opts: {
+      lookAt?: LookAtController | null;
+      em?: ReturnType<typeof makeStubExpressionManagerP18> | null;
+      head?: THREE.Object3D | null;
+    } = {},
+  ): AvatarFormatAdapter {
+    const em = opts.em === undefined ? makeStubExpressionManagerP18() : opts.em;
+    return {
+      getMixer: () => {
+        throw new Error("not used in this test");
+      },
+      getBoneNode: () => null,
+      getHumanoidBoneNode: (role) => (role === "head" ? (opts.head ?? null) : null),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      getExpressionManager: () => em as any,
+      getLookAt: () => opts.lookAt ?? null,
+    };
+  }
+
+  /** Builds a camera at a given yaw (degrees) on the XZ plane, matching eyeGaze.test.ts's stub-camera convention. */
+  function makeCameraAtYawDeg(yawDeg: number, radiusXZ = 5): THREE.Camera {
+    const yawRad = THREE.MathUtils.degToRad(yawDeg);
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(radiusXZ * Math.sin(yawRad), 0, radiusXZ * Math.cos(yawRad));
+    return camera;
+  }
+
+  describe("selectGestureHint (D-12 gesture)", () => {
+    it("an explicit non-none hint wins over an emotion suggestion", () => {
+      expect(selectGestureHint("nod", "shake")).toEqual({ hint: "nod", source: "explicit" });
+    });
+
+    it("falls through to the emotion suggestion when the explicit hint is null or \"none\"", () => {
+      expect(selectGestureHint(null, "nod")).toEqual({ hint: "nod", source: "emotion" });
+      expect(selectGestureHint("none", "nod")).toEqual({ hint: "nod", source: "emotion" });
+    });
+
+    it("returns a null hint/source when neither explicit nor emotion supply one", () => {
+      expect(selectGestureHint(null, null)).toEqual({ hint: null, source: null });
+    });
+
+    it("passes an explicit \"none\" through unchanged with a null source when there is no emotion suggestion", () => {
+      expect(selectGestureHint("none", null)).toEqual({ hint: "none", source: null });
+    });
+  });
+
+  it("step 12 drives the primary lookAt path to a finite, non-zero yaw after one frame (EYE-01/02)", () => {
+    const lookAt = makeStubLookAt();
+    const adapter = makeStubAdapterP18({ lookAt });
+    const camera = makeCameraAtYawDeg(20);
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+      camera,
+    });
+
+    controller.update(1 / 60);
+
+    expect(lookAt.autoUpdate).toBe(false);
+    expect(Number.isFinite(lookAt.yaw)).toBe(true);
+    expect(lookAt.yaw).not.toBe(0);
+  });
+
+  it("forces a blink one frame after step 12 detects a significant gaze shift (D-02)", () => {
+    const em = makeStubExpressionManagerP18();
+    const adapter = makeStubAdapterP18({ lookAt: makeStubLookAt(), em });
+    const camera = makeCameraAtYawDeg(20); // > SHIFT_BLINK_THRESHOLD_DEG (7deg) from dead-ahead.
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: true,
+      camera,
+    });
+
+    controller.update(1 / 60); // frame 1: eyeGaze (step 12) detects the shift, sets forceBlinkRef.
+    controller.update(1 / 60); // frame 2: blink (step 2) consumes forceBlinkRef, starts a blink.
+
+    const blinkLeftCalls = em.setValue.mock.calls.filter(([name]) => name === "blinkLeft");
+    const lastValue = blinkLeftCalls[blinkLeftCalls.length - 1]?.[1] ?? 0;
+    expect(lastValue).toBeGreaterThan(0);
+  });
+
+  it("crossfades an emotion's expression to the hint's steady intensity and consumes it exactly once (EMO-02/03)", () => {
+    const em = makeStubExpressionManagerP18();
+    const adapter = makeStubAdapterP18({ em });
+    const onEmotionConsumed = vi.fn();
+    const emotionHint = { emotion: "happy" as const, intensity: 0.8 };
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+      emotionHint,
+      onEmotionConsumed,
+    });
+
+    for (let i = 0; i < 40; i++) {
+      controller.update(1 / 60);
+    }
+
+    expect(onEmotionConsumed).toHaveBeenCalledTimes(1);
+    const happyCalls = em.setValue.mock.calls.filter(([name]) => name === "happy");
+    expect(happyCalls.length).toBeGreaterThan(0);
+    const lastHappy = happyCalls[happyCalls.length - 1][1] as number;
+    expect(Math.abs(lastHappy - 0.8)).toBeLessThan(1e-3);
+  });
+
+  it("never fires onGestureConsumed for an emotion-suggested gesture (D-12 gesture, T-18-10)", () => {
+    const em = makeStubExpressionManagerP18();
+    const adapter = makeStubAdapterP18({ em, head: new THREE.Object3D() });
+    const onGestureConsumed = vi.fn();
+    const emotionHint = { emotion: "happy" as const, intensity: 0.8 }; // >= EMOTION_NOD_MIN_INTENSITY -> suggests "nod".
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+      emotionHint,
+      gestureHint: null,
+      onGestureConsumed,
+    });
+
+    for (let i = 0; i < 40; i++) {
+      controller.update(1 / 60);
+    }
+
+    expect(onGestureConsumed).not.toHaveBeenCalled();
+  });
+
+  it("step 13 mixes in mouth shapes once a VisemeChannel carries analysis data (VIS-01..03)", () => {
+    const em = makeStubExpressionManagerP18();
+    const adapter = makeStubAdapterP18({ em });
+    const channel = createVisemeChannel();
+    channel.pushAnalysis({ phoneme: "aa", intensity: 0.5, timestamp: 0 }, 1000);
+
+    let nowMs = 1010;
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: false,
+      visemeChannel: channel,
+      getNowMs: () => nowMs,
+    });
+
+    for (let i = 0; i < 8; i++) {
+      controller.update(1 / 60);
+      nowMs += (1 / 60) * 1000;
+    }
+
+    const aaCalls = em.setValue.mock.calls.filter(([name]) => name === "aa");
+    expect(aaCalls.length).toBeGreaterThan(0);
+    expect(aaCalls[aaCalls.length - 1][1] as number).toBeGreaterThan(0);
+  });
+
+  it("completes 60 updates with no throw and no viseme writes when emotionHint/visemeChannel/getNowMs are all omitted (backward compatibility)", () => {
+    const em = makeStubExpressionManagerP18();
+    const adapter = makeStubAdapterP18({ em, lookAt: makeStubLookAt(), head: new THREE.Object3D() });
+    const camera = makeCameraAtYawDeg(20);
+
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [],
+      getAction: () => null,
+      getRoot: () => null,
+      enableBlinking: true,
+      camera,
+    });
+
+    expect(() => {
+      for (let i = 0; i < 60; i++) controller.update(1 / 60);
+    }).not.toThrow();
+
+    const visemeCalls = em.setValue.mock.calls.filter(([name]) =>
+      ["aa", "ih", "ou", "ee", "oh"].includes(name),
+    );
+    expect(visemeCalls.length).toBe(0);
   });
 });
 

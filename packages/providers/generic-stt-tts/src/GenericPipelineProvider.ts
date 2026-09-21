@@ -586,6 +586,15 @@ export class GenericPipelineProvider implements RealtimeProvider {
             this.audioOutputAnalyser = analyser;
             this.onAudioData?.(analyser, ctx);
           },
+          // Forward vendor-neutral timing data to onPhonemeDetected, tagged
+          // "timing" unless the adapter already set its own source
+          // (Phase 18 VIS-01, D-05). Drop events once the turn is aborted
+          // (T-18-08) — a barge-in must not let a stale utterance's mouth
+          // shapes keep animating the avatar.
+          onViseme: (viseme: PhonemeData) => {
+            if (signal?.aborted) return;
+            this.onPhonemeDetected?.({ ...viseme, source: viseme.source ?? "timing" });
+          },
         });
       }
 

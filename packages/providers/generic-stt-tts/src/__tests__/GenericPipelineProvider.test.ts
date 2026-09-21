@@ -11,6 +11,7 @@ import type {
   TTSProvider,
   LLMCompletionResult,
   ToolResult,
+  PhonemeData,
 } from "@khaveeai/core";
 import { OpenAIVADAdapter } from "../adapters/OpenAIVADAdapter";
 import { OpenAISTTAdapter } from "../adapters/OpenAISTTAdapter";
@@ -781,5 +782,121 @@ describe("GAP-02-05: registerFunction() offers post-construction tools to the LL
     const names = capturedTools.map((t: any) => t.name);
     expect(names).toContain("constructor_tool");
     expect(names).toContain("get_weather");
+  });
+});
+
+// ── Phase 18 VIS-01: onViseme forwarding ────────────────────────────────
+
+describe("onViseme forwarding (Phase 18 VIS-01)", () => {
+  it("forwards a single onViseme event from TTS to onPhonemeDetected, tagged source 'timing'", async () => {
+    const tts: TTSProvider = {
+      name: "fake-tts",
+      supportsStreaming: false,
+      speak: vi.fn().mockImplementation(async (_text: string, opts: any) => {
+        opts.onViseme?.({ phoneme: "aa", intensity: 0.8, timestamp: 1000, duration: 90 });
+      }),
+    };
+    const llm = makeFakeLLM({ text: "hi", toolCalls: [] });
+    const config = makeBaseConfig({ llm, tts });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    const received: PhonemeData[] = [];
+    provider.onPhonemeDetected = (p) => received.push(p);
+
+    await provider.sendMessage("hello");
+
+    expect(received).toHaveLength(1);
+    expect(received[0].phoneme).toBe("aa");
+    expect(received[0].source).toBe("timing");
+  });
+
+  it("preserves an explicit source 'timing' plus wordBoundary true", async () => {
+    const tts: TTSProvider = {
+      name: "fake-tts",
+      supportsStreaming: false,
+      speak: vi.fn().mockImplementation(async (_text: string, opts: any) => {
+        opts.onViseme?.({
+          phoneme: "ee",
+          intensity: 0.5,
+          timestamp: 2000,
+          duration: 60,
+          source: "timing",
+          wordBoundary: true,
+        });
+      }),
+    };
+    const llm = makeFakeLLM({ text: "hi", toolCalls: [] });
+    const config = makeBaseConfig({ llm, tts });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    const received: PhonemeData[] = [];
+    provider.onPhonemeDetected = (p) => received.push(p);
+
+    await provider.sendMessage("hello");
+
+    expect(received).toHaveLength(1);
+    expect(received[0].source).toBe("timing");
+    expect(received[0].wordBoundary).toBe(true);
+  });
+
+  it("leaves onPhonemeDetected uncalled when the TTS never calls onViseme (existing behavior preserved)", async () => {
+    const tts = makeFakeTTS();
+    const llm = makeFakeLLM({ text: "hi", toolCalls: [] });
+    const config = makeBaseConfig({ llm, tts });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    const received: PhonemeData[] = [];
+    provider.onPhonemeDetected = (p) => received.push(p);
+
+    await provider.sendMessage("hello");
+
+    expect(received).toHaveLength(0);
+  });
+
+  it("drops an onViseme call made after the turn's signal is aborted by a barge-in (T-18-08)", async () => {
+    let capturedOpts: any;
+    let resolveSpeak: () => void;
+    const speakHeld = new Promise<void>((resolve) => {
+      resolveSpeak = resolve;
+    });
+    const tts: TTSProvider = {
+      name: "fake-tts",
+      supportsStreaming: false,
+      speak: vi.fn().mockImplementation(async (_text: string, opts: any) => {
+        capturedOpts = opts;
+        // Hold until the test explicitly releases it, after interrupting.
+        await speakHeld;
+      }),
+    };
+    const llm = makeFakeLLM({ text: "hi", toolCalls: [] });
+    const config = makeBaseConfig({ llm, tts });
+    const provider = new GenericPipelineProvider(config);
+    await provider.connect();
+
+    const received: PhonemeData[] = [];
+    provider.onPhonemeDetected = (p) => received.push(p);
+
+    const turn = provider.sendMessage("hello");
+    // Poll until this turn has reached tts.speak() and captured its opts.
+    for (let i = 0; i < 50 && capturedOpts === undefined; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    expect(capturedOpts).toBeDefined();
+    expect(capturedOpts.signal?.aborted).toBe(false);
+
+    // interrupt() synchronously aborts the active turn's controller — a
+    // real barge-in path that does not depend on VAD micEnabled gating.
+    provider.interrupt();
+    expect(capturedOpts.signal?.aborted).toBe(true);
+
+    capturedOpts.onViseme?.({ phoneme: "aa", intensity: 0.5, timestamp: 3000 });
+
+    expect(received).toHaveLength(0);
+
+    resolveSpeak!();
+    await turn;
   });
 });

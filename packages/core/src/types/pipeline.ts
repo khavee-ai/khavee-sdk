@@ -49,6 +49,7 @@
 
 import { Provider } from "./providers";
 import { Tool, ToolResult } from "./tools";
+import type { PhonemeData } from "./audio";
 
 // ── Tool-calling result types ───────────────────────────────────────────
 
@@ -197,6 +198,7 @@ export interface TTSProvider extends Provider {
    * @param opts.voice - Optional vendor-specific voice identifier.
    * @param opts.speed - Optional playback speed multiplier.
    * @param opts.signal - Optional best-effort cancellation signal (D-01/D-02): providers may ignore it; the orchestrator discards superseded results.
+   * @param opts.onViseme - Optional callback for vendor-neutral phoneme/viseme timing (Phase 18 VIS-01, D-05). Adapters whose vendor returns word/phoneme/viseme timing convert it into PhonemeData with `source: "timing"` and absolute `performance.now()`-based timestamps. Adapters without timing (e.g. OpenAI TTS, RESEARCH Pitfall 1) never call it, and consumers then fall back to audio analysis.
    */
   speak(
     text: string,
@@ -207,6 +209,8 @@ export interface TTSProvider extends Provider {
       speed?: number;
       /** Optional best-effort cancellation signal (D-01/D-02): providers may ignore it; the orchestrator discards superseded results. */
       signal?: AbortSignal;
+      /** Optional vendor-neutral phoneme/viseme timing callback (Phase 18 VIS-01, D-05). See method-level @param opts.onViseme doc above. */
+      onViseme?: (viseme: PhonemeData) => void;
     }
   ): Promise<void>;
 }

@@ -425,8 +425,63 @@ import { useClipCycle, CYCLING_STATUSES, MIN_TALK_DWELL_SECONDS, pickRandomVaria
 export type { AnimationCycleOrder } from "./talkCycle";
 import { useGaze } from "./gaze";
 import { useGesture, type GestureHint } from "./gesture";
+import { useEyeGaze, NEUTRAL_EYE_GAZE_BIAS, type EyeGazeBias } from "./eyeGaze";
+import { useViseme, type VisemeChannel } from "./viseme";
+import { useEmotion, type EmotionHint } from "./emotion";
 import { volumeToAmplitudeScale } from "./audioAmplitude";
 import type { AvatarFormatAdapter } from "./types";
+
+/**
+ * Default clock for viseme timing (VIS-01..03) — `performance.now()` matches
+ * the absolute-clock convention `PhonemeData`'s timing fields and
+ * `VisemeChannel` already document (see `viseme.ts`'s file header). A
+ * module-level function (not inlined at the call site) so `getNowMs` is
+ * trivially injectable for deterministic tests without needing to mock a
+ * global.
+ */
+function defaultNow(): number {
+  return performance.now();
+}
+
+/**
+ * How long (seconds) an emotion-suggested nod/shake gesture stays queued in
+ * `pendingEmotionGestureRef` before it is dropped as stale (D-12 gesture,
+ * T-18-09). A single pending slot — not a queue — combined with this TTL
+ * means repeated `set_emotion` calls can never build up a gesture backlog:
+ * at most one emotion-sourced gesture is ever pending, and it expires on its
+ * own if `selectGestureHint` never gets a chance to hand it to `gesture.step`
+ * (e.g. an explicit `gestureHint` keeps winning for longer than 4s).
+ */
+const EMOTION_GESTURE_TTL_S = 4;
+
+/**
+ * Resolves which gesture (if any) should be handed to `gesture.step` this
+ * frame, and who supplied it (D-12 gesture, T-18-10). An explicit app/LLM
+ * `set_gesture` hint always takes precedence over an emotion-suggested
+ * gesture — this is a tampering mitigation: an emotion-sourced suggestion
+ * must never silently override or consume an explicit hint the app/LLM is
+ * actively tracking, because `onGestureConsumed` is wired to clear that
+ * app-owned state (see step 11's `onConsume` closure below, which never
+ * fires `onGestureConsumed` for an emotion-sourced pulse).
+ *
+ * - A non-null, non-`"none"` explicit hint always wins (`source: "explicit"`).
+ * - Otherwise a non-null emotion suggestion wins (`source: "emotion"`).
+ * - Otherwise `explicit` passes through unchanged with `source: null` (covers
+ *   both `null` and `"none"`, neither of which is ever a real trigger, so
+ *   which one is echoed back doesn't matter to `gesture.step`).
+ */
+export function selectGestureHint(
+  explicit: GestureHint,
+  emotionSuggested: "nod" | "shake" | null,
+): { hint: GestureHint; source: "explicit" | "emotion" | null } {
+  if (explicit !== null && explicit !== "none") {
+    return { hint: explicit, source: "explicit" };
+  }
+  if (emotionSuggested !== null) {
+    return { hint: emotionSuggested, source: "emotion" };
+  }
+  return { hint: explicit, source: null };
+}
 
 // Module-scoped scratch quaternions for the PERF-01 spine-delta clamp below
 // — reused every update() call across every useAnimationController()
@@ -872,6 +927,32 @@ export function useAnimationController(params: {
   cycleOrder?: AnimationCycleOrder;
   /** Minimum seconds a clip plays before the cycle may swap it (swap still waits for a loop boundary). Default: 2. */
   minDwellSeconds?: number;
+  /**
+   * The latest emotion hint from `useKhavee()` (EMO-02/03), written by
+   * `createEmotionTool()`'s `execute` callback via `setEmotionHint` (see
+   * `KhaveeProvider.tsx`, 18-05). Optional — omitted/null is a no-op for
+   * emotion (step 14 below simply keeps fading back to idle/drift).
+   */
+  emotionHint?: EmotionHint;
+  /**
+   * Called exactly once, the frame a new emotion hint is actually consumed —
+   * wired by the avatar component to `() => setEmotionHint(null)` so the
+   * consumed hint is cleared and cannot re-consume itself indefinitely.
+   */
+  onEmotionConsumed?: () => void;
+  /**
+   * The shared viseme event sink from `useKhavee()` (VIS-01..03), fed by
+   * `useRealtime`'s TTS timing/audio-analysis events. Optional — omitted/
+   * null is a full no-op for visemes (step 13 below never writes any mouth
+   * expression or jaw delta, matching viseme.ts's own ownership guard, D-08).
+   */
+  visemeChannel?: VisemeChannel | null;
+  /**
+   * Clock for viseme timing (VIS-01..03) — defaults to `performance.now()`.
+   * Injectable so tests can drive `stepViseme`'s hybrid timing-vs-analysis
+   * selection against deterministic timestamps instead of the real clock.
+   */
+  getNowMs?: () => number;
 }): { update: (delta: number) => void } {
   const {
     adapter,
@@ -888,6 +969,10 @@ export function useAnimationController(params: {
     onGestureConsumed,
     cycleOrder = "random",
     minDwellSeconds: rawMinDwell,
+    emotionHint,
+    onEmotionConsumed,
+    visemeChannel,
+    getNowMs,
   } = params;
 
   // Sanitize minDwellSeconds: non-finite or negative → default (T-gzb-01).
@@ -903,6 +988,9 @@ export function useAnimationController(params: {
   const clipCycle = useClipCycle();
   const gaze = useGaze();
   const gesture = useGesture();
+  const eyeGaze = useEyeGaze();
+  const viseme = useViseme();
+  const emotion = useEmotion();
 
   // Never useState — mutated every frame (blendRef via stepCrossfade) or on
   // every base-clip change (currentActionRef/currentClipNameRef), neither
@@ -942,6 +1030,27 @@ export function useAnimationController(params: {
   // debug log so it fires at most once per second per instance. Inert (never
   // read) when GATE_DEBUG is false.
   const gateDebugElapsedRef = useRef(0);
+  // D-02: set by step 12 (eye gaze) when a significant gaze-target shift is
+  // detected, consumed and cleared by step 2 (blink) on the VERY NEXT frame
+  // — one frame of latency, imperceptible at any real frame rate. Never
+  // useState — mutated every frame, same per-frame-state convention as the
+  // refs above.
+  const forceBlinkRef = useRef(false);
+  // D-12/D-15: the previous frame's emotion outputs, consumed by step 8
+  // (drift suppression) and step 12 (gaze bias) BEFORE step 14 (emotion)
+  // recomputes them for the frame after. `gazeBias` starts neutral so a
+  // controller that never receives an emotion hint behaves identically to
+  // pre-Phase-18 (backward compatibility must-have).
+  const emotionCouplingRef = useRef<{ driftScale: number; gazeBias: EyeGazeBias }>({
+    driftScale: 1,
+    gazeBias: { ...NEUTRAL_EYE_GAZE_BIAS },
+  });
+  // T-18-09: a single pending slot (not a queue) for an emotion-suggested
+  // gesture, aged out after EMOTION_GESTURE_TTL_S by step 11 so repeated
+  // set_emotion calls can never build up a gesture backlog.
+  const pendingEmotionGestureRef = useRef<{ gesture: "nod" | "shake"; ageS: number } | null>(
+    null,
+  );
 
   // Memoized: with random entry, calling resolveBaseClip every render would
   // re-roll the target each render and thrash crossfades (T-gzb-02). The
@@ -1064,7 +1173,7 @@ export function useAnimationController(params: {
     //   -> 4a. lazily capture rest-pose anchor -> 4b. reset-if-not-driven
     //   -> 4c. capture spine base -> 5. breathing -> 6. sway -> 7. spine
     //   clamp -> 8. expression drift -> 9. status clip-cycle -> 10. gaze ->
-    //   11. gesture.
+    //   11. gesture -> 12. eye gaze -> 13. visemes -> 14. emotion.
     // Any future addition to this stack should extend this list, not
     // reorder it silently. 11-11: steps 4a-7 now run UNCONDITIONALLY every
     // frame (11-09 previously skipped 4-7 entirely while
@@ -1075,7 +1184,13 @@ export function useAnimationController(params: {
     // file-header 11-13 diagnosis block. 12-04 appended steps 10 (gaze) and
     // 11 (gesture) after talk-cycle — see their own inline comments below
     // for why gesture composes AFTER gaze (a discrete pulse on top of a
-    // continuous camera-relative offset).
+    // continuous camera-relative offset). 18-04 appended steps 12-14 (eye
+    // gaze, visemes, emotion) — each couples back into an EARLIER step via a
+    // ref carrying the PREVIOUS frame's value (forceBlinkRef into step 2,
+    // emotionCouplingRef into steps 8/12, pendingEmotionGestureRef into step
+    // 11), one frame of latency that is imperceptible at any real frame
+    // rate. See eyeGaze.ts/viseme.ts/emotion.ts (18-01..18-03) for each
+    // module's own contract.
 
     // 0. 11-13 gap closure (G1/G3 fix): retry a pending clip switch every
     // frame, using the SAME `shouldTriggerClipSwitch` decision the effect
@@ -1120,10 +1235,17 @@ export function useAnimationController(params: {
       orphanFadesRef.current = orphanFadesRef.current.filter((fade) => !stepOrphanFade(fade));
     }
 
-    // 2. Blink procedural delta (existing) — expression-only, no bone
-    // interaction, so it has no ordering dependency on the bone-writing
-    // steps below.
-    blink.step(adapter, enableBlinking);
+    // 2. Blink procedural delta — expression-only, no bone interaction, so
+    // it has no ordering dependency on the bone-writing steps below. 18-04
+    // (D-02): coupled to step 12's PREVIOUS-frame eye-gaze shift detection
+    // via `forceBlinkRef` — a real gaze shift on frame N forces a blink on
+    // frame N+1 (one frame of latency, imperceptible), and `coupled: true`
+    // switches blink.ts's own idle timer to act as a safety net rather than
+    // the primary blink source (see blink.ts's `BlinkStepOptions` doc
+    // comment). `forceBlinkRef` is cleared immediately after this call so it
+    // only ever fires once per detected shift.
+    blink.step(adapter, enableBlinking, { forceBlink: forceBlinkRef.current, coupled: true });
+    forceBlinkRef.current = false;
 
     // 3. TALK-02: amplitudeScale scales procedural amplitude UP while
     // speaking, proportional to live TTS volume; it is exactly 1 (neutral)
@@ -1289,8 +1411,14 @@ export function useAnimationController(params: {
     // passing the same eased `settleScale` ramp the body's breathing/sway
     // consume via `proceduralScale` (step 3 above) as its amplitudeScale.
     // Facial drift now damps/restores with the same eased ~1.2s ramp as the
-    // body instead of hard-cutting on/off at the `stopped` boundary.
-    expressionDrift.step(adapter, delta, settleScale);
+    // body instead of hard-cutting on/off at the `stopped` boundary. 18-04
+    // (D-15): additionally multiplied by the PREVIOUS frame's
+    // `emotionCouplingRef.current.driftScale` (1 = idle/unsuppressed, 0 =
+    // fully held by an active emotion) — drift is the base layer that
+    // yields while step 14 (emotion) is actively driving the same
+    // expression slots, using last frame's value because emotion itself
+    // runs at step 14, after this one.
+    expressionDrift.step(adapter, delta, settleScale * emotionCouplingRef.current.driftScale);
 
     // 9. Status clip-cycle (generalized from TALK-01/02 by 260918-gzb):
     // the ONLY place clip variants advance for any cycling status
@@ -1334,16 +1462,118 @@ export function useAnimationController(params: {
     // why gesture is step 11, after gaze. Immediate outside `speaking`;
     // queued to the next talk-cycle loop boundary while `speaking` (D-06) —
     // see gesture.ts's own trigger logic. `onConsume` fires exactly once,
-    // the frame the pulse begins, wired to clear the consumed hint via
-    // `onGestureConsumed` so it cannot re-trigger.
+    // the frame the pulse begins.
+    //
+    // 18-04 (D-12 gesture, T-18-09/T-18-10): age and drop a stale pending
+    // emotion-suggested gesture (a single slot, not a queue — see
+    // `pendingEmotionGestureRef`'s declaration comment), then let
+    // `selectGestureHint` decide which of the explicit `gestureHint` prop or
+    // the pending emotion suggestion actually plays this frame. The
+    // `onConsume` closure only forwards to `onGestureConsumed` when the
+    // EXPLICIT hint was the one that started — an emotion-sourced gesture
+    // must never clear the app/LLM's own `gestureHint` context state (that
+    // hint was never consumed, so it must remain available to play on its
+    // own once the emotion-sourced gesture is done or aged out).
+    if (pendingEmotionGestureRef.current) {
+      pendingEmotionGestureRef.current.ageS += delta;
+      if (pendingEmotionGestureRef.current.ageS > EMOTION_GESTURE_TTL_S) {
+        pendingEmotionGestureRef.current = null;
+      }
+    }
+    const selectedGesture = selectGestureHint(
+      gestureHint ?? null,
+      pendingEmotionGestureRef.current?.gesture ?? null,
+    );
     gesture.step({
       adapter,
       chatStatus,
-      gestureHint: gestureHint ?? null,
+      gestureHint: selectedGesture.hint,
       currentAction: currentActionRef.current,
       delta,
-      onConsume: () => onGestureConsumed?.(),
+      onConsume: () => {
+        if (selectedGesture.source === "explicit") {
+          onGestureConsumed?.();
+        } else {
+          pendingEmotionGestureRef.current = null;
+        }
+      },
     });
+
+    // 12. Eye gaze (EYE-01/02, D-01..D-04): continuous eye-contact tracking
+    // via `vrm.lookAt` (primary) or additive eye bones (fallback), layered
+    // WITH its own bias input rather than composed after gaze/gesture — it
+    // targets the eyes, not the head, so there is no bone overlap with
+    // steps 10-11. Runs INSIDE `update()` (not gated behind a separate
+    // effect) because it must set `vrm.lookAt.yaw`/`.pitch` (or the eye-bone
+    // delta) before `VRMAvatar`'s own `currentVrm.update(delta)` call reads
+    // them this same frame — `lookAt.update()` runs with `autoUpdate` still
+    // `true` by three-vrm's default until this module sets it `false`, and
+    // would otherwise silently overwrite whatever this step wrote
+    // (RESEARCH Pitfall 3, see eyeGaze.ts's file header). Always runs,
+    // never gated on `camera` the way step 10 is — eyeGaze.ts centers
+    // itself (mode "center"/"aversion") when no camera is supplied, so a
+    // controller instance not yet wired to R3F still gets subtle,
+    // camera-independent eye behavior instead of frozen eyes. The bias
+    // passed in is the PREVIOUS frame's emotion output (D-12 gaze) — using
+    // last frame's value because emotion itself runs at step 14, after this
+    // one. `shiftDetected` feeds `forceBlinkRef`, consumed by step 2 on the
+    // very next frame (D-02).
+    const eyeResult = eyeGaze.step({
+      adapter,
+      camera,
+      chatStatus,
+      delta,
+      bias: emotionCouplingRef.current.gazeBias,
+    });
+    if (eyeResult.shiftDetected) {
+      forceBlinkRef.current = true;
+    }
+
+    // 13. Visemes (VIS-01..03): hybrid vendor-timing-vs-audio-analysis mouth
+    // blendshapes plus an additive, non-accumulating jaw delta (D-05..D-08).
+    // Fully self-gating: `viseme.step` is a no-op (zero writes) whenever
+    // `visemeChannel` is omitted/null or the channel has no recent
+    // timing/analysis data, and yields ownership (writes zero exactly once,
+    // then stops) once the channel goes idle (D-08) — so an
+    // avatar/controller that never wires a channel behaves identically to
+    // pre-Phase-18 (backward compatibility must-have). `getNowMs` defaults
+    // to the module-level `defaultNow` (performance.now()) but is
+    // injectable for deterministic tests.
+    viseme.step({
+      adapter,
+      channel: visemeChannel ?? null,
+      nowMs: (getNowMs ?? defaultNow)(),
+      delta,
+    });
+
+    // 14. Emotion (EMO-02/03): crossfades the requested emotion's VRM
+    // expressions in/out over expressionDrift (step 8), which this module
+    // suppresses via `driftScale` while an emotion is present (D-15).
+    // Deliberately LAST in the composition order — its `expressionManager.
+    // setValue` calls win over step 8's drift writes for any shared
+    // expression slot this frame (last-writer-wins on a plain scalar
+    // manager, same reasoning as talk-cycle owning clip selection). Its
+    // three outputs (`driftScale`, `gazeBias`, `suggestedGesture`) are
+    // stored into refs consumed by EARLIER steps (8, 12, 11) on the NEXT
+    // frame — one frame of latency, imperceptible at any real frame rate.
+    // `onConsume` fires exactly once, the frame a new hint is actually
+    // consumed (compared by reference/value against the last-consumed hint
+    // inside emotion.ts itself — see emotion.ts's own step-1 comment).
+    const emo = emotion.step({
+      adapter,
+      chatStatus,
+      emotionHint: emotionHint ?? null,
+      delta,
+      onConsume: () => onEmotionConsumed?.(),
+    });
+    emotionCouplingRef.current.driftScale = emo.driftScale;
+    emotionCouplingRef.current.gazeBias.yawOffsetDeg = emo.gazeBias.yawOffsetDeg;
+    emotionCouplingRef.current.gazeBias.pitchOffsetDeg = emo.gazeBias.pitchOffsetDeg;
+    emotionCouplingRef.current.gazeBias.aversionScale = emo.gazeBias.aversionScale;
+    emotionCouplingRef.current.gazeBias.saccadeScale = emo.gazeBias.saccadeScale;
+    if (emo.suggestedGesture) {
+      pendingEmotionGestureRef.current = { gesture: emo.suggestedGesture, ageS: 0 };
+    }
   }
 
   return { update };

@@ -130,6 +130,12 @@ None - no external service configuration required.
 - `additiveBone.ts` is ready for reuse by 18-03's jaw motion (viseme work) without modification.
 - No blockers identified for 18-02/18-03/18-04.
 
+## Self-Check: PASSED
+
+All 9 created/modified files verified present on disk; all 5 commit hashes
+(`dc2fa7d`, `91e004c`, `a027c5f`, `f8d5de0`, `68bc80c`) verified present in
+`git log --oneline -8`.
+
 ---
 *Phase: 18-facial-performance-eyes-visemes-emotion*
 *Completed: 2026-09-21*

@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/core",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Core VRM AI avatar functionality",
   "keywords": [
     "vrm",
@@ -51,8 +51,8 @@
   },
   "devDependencies": {
     "@types/three": "^0.180.0",
+    "@vitest/coverage-v8": "^2.0.0",
     "typescript": "^5",
-    "vitest": "^2.0.0",
-    "@vitest/coverage-v8": "^2.0.0"
+    "vitest": "^2.0.0"
   }
 }

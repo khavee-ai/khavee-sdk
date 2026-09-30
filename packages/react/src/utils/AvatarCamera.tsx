@@ -370,7 +370,12 @@ export function AvatarCamera({
         controlsRef.current.dolly(currentDistance - desiredDistance, false);
       }
     }
-  }, 1); // Priority 1 — run after CameraControls' default-priority update
+    // Priority 0, NOT a positive value: in R3F any subscriber with priority > 0
+    // sets `internal.priority`, which disables the automatic gl.render() and
+    // leaves the canvas blank unless the app renders manually. Subscribers run
+    // in ascending priority order, so 0 already runs after drei's
+    // CameraControls (-1) — which is all the ordering this needs.
+  }, 0);
 
   return <CameraControls ref={controlsRef} makeDefault />;
 }

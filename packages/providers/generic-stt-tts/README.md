@@ -183,6 +183,7 @@ That's the whole contract for `STTProvider`: declare `supportsStreaming` and `su
 - Respect `signal` (`AbortSignal`) wherever the interface accepts one — check `signal?.aborted` and pass `signal` into your `fetch()` calls so an aborted turn actually cancels the in-flight request.
 - Don't throw on cancellation — if the call was aborted, return quietly instead of throwing, so a barge-in doesn't surface as a fake error.
 - Normalize errors to `Error` instances with useful messages — `GenericPipelineProvider` forwards them to `onError` as-is.
+- **TTS adapters: report viseme timing if your vendor has it.** `speak()` receives an optional `onViseme` callback. If the vendor returns word/phoneme/viseme timing, convert each entry to `PhonemeData` (`phoneme`, `intensity`, absolute `performance.now()`-based `timestamp`, optional `duration`, `source: "timing"`) and call it. `GenericPipelineProvider` forwards these to `onPhonemeDetected`, and `@khaveeai/react` drives the avatar's mouth from them instead of guessing from the audio. Events arriving after a barge-in are dropped. No timing from your vendor? Don't call it — the avatar falls back to audio analysis.
 
 The `OpenAI*Adapter` classes in `src/adapters/` are additional real, production-hardened references — open them next to the interface they implement for a second example with full error handling.
 

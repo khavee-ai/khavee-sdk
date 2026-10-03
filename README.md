@@ -14,6 +14,7 @@ This repo is a pnpm monorepo containing the SDK packages plus a Next.js demo app
 | [`@khaveeai/react`](packages/react) | `KhaveeProvider`, `VRMAvatar`, `GLBAvatar`, `useRealtime()` — renders and animates the avatar, automatically, from whatever `RealtimeProvider` you give it. |
 | [`@khaveeai/providers-generic-stt-tts`](packages/providers/generic-stt-tts) | **The flagship "swap any vendor" package.** `GenericPipelineProvider` composes a VAD + STT + LLM + TTS adapter — mix OpenAI with non-OpenAI vendors freely. |
 | [`@khaveeai/providers-openai-realtime`](packages/providers/openai-realtime) | Full-duplex WebRTC connection directly to OpenAI's Realtime API. One continuous session — no separate STT/LLM/TTS stages, OpenAI-only by design. |
+| [`@khaveeai/providers-xai-realtime`](packages/providers/xai-realtime) | Full-duplex connection to xAI's Realtime API (Grok voices) over WebSocket. Same `RealtimeProvider` interface. |
 | [`@khaveeai/providers-openai-stt-tts`](packages/providers/openai-stt-tts) | Turn-based VAD→STT→Chat→TTS pipeline, hardcoded to OpenAI. The OpenAI-only precursor to `generic-stt-tts` — kept as-is for existing consumers. |
 | [`@khaveeai/providers-mock`](packages/providers/mock) | `MockLLM`/`MockTTS` — canned responses for offline testing. Implements an older, separate interface; doesn't plug into the avatar pipeline directly (see its README). |
 | [`@khaveeai/providers-pgvector`](packages/providers/pgvector) | Vector-store provider backed by Postgres + pgvector, for RAG. |
@@ -106,10 +107,12 @@ Never embed a real API key directly in browser code (`apiKey` config fields exis
 
 ## Avatar rendering: VRM vs GLB
 
-- `VRMAvatar` (`.vrm` files) — drives standard VRM mouth blendshapes (`aa`/`ih`/`ou`/`ee`/`oh`) directly from phoneme detection on the TTS audio, for real lip-sync.
-- `GLBAvatar` (`.glb`/`.gltf` files) — most GLB exports don't have standard mouth blendshapes, so instead it switches between animation clips named with `talk`/`gesture`/`speak` while the AI is speaking. Different mechanism, same automatic behavior.
+- `VRMAvatar` (`.vrm` files) — the full facial performance: viseme lip sync (from TTS timing when the vendor provides it, audio analysis otherwise) with jaw motion, eye contact with saccades and gaze-coupled blinks, and LLM-driven emotion via the `set_emotion` tool.
+- `GLBAvatar` (`.glb`/`.gltf` files) — most GLB exports don't have standard mouth blendshapes, so instead it switches between animation clips by name as the conversation moves between idle, thinking and speaking.
 
-Both live in `@khaveeai/react` — see its README for full props and the `useRealtime()`/`useVRMExpressions()` hooks.
+Both crossfade state-driven clips (pass arrays to rotate several clips per state), ship with a tuned three-point light rig and Cineon tone mapping, and work with the scene helpers: `ShadowFloor`/`AvatarContactShadows`, `AvatarPostFX` (bloom, DOF, vignette, grading, SMAA), an in-canvas `background`, and `AvatarCamera` (framing presets, handheld drift, speaking push-in).
+
+All of it lives in `@khaveeai/react` — see [its README](packages/react/README.md) for props and examples.
 
 ## Tool-calling (function calling)
 
@@ -125,10 +128,6 @@ provider.registerFunction({
 ```
 
 This works the same way across `OpenAIRealtimeProvider`, `OpenAISTTTTSProvider`, and `GenericPipelineProvider`.
-
-## Known issues
-
-- **`@khaveeai/providers-openai-realtime`'s proxy contract.** The provider's `connect()` expects a proxy endpoint that returns an ephemeral session token; the example negotiate route in this repo (`apps/playground/src/app/api/negotiate/route.ts`) predates that contract and returns a different shape. If you copy the demo route as-is, verify it against the provider's actual `connect()` implementation first.
 
 ## Development
 

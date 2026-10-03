@@ -18,6 +18,7 @@ npm install @khaveeai/core
 - [The four pipeline-stage interfaces](#the-four-pipeline-stage-interfaces)
 - [RealtimeProvider](#realtimeprovider)
 - [Tool-calling](#tool-calling)
+- [Avatar tools: emotion and gestures](#avatar-tools-emotion-and-gestures)
 - [KhaveeClient](#khaveeclient)
 - [Notes](#notes)
 
@@ -70,10 +71,26 @@ interface TTSProvider extends Provider {
       voice?: string;
       speed?: number;
       signal?: AbortSignal;
+      onViseme?: (viseme: PhonemeData) => void;
     }
   ): Promise<void>;
 }
 ```
+
+**Viseme timing.** If your TTS vendor returns word, phoneme or viseme timing, convert it to `PhonemeData` and call `onViseme` — `@khaveeai/react` then drives the avatar's mouth from the real speech timeline instead of guessing from the audio:
+
+```typescript
+interface PhonemeData {
+  phoneme: "aa" | "ih" | "ou" | "ee" | "oh" | "sil";
+  intensity: number;              // 0-1
+  timestamp: number;              // absolute, performance.now()-based
+  duration?: number;
+  source?: "timing" | "audio-analysis"; // set "timing" for vendor timing data
+  wordBoundary?: boolean;         // true on the first viseme of a word
+}
+```
+
+Vendors without timing (e.g. OpenAI TTS) simply never call it, and the avatar falls back to audio analysis.
 
 **Capability flags** (`supportsStreaming`, `supportsRejection`, `supportsToolCalling`) let you check what a provider can do *without* calling it:
 
@@ -141,6 +158,44 @@ executor.register("get_weather", getWeather.execute);
 const result = await executor.execute("get_weather", { city: "Bangkok" });
 ```
 
+## Avatar tools: emotion and gestures
+
+Ready-made tools that let the LLM drive the avatar's face. Pair them with `@khaveeai/react`'s `setEmotionHint` / `setGestureHint`.
+
+**Emotion — zero config.** `createEmotionTool(setEmotionHint)` returns a fully wired `set_emotion` tool: validation and `execute` are built in. Append `emotionSystemPrompt` to your instructions so the model calls it once per turn, before speaking.
+
+```typescript
+import { createEmotionTool, emotionSystemPrompt } from "@khaveeai/core";
+
+const provider = new OpenAIRealtimeProvider({
+  instructions: myInstructions + "\n\n" + emotionSystemPrompt,
+});
+
+// inside a component under KhaveeProvider:
+const { setEmotionHint } = useKhavee();
+provider.registerFunction(createEmotionTool(setEmotionHint).tool);
+```
+
+- Emotions: `EMOTION_NAMES` = `happy`, `sad`, `angry`, `surprised`, `neutral`, `thinking` (type `EmotionName`).
+- Intensity is clamped to 0–1; a missing or malformed value uses `DEFAULT_EMOTION_INTENSITY` (`0.7`).
+- An unknown emotion name is rejected and never reaches your setter.
+
+If your provider takes tools at construction instead, pass the tool there with a setter that forwards to `setEmotionHint` once your component mounts.
+
+**Gestures.** `toolGesture` is the matching `set_gesture` definition (`"nod"`, `"shake"`, or `"none"` for no gesture) — supply the `execute`:
+
+```typescript
+import { toolGesture } from "@khaveeai/core";
+
+provider.registerFunction({
+  ...toolGesture,
+  execute: async (args) => {
+    setGestureHint(args?.gesture ?? null);
+    return { success: true, message: `gesture: ${args?.gesture}` };
+  },
+});
+```
+
 ## KhaveeClient
 
 A small `axios`-based HTTP client for Khavee's hosted platform API (project preview data, etc.) — a separate concern from the pipeline interfaces above. Most SDK usage doesn't need it.
@@ -157,7 +212,7 @@ Supports API key (`X-API-Key`) or JWT (`Authorization: Bearer`) auth, plus `get`
 ## Notes
 
 - **Legacy interfaces.** `src/types/mock.ts` defines an older, smaller pair — `LegacyLLMProvider` (`streamChat`) and `LegacyTTSProvider` (`speak`) — predating `RealtimeProvider`. Only `@khaveeai/providers-mock` implements them today. `KhaveeProvider` accepts a `config.llm`/`config.tts` of this shape for typing only — its actual pipeline runs on `config.realtime` (a `RealtimeProvider`), not these.
-- **`toolAnimate`** (`src/tools/animate.ts`) is not re-exported from `src/index.ts` — it isn't importable as `@khaveeai/core`'s public API today.
+- **`toolAnimate`** is a `trigger_animation` tool definition with no `execute` — supply one that calls `@khaveeai/react`'s `useAnimations().animate(name)`.
 
 ## License
 

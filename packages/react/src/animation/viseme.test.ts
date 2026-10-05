@@ -305,7 +305,7 @@ describe("stepViseme — analysis-path carryover (D-06)", () => {
 });
 
 describe("stepViseme — stale analysis (> ANALYSIS_STALE_MS)", () => {
-  it("targets silence once the latest analysis sample is older than 150ms, and the mouth decays", () => {
+  it("targets silence once the latest analysis sample is older than ANALYSIS_STALE_MS (60ms), and the mouth decays", () => {
     const em = makeStubExpressionManager();
     const adapter = makeStubAdapter(em);
     const state = createVisemeState();
@@ -454,5 +454,125 @@ describe("stepViseme — null expression manager (GLB)", () => {
     }).not.toThrow();
 
     expect(result).toEqual({ owning: false, openness: 0 });
+  });
+});
+
+// ── stepViseme: loudness envelope (analysis path) ───────────────────────
+
+describe("VisemeChannel.pushLevel", () => {
+  it("ignores non-finite values and is cleared by clear()", () => {
+    const channel = createVisemeChannel();
+    channel.pushLevel(Number.NaN, 0);
+    expect(channel.latestLevel).toBeNull();
+    channel.pushLevel(0.2, 0);
+    expect(channel.latestLevel?.rms).toBe(0.2);
+    channel.clear();
+    expect(channel.latestLevel).toBeNull();
+  });
+
+  it("counts toward isActive only while audible and fresh — the level feed runs through silence", () => {
+    const channel = createVisemeChannel();
+    channel.pushLevel(0.001, 0);
+    expect(channel.isActive(0)).toBe(false);
+    channel.pushLevel(0.2, 10);
+    expect(channel.isActive(10)).toBe(true);
+    expect(channel.isActive(500)).toBe(false);
+  });
+});
+
+describe("stepViseme — loudness envelope drives openness (analysis path)", () => {
+  /**
+   * Drives `durationMs` of frames at 60fps. The classifier keeps reporting the
+   * same vowel every frame (as the real one does mid-sentence) while the
+   * level follows the speech envelope.
+   */
+  function run(
+    state: ReturnType<typeof createVisemeState>,
+    adapter: AvatarFormatAdapter,
+    channel: VisemeChannel,
+    startMs: number,
+    durationMs: number,
+    rms: number | null,
+    ph: TimedPhoneme["phoneme"] | null = "aa",
+  ): number {
+    const dt = 1000 / 60;
+    let now = startMs;
+    while (now < startMs + durationMs) {
+      if (ph) channel.pushAnalysis(phoneme(ph, now, 50), now);
+      if (rms !== null) channel.pushLevel(rms, now);
+      stepViseme(state, { adapter, channel, nowMs: now, delta: dt / 1000 });
+      now += dt;
+    }
+    return now;
+  }
+
+  it("opens on a syllable, closes in the gap, and reopens — even though the vowel never changes", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+
+    let now = run(state, adapter, channel, 0, 150, 0.15);
+    expect(state.smoothed.aa).toBeGreaterThan(0.5);
+
+    now = run(state, adapter, channel, now, 120, 0.002);
+    expect(state.smoothed.aa).toBeLessThan(0.1);
+
+    run(state, adapter, channel, now, 150, 0.15);
+    expect(state.smoothed.aa).toBeGreaterThan(0.5);
+  });
+
+  it("does not hold the mouth open on a constant full-intensity vowel when the audio is silent", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+
+    run(state, adapter, channel, 0, 300, 0.001);
+    expect(Math.max(...VISEME_KEYS.map((k) => state.smoothed[k]))).toBeLessThan(0.02);
+  });
+
+  it("opens less for a quieter syllable than for the recent loud peak", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+
+    let now = run(state, adapter, channel, 0, 200, 0.2);
+    const loud = state.smoothed.aa;
+    now = run(state, adapter, channel, now, 100, 0.002);
+    run(state, adapter, channel, now, 200, 0.06);
+    expect(state.smoothed.aa).toBeLessThan(loud * 0.75);
+    expect(state.smoothed.aa).toBeGreaterThan(0.1);
+  });
+
+  it("never opens past MAX_ANALYSIS_OPEN (0.85), even at the loudest peak", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+
+    run(state, adapter, channel, 0, 400, 0.9);
+    expect(state.smoothed.aa).toBeLessThanOrEqual(0.85 + 1e-6);
+  });
+
+  it("still opens with loud audio before any vowel has been classified", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+
+    run(state, adapter, channel, 0, 150, 0.15, null);
+    expect(state.smoothed.aa).toBeGreaterThan(0.3);
+  });
+
+  it("returns the jaw toward rest in the gap between syllables", () => {
+    const jaw = new THREE.Object3D();
+    const adapter = makeStubAdapter(makeStubExpressionManager(), jaw);
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+    const rest = new THREE.Quaternion();
+
+    let now = run(state, adapter, channel, 0, 150, 0.15);
+    const openAngle = jaw.quaternion.angleTo(rest);
+    expect(openAngle).toBeGreaterThan(0.05);
+
+    run(state, adapter, channel, now, 120, 0.002);
+    expect(jaw.quaternion.angleTo(rest)).toBeLessThan(openAngle * 0.2);
   });
 });

@@ -213,7 +213,7 @@ All `VRMAvatar`-only and automatic once the avatar is inside a `KhaveeProvider`.
 **Lip sync.** Mouth shapes (`aa`, `ih`, `ou`, `ee`, `oh`) come from a viseme channel with two sources:
 
 1. **TTS timing** (primary) — when the TTS adapter reports phoneme/viseme timing (`TTSProvider.speak`'s `onViseme`, see `@khaveeai/core`), the mouth follows the actual speech timeline.
-2. **Audio analysis** (fallback) — when no timing exists (e.g. OpenAI TTS), a client-side classifier reads the playing audio.
+2. **Audio analysis** (fallback) — when no timing exists (e.g. OpenAI TTS), the playing audio drives it: a client-side classifier picks the mouth *shape*, and the voice's loudness envelope sets how far it opens, so the mouth closes between syllables.
 
 Both are smoothed with coarticulation (lip rounding anticipates upcoming vowels) and drive an additive jaw-bone motion on models that have a jaw bone. The channel is fed by `useRealtime()`, so at least one component in the tree must call it.
 

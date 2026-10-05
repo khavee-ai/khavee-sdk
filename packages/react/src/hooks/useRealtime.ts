@@ -312,6 +312,8 @@ export function useRealtime() {
         intensityMultiplier: 6.0,
         minIntensity: 0.1,
         realtimeProvider: realtimeProvider,
+        // Mouth openness follows loudness; the classifier only picks the shape.
+        onLevel: (rms: number) => visemeChannel.pushLevel(rms, performance.now()),
         onPhonemeDetected: (phoneme: PhonemeData) => {
           // Feed the viseme channel directly (D-05 improved fallback), NOT
           // rAF-coalesced like the legacy mouth path below — the channel is
@@ -447,8 +449,12 @@ class RealtimeAudioAnalyzer {
     minIntensity?: number;
     realtimeProvider: any;
     onPhonemeDetected: (phoneme: PhonemeData) => void;
+    /** Called every animation frame with the playing audio's RMS loudness. */
+    onLevel?: (rms: number) => void;
   };
   private isRunning = false;
+  private levelRaf: number | null = null;
+  private levelBuffer: Float32Array<ArrayBuffer> | null = null;
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private meydaAnalyzer: any = null;
@@ -475,6 +481,36 @@ class RealtimeAudioAnalyzer {
       this.isRunning = false;
       throw error;
     }
+    this.startLevelLoop();
+  }
+
+  // Reads this.analyser fresh each frame, so it follows updateAudioSource()
+  // and simply skips frames until the provider's TTS audio exists.
+  private startLevelLoop() {
+    if (!this.config.onLevel || this.levelRaf !== null || typeof requestAnimationFrame !== "function") {
+      return;
+    }
+    const tick = () => {
+      if (!this.isRunning) {
+        this.levelRaf = null;
+        return;
+      }
+      const analyser = this.analyser;
+      if (analyser) {
+        const size = analyser.fftSize;
+        if (!this.levelBuffer || this.levelBuffer.length !== size) {
+          this.levelBuffer = new Float32Array(size);
+        }
+        analyser.getFloatTimeDomainData(this.levelBuffer);
+        let sumSquares = 0;
+        for (let i = 0; i < size; i++) {
+          sumSquares += this.levelBuffer[i] * this.levelBuffer[i];
+        }
+        this.config.onLevel?.(Math.sqrt(sumSquares / size));
+      }
+      this.levelRaf = requestAnimationFrame(tick);
+    };
+    this.levelRaf = requestAnimationFrame(tick);
   }
 
   private async attemptConnection() {
@@ -518,6 +554,11 @@ class RealtimeAudioAnalyzer {
 
   stop() {
     this.isRunning = false;
+
+    if (this.levelRaf !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(this.levelRaf);
+    }
+    this.levelRaf = null;
 
     if (this.meydaAnalyzer) {
       this.meydaAnalyzer.stop();

@@ -71,7 +71,7 @@ const TIMING_TAIL_MS = 250;
 const MAX_CONTIGUOUS_GAP_MS = 50;
 const COART_EDGE = 0.35;
 const ANTICIPATION_MS = 120;
-const ANALYSIS_STALE_MS = 150;
+const ANALYSIS_STALE_MS = 60;
 const ANALYSIS_MIN_HOLD_MS = 40;
 const COART_CARRYOVER_WEIGHT = 0.3;
 const COART_CARRYOVER_DECAY_MS = 80;
@@ -81,7 +81,22 @@ const MAX_JAW_OPEN_DEG = 10;
 const TIMING_ATTACK_S = 0.02;
 const TIMING_RELEASE_S = 0.05;
 const ANALYSIS_ATTACK_S = 0.035;
-const ANALYSIS_RELEASE_S = 0.09;
+const ANALYSIS_RELEASE_S = 0.06;
+
+// Loudness envelope (analysis path). The spectral classifier only picks the
+// mouth SHAPE; how far the mouth opens follows the audio's RMS, so it closes
+// in the gaps between syllables instead of holding the last vowel open.
+const LEVEL_STALE_MS = 100;
+/** RMS at or below this is treated as silence. */
+const LEVEL_GATE = 0.008;
+/** Floor for the adaptive peak, so near-silence is never stretched to full open. */
+const LEVEL_MIN_REF = 0.05;
+const LEVEL_PEAK_DECAY_MS = 1500;
+const LEVEL_CURVE = 0.7;
+/** Openness at the loudest recent peak — real speech rarely opens fully. */
+const MAX_ANALYSIS_OPEN = 0.85;
+/** Shape used when the audio is loud but no vowel has been classified yet. */
+const NEUTRAL_OPEN_SHAPE: MouthState = { aa: 0.7, ih: 0, ou: 0, ee: 0, oh: 0.2 };
 
 // ── Mouth-state helpers ───────────────────────────────────────────────────
 
@@ -121,33 +136,6 @@ export function timedToMouthTarget(p: TimedPhoneme): MouthState {
   };
 }
 
-// ── Audio-analysis loudness curve (ported verbatim from useRealtime.ts's
-//    phonemeToMouthState — do not change these constants without also
-//    checking useRealtime.ts's legacy fallback still matches by eye) ──────
-
-const PHONEME_BOOSTS: Record<VisemeKey, number> = { aa: 2.2, ih: 1.8, ou: 2.0, ee: 1.7, oh: 1.9 };
-const MIN_MOVEMENT: Record<VisemeKey, number> = { aa: 0.25, ih: 0.15, ou: 0.2, ee: 0.15, oh: 0.18 };
-const SECONDARY_BLEND: Record<VisemeKey, VisemeKey> = { aa: "oh", ih: "ee", ou: "oh", ee: "ih", oh: "aa" };
-
-/** Client-side spectral-classifier fallback shape, verbatim-ported constants (D-05 fallback). */
-export function analysisToMouthTarget(p: TimedPhoneme, multiplier = 6.0): MouthState {
-  const out = zeroMouthState();
-  const phoneme = p.phoneme;
-  if (phoneme === "sil" || !(VISEME_KEYS as readonly string[]).includes(phoneme) || p.intensity <= 0.01) {
-    return out;
-  }
-  const key = phoneme as VisemeKey;
-  let boosted = p.intensity * multiplier;
-  boosted *= PHONEME_BOOSTS[key];
-  boosted *= 1.8;
-  boosted = Math.pow(boosted, 0.7);
-  boosted = Math.min(boosted, 1.0);
-  const finalIntensity = Math.max(boosted, MIN_MOVEMENT[key]);
-  out[key] = finalIntensity;
-  out[SECONDARY_BLEND[key]] = finalIntensity * 0.15;
-  return out;
-}
-
 // ── VisemeChannel: plain mutable event sink (never React state) ─────────
 
 /**
@@ -158,10 +146,18 @@ export function analysisToMouthTarget(p: TimedPhoneme, multiplier = 6.0): MouthS
 export class VisemeChannel {
   readonly timeline: TimedPhoneme[] = [];
   latestAnalysis: { phoneme: TimedPhoneme; receivedAtMs: number } | null = null;
+  /** Latest RMS loudness of the playing speech audio (analysis path). */
+  latestLevel: { rms: number; receivedAtMs: number } | null = null;
 
   /** Records the latest audio-analysis sample, replacing any previous one. */
   pushAnalysis(phoneme: TimedPhoneme, nowMs: number): void {
     this.latestAnalysis = { phoneme, receivedAtMs: nowMs };
+  }
+
+  /** Records the playing audio's RMS loudness (0..~1). Non-finite values are ignored. */
+  pushLevel(rms: number, nowMs: number): void {
+    if (!Number.isFinite(rms) || !Number.isFinite(nowMs)) return;
+    this.latestLevel = { rms: Math.max(0, rms), receivedAtMs: nowMs };
   }
 
   /**
@@ -180,10 +176,11 @@ export class VisemeChannel {
     }
   }
 
-  /** Empties both the timing timeline and the latest analysis sample. */
+  /** Empties the timing timeline, the latest analysis sample and the latest level. */
   clear(): void {
     this.timeline.length = 0;
     this.latestAnalysis = null;
+    this.latestLevel = null;
   }
 
   /** Drops timeline entries that ended more than 1s before `nowMs` (T-18-06). */
@@ -200,11 +197,19 @@ export class VisemeChannel {
     }
   }
 
-  /** True when either a fresh analysis sample or timing data covers `nowMs`. */
+  /**
+   * True when a fresh analysis sample, audible fresh level, or timing data
+   * covers `nowMs`. Level only counts above the gate: the level feed keeps
+   * running through silence, and silence alone must not claim the mouth.
+   */
   isActive(nowMs: number): boolean {
     const analysisActive =
       this.latestAnalysis !== null && nowMs - this.latestAnalysis.receivedAtMs <= CHANNEL_ACTIVE_WINDOW_MS;
-    return analysisActive || this.hasTimingAt(nowMs);
+    const levelActive =
+      this.latestLevel !== null &&
+      nowMs - this.latestLevel.receivedAtMs <= LEVEL_STALE_MS &&
+      this.latestLevel.rms > LEVEL_GATE;
+    return analysisActive || levelActive || this.hasTimingAt(nowMs);
   }
 
   /** True from `first.timestamp - TIMING_LEAD_MS` through `lastEnd + TIMING_TAIL_MS`. */
@@ -399,11 +404,14 @@ export interface VisemeState {
   smoothed: MouthState;
   owning: boolean;
   dominantPhoneme: VisemeKey | "sil";
-  dominantTarget: MouthState;
+  /** Mouth shape (intensity 1) of the dominant phoneme; openness is applied separately. */
+  dominantShape: MouthState;
   candidatePhoneme: VisemeKey | "sil" | null;
   candidateSinceMs: number | null;
   carryover: MouthState;
   carryoverAgeMs: number;
+  /** Adaptive loudness reference: jumps to new peaks, decays toward LEVEL_MIN_REF. */
+  levelPeak: number;
   jawSlot: AdditiveBoneSlot;
 }
 
@@ -412,13 +420,29 @@ export function createVisemeState(): VisemeState {
     smoothed: zeroMouthState(),
     owning: false,
     dominantPhoneme: "sil",
-    dominantTarget: zeroMouthState(),
+    dominantShape: zeroMouthState(),
     candidatePhoneme: null,
     candidateSinceMs: null,
     carryover: zeroMouthState(),
     carryoverAgeMs: 0,
+    levelPeak: LEVEL_MIN_REF,
     jawSlot: createAdditiveBoneSlot(),
   };
+}
+
+function isFresh(sample: { receivedAtMs: number } | null, nowMs: number, maxAgeMs: number): boolean {
+  return sample !== null && nowMs - sample.receivedAtMs <= maxAgeMs;
+}
+
+/**
+ * Maps RMS loudness to 0..1 mouth openness against an adaptive peak, so a
+ * quiet voice and a loud one both use the full range. Mutates `state.levelPeak`.
+ */
+function levelToOpenness(state: VisemeState, rms: number, delta: number): number {
+  const decay = Math.exp(-(delta * 1000) / LEVEL_PEAK_DECAY_MS);
+  state.levelPeak = Math.max(rms, LEVEL_MIN_REF + (state.levelPeak - LEVEL_MIN_REF) * decay);
+  if (rms <= LEVEL_GATE) return 0;
+  return Math.pow(clamp01((rms - LEVEL_GATE) / (state.levelPeak - LEVEL_GATE)), LEVEL_CURVE);
 }
 
 export interface VisemeStepParams {
@@ -484,41 +508,59 @@ export function stepViseme(state: VisemeState, params: VisemeStepParams): Viseme
     sampleTimeline(channel.timeline, nowMs, _targetScratch);
     attackS = TIMING_ATTACK_S;
     releaseS = TIMING_RELEASE_S;
-  } else if (channel && channel.latestAnalysis && nowMs - channel.latestAnalysis.receivedAtMs <= ANALYSIS_STALE_MS) {
-    const latest = channel.latestAnalysis.phoneme;
-    const latestKey: VisemeKey | "sil" = (VISEME_KEYS as readonly string[]).includes(latest.phoneme)
-      ? (latest.phoneme as VisemeKey)
-      : "sil";
+  } else if (
+    channel &&
+    (isFresh(channel.latestAnalysis, nowMs, ANALYSIS_STALE_MS) || isFresh(channel.latestLevel, nowMs, LEVEL_STALE_MS))
+  ) {
+    const analysisFresh = isFresh(channel.latestAnalysis, nowMs, ANALYSIS_STALE_MS);
+    const latest = channel.latestAnalysis?.phoneme ?? null;
 
-    if (latestKey === state.dominantPhoneme) {
-      // Same as dominant — refresh the dominant target from the newest
-      // sample and cancel any stale candidate.
-      state.candidatePhoneme = null;
-      state.candidateSinceMs = null;
-      state.dominantTarget = analysisToMouthTarget(latest);
-    } else {
-      // Debounce (D-06 improved fallback): a differing phoneme becomes the
-      // candidate and is only promoted after ANALYSIS_MIN_HOLD_MS.
-      if (state.candidatePhoneme !== latestKey) {
-        state.candidatePhoneme = latestKey;
-        state.candidateSinceMs = nowMs;
-      }
-      const heldMs = state.candidateSinceMs !== null ? nowMs - state.candidateSinceMs : 0;
-      if (heldMs >= ANALYSIS_MIN_HOLD_MS) {
-        state.carryover = { ...state.dominantTarget };
-        state.carryoverAgeMs = 0;
-        state.dominantPhoneme = latestKey;
-        state.dominantTarget = analysisToMouthTarget(latest);
+    // Shape selection: the classifier picks WHICH mouth shape, debounced.
+    if (analysisFresh && latest) {
+      const latestKey: VisemeKey | "sil" = (VISEME_KEYS as readonly string[]).includes(latest.phoneme)
+        ? (latest.phoneme as VisemeKey)
+        : "sil";
+
+      if (latestKey === state.dominantPhoneme) {
         state.candidatePhoneme = null;
         state.candidateSinceMs = null;
+      } else {
+        // Debounce (D-06 improved fallback): a differing phoneme becomes the
+        // candidate and is only promoted after ANALYSIS_MIN_HOLD_MS.
+        if (state.candidatePhoneme !== latestKey) {
+          state.candidatePhoneme = latestKey;
+          state.candidateSinceMs = nowMs;
+        }
+        const heldMs = state.candidateSinceMs !== null ? nowMs - state.candidateSinceMs : 0;
+        if (heldMs >= ANALYSIS_MIN_HOLD_MS) {
+          state.carryover = { ...state.dominantShape };
+          state.carryoverAgeMs = 0;
+          state.dominantPhoneme = latestKey;
+          state.dominantShape = { ...VISEME_SHAPES[latestKey] };
+          state.candidatePhoneme = null;
+          state.candidateSinceMs = null;
+        }
       }
     }
 
-    // Decaying carryover influence of the previous viseme (D-06).
+    // Openness: the loudness envelope decides HOW FAR the mouth opens. With no
+    // level feed (e.g. a consumer pushing analysis only), fall back to the
+    // sample's own intensity while it is fresh.
+    let openness: number;
+    if (isFresh(channel.latestLevel, nowMs, LEVEL_STALE_MS)) {
+      openness = levelToOpenness(state, channel.latestLevel!.rms, delta);
+    } else {
+      openness = analysisFresh && latest ? clamp01(latest.intensity) : 0;
+    }
+    openness *= MAX_ANALYSIS_OPEN;
+
+    const shape = state.dominantPhoneme === "sil" ? NEUTRAL_OPEN_SHAPE : state.dominantShape;
+
+    // Decaying carryover influence of the previous shape (D-06).
     state.carryoverAgeMs += delta * 1000;
     const c = COART_CARRYOVER_WEIGHT * Math.exp(-state.carryoverAgeMs / COART_CARRYOVER_DECAY_MS);
     for (const key of VISEME_KEYS) {
-      _targetScratch[key] = state.dominantTarget[key] * (1 - c) + state.carryover[key] * c;
+      _targetScratch[key] = (shape[key] * (1 - c) + state.carryover[key] * c) * openness;
     }
   } else {
     _targetScratch.aa = 0;

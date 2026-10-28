@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useKhavee } from "../KhaveeProvider";
 import { useVRMExpressions } from "../VRMAvatar";
 import type { TimedPhoneme } from "../animation/viseme";
+import { createHeadAudioShapeSource, type ShapeFrame, type ShapeSource } from "../lipsync/headAudio";
 
 /**
  * Hook for real-time chat with OpenAI Realtime API
@@ -54,6 +55,8 @@ export function useRealtime() {
     null
   );
   const lipSyncRafIdRef = useRef<number | null>(null);
+  // Last dominant shape reported from HeadAudio, so currentPhoneme only updates on change.
+  const lastShapePhonemeRef = useRef<PhonemeData["phoneme"]>("sil");
 
   // Tracks the previous chatStatus so the viseme channel is cleared only on
   // LEAVING "speaking" (Phase 18 VIS-01/D-05) — never on entering a
@@ -312,8 +315,33 @@ export function useRealtime() {
         intensityMultiplier: 6.0,
         minIntensity: 0.1,
         realtimeProvider: realtimeProvider,
-        // Mouth openness follows loudness; the classifier only picks the shape.
+        // Mouth openness follows loudness; HeadAudio (or, as a fallback, the
+        // classic classifier below) only picks the shape.
         onLevel: (rms: number) => visemeChannel.pushLevel(rms, performance.now()),
+        onShape: (frame: ShapeFrame) => {
+          visemeChannel.pushShape(frame.shape, frame.closure, performance.now());
+          // Keep useRealtime().currentPhoneme meaningful: report the dominant
+          // shape whenever it changes, through the same rAF-coalesced flush.
+          let dominant: PhonemeData["phoneme"] = "sil";
+          let weight = 0.01;
+          for (const key of ["aa", "ih", "ou", "ee", "oh"] as const) {
+            if (frame.shape[key] > weight) {
+              dominant = key;
+              weight = frame.shape[key];
+            }
+          }
+          if (dominant !== lastShapePhonemeRef.current) {
+            lastShapePhonemeRef.current = dominant;
+            pendingPhonemeRef.current = {
+              phoneme: dominant,
+              intensity: dominant === "sil" ? 0 : weight,
+              timestamp: Date.now(),
+            };
+            if (lipSyncRafIdRef.current === null) {
+              lipSyncRafIdRef.current = requestAnimationFrame(flushPendingLipSyncUpdate);
+            }
+          }
+        },
         onPhonemeDetected: (phoneme: PhonemeData) => {
           // Feed the viseme channel directly (D-05 improved fallback), NOT
           // rAF-coalesced like the legacy mouth path below — the channel is
@@ -451,8 +479,17 @@ class RealtimeAudioAnalyzer {
     onPhonemeDetected: (phoneme: PhonemeData) => void;
     /** Called every animation frame with the playing audio's RMS loudness. */
     onLevel?: (rms: number) => void;
+    /**
+     * Called every animation frame with HeadAudio's mouth shape. When set, the
+     * analyzer tries HeadAudio first and only falls back to the classic
+     * MFCC/formant classifier (onPhonemeDetected) if it can't start.
+     */
+    onShape?: (frame: ShapeFrame) => void;
   };
   private isRunning = false;
+  private shapeSource: ShapeSource | null = null;
+  private shapeAnalyser: AnalyserNode | null = null;
+  private lastLevelTickMs: number | null = null;
   private levelRaf: number | null = null;
   private levelBuffer: Float32Array<ArrayBuffer> | null = null;
   private audioContext: AudioContext | null = null;
@@ -487,13 +524,20 @@ class RealtimeAudioAnalyzer {
   // Reads this.analyser fresh each frame, so it follows updateAudioSource()
   // and simply skips frames until the provider's TTS audio exists.
   private startLevelLoop() {
-    if (!this.config.onLevel || this.levelRaf !== null || typeof requestAnimationFrame !== "function") {
+    if ((!this.config.onLevel && !this.config.onShape) || this.levelRaf !== null || typeof requestAnimationFrame !== "function") {
       return;
     }
     const tick = () => {
       if (!this.isRunning) {
         this.levelRaf = null;
+        this.lastLevelTickMs = null;
         return;
+      }
+      const now = performance.now();
+      const deltaMs = this.lastLevelTickMs === null ? 16 : now - this.lastLevelTickMs;
+      this.lastLevelTickMs = now;
+      if (this.shapeSource) {
+        this.config.onShape?.(this.shapeSource.update(deltaMs));
       }
       const analyser = this.analyser;
       if (analyser) {
@@ -522,7 +566,7 @@ class RealtimeAudioAnalyzer {
     if (providerAudio) {
       this.analyser = providerAudio.analyser;
       this.audioContext = providerAudio.audioContext;
-      this.setupMeydaAnalyzer();
+      this.setupAnalysis();
     }
     // If provider has no audio yet (e.g. TTS hasn't played), do nothing —
     // updateAudioSource() will be called when the first TTS response arrives.
@@ -546,10 +590,51 @@ class RealtimeAudioAnalyzer {
     this.analyser = analyser;
     this.audioContext = audioContext;
 
+    this.disposeShapeSource();
+
     // Restart analysis with new audio source
     if (this.isRunning) {
-      this.setupMeydaAnalyzer();
+      this.setupAnalysis();
     }
+  }
+
+  // HeadAudio first; the classic classifier only if HeadAudio can't start
+  // (no AudioWorklet, insecure context, model load failure).
+  private setupAnalysis() {
+    const analyser = this.analyser;
+    const audioContext = this.audioContext;
+    if (!this.config.onShape || !analyser || !audioContext) {
+      this.setupMeydaAnalyzer();
+      return;
+    }
+    createHeadAudioShapeSource(audioContext)
+      .then((source) => {
+        if (!this.isRunning || this.analyser !== analyser) {
+          source.dispose();
+          return;
+        }
+        analyser.connect(source.input);
+        this.shapeSource = source;
+        this.shapeAnalyser = analyser;
+      })
+      .catch((error) => {
+        console.warn("HeadAudio lip sync unavailable, using the classic classifier:", error);
+        if (this.isRunning && this.analyser === analyser) {
+          this.setupMeydaAnalyzer();
+        }
+      });
+  }
+
+  private disposeShapeSource() {
+    if (!this.shapeSource) return;
+    try {
+      this.shapeAnalyser?.disconnect(this.shapeSource.input);
+    } catch {
+      // Already disconnected.
+    }
+    this.shapeSource.dispose();
+    this.shapeSource = null;
+    this.shapeAnalyser = null;
   }
 
   stop() {
@@ -559,6 +644,8 @@ class RealtimeAudioAnalyzer {
       cancelAnimationFrame(this.levelRaf);
     }
     this.levelRaf = null;
+    this.lastLevelTickMs = null;
+    this.disposeShapeSource();
 
     if (this.meydaAnalyzer) {
       this.meydaAnalyzer.stop();

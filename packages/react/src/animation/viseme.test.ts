@@ -576,3 +576,115 @@ describe("stepViseme — loudness envelope drives openness (analysis path)", () 
     expect(jaw.quaternion.angleTo(rest)).toBeLessThan(openAngle * 0.2);
   });
 });
+
+// ── Shape source (HeadAudio) + word-gap closing ─────────────────────────
+
+describe("VisemeChannel.pushShape", () => {
+  it("clamps values, drops non-finite ones, and is cleared by clear()", () => {
+    const channel = createVisemeChannel();
+    channel.pushShape({ aa: 2, ih: -1, ou: Number.NaN, ee: 0.5, oh: 0 }, 3, 0);
+    expect(channel.latestShape?.shape).toEqual({ aa: 1, ih: 0, ou: 0, ee: 0.5, oh: 0 });
+    expect(channel.latestShape?.closure).toBe(1);
+    channel.pushShape({ aa: 1, ih: 0, ou: 0, ee: 0, oh: 0 }, 0, Number.NaN);
+    expect(channel.latestShape?.receivedAtMs).toBe(0);
+    channel.clear();
+    expect(channel.latestShape).toBeNull();
+  });
+
+  it("activates the channel only for a non-silent shape", () => {
+    const channel = createVisemeChannel();
+    channel.pushShape({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 }, 0, 0);
+    expect(channel.isActive(0)).toBe(false);
+    channel.pushShape({ aa: 0, ih: 0, ou: 1, ee: 0, oh: 0 }, 0, 0);
+    expect(channel.isActive(0)).toBe(true);
+  });
+});
+
+describe("stepViseme — shape source and word-gap closing", () => {
+  const SILENT = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
+
+  function drive(
+    state: ReturnType<typeof createVisemeState>,
+    adapter: AvatarFormatAdapter,
+    channel: VisemeChannel,
+    startMs: number,
+    durationMs: number,
+    rms: number,
+    shape: Partial<Record<(typeof VISEME_KEYS)[number], number>> | null,
+    closure = 0,
+  ): number {
+    const dt = 1000 / 60;
+    let now = startMs;
+    while (now < startMs + durationMs) {
+      if (shape) channel.pushShape({ ...SILENT, ...shape }, closure, now);
+      channel.pushLevel(rms, now);
+      stepViseme(state, { adapter, channel, nowMs: now, delta: dt / 1000 });
+      now += dt;
+    }
+    return now;
+  }
+
+  it("uses the pushed shape for the mouth, opened by loudness", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+    drive(state, adapter, channel, 0, 200, 0.15, { ou: 1 });
+    expect(state.smoothed.ou).toBeGreaterThan(0.5);
+    expect(state.smoothed.aa).toBeLessThan(0.05);
+  });
+
+  it("prefers a fresh shape over the single-phoneme classifier", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+    const dt = 1000 / 60;
+    for (let now = 0; now < 200; now += dt) {
+      channel.pushAnalysis(phoneme("aa", now, 50), now);
+      channel.pushShape({ ...SILENT, ee: 1 }, 0, now);
+      channel.pushLevel(0.15, now);
+      stepViseme(state, { adapter, channel, nowMs: now, delta: dt / 1000 });
+    }
+    expect(state.smoothed.ee).toBeGreaterThan(0.5);
+    expect(state.smoothed.aa).toBeLessThan(0.05);
+  });
+
+  it("closes the lips on a bilabial even while the audio is loud", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+    drive(state, adapter, channel, 0, 200, 0.15, { aa: 1 }, 1);
+    expect(Math.max(...VISEME_KEYS.map((k) => state.smoothed[k]))).toBeLessThan(0.05);
+  });
+
+  it("keeps the last real shape through silent shape frames", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+    const now = drive(state, adapter, channel, 0, 150, 0.15, { oh: 1 });
+    drive(state, adapter, channel, now, 100, 0.15, {});
+    expect(state.smoothed.oh).toBeGreaterThan(0.5);
+  });
+
+  it("closes in the dip between words even though the dip is well above silence", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+    let now = drive(state, adapter, channel, 0, 250, 0.15, { aa: 1 });
+    expect(state.smoothed.aa).toBeGreaterThan(0.5);
+
+    // ~11.5 dB dip, 5x the silence gate — fluent speech between two words.
+    now = drive(state, adapter, channel, now, 80, 0.04, { aa: 1 });
+    expect(state.smoothed.aa).toBeLessThan(0.15);
+
+    drive(state, adapter, channel, now, 150, 0.15, { aa: 1 });
+    expect(state.smoothed.aa).toBeGreaterThan(0.5);
+  });
+
+  it("holds a sustained vowel open — the floor never catches up with it", () => {
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const state = createVisemeState();
+    const channel = createVisemeChannel();
+    drive(state, adapter, channel, 0, 1500, 0.15, { aa: 1 });
+    expect(state.smoothed.aa).toBeGreaterThan(0.6);
+  });
+});

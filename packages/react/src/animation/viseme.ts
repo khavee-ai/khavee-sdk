@@ -81,7 +81,7 @@ const MAX_JAW_OPEN_DEG = 10;
 const TIMING_ATTACK_S = 0.02;
 const TIMING_RELEASE_S = 0.05;
 const ANALYSIS_ATTACK_S = 0.035;
-const ANALYSIS_RELEASE_S = 0.06;
+const ANALYSIS_RELEASE_S = 0.04;
 
 // Loudness envelope (analysis path). The spectral classifier only picks the
 // mouth SHAPE; how far the mouth opens follows the audio's RMS, so it closes
@@ -93,6 +93,16 @@ const LEVEL_GATE = 0.008;
 const LEVEL_MIN_REF = 0.05;
 const LEVEL_PEAK_DECAY_MS = 1500;
 const LEVEL_CURVE = 0.7;
+/**
+ * Valley follower: an adaptive floor that drops straight to quieter levels and
+ * rises slowly. Openness is measured above it, so the dip between two words —
+ * fluent speech rarely goes silent there — still reads as closed.
+ */
+const LEVEL_FLOOR_RISE_MS = 600;
+/** The floor never rises past this fraction of the peak, so a held vowel stays open. */
+const LEVEL_FLOOR_MAX_RATIO = 0.35;
+/** How long a pushed mouth shape (shape source, e.g. HeadAudio) stays usable. */
+const SHAPE_STALE_MS = 100;
 /** Openness at the loudest recent peak — real speech rarely opens fully. */
 const MAX_ANALYSIS_OPEN = 0.85;
 /** Shape used when the audio is loud but no vowel has been classified yet. */
@@ -148,10 +158,28 @@ export class VisemeChannel {
   latestAnalysis: { phoneme: TimedPhoneme; receivedAtMs: number } | null = null;
   /** Latest RMS loudness of the playing speech audio (analysis path). */
   latestLevel: { rms: number; receivedAtMs: number } | null = null;
+  /** Latest weighted mouth shape from a shape source (e.g. HeadAudio). */
+  latestShape: { shape: MouthState; closure: number; receivedAtMs: number } | null = null;
 
   /** Records the latest audio-analysis sample, replacing any previous one. */
   pushAnalysis(phoneme: TimedPhoneme, nowMs: number): void {
     this.latestAnalysis = { phoneme, receivedAtMs: nowMs };
+  }
+
+  /**
+   * Records a weighted mouth shape (largest key 1, all zero when silent) and a
+   * 0..1 lip closure. When fresh, it replaces the single-phoneme classifier as
+   * the shape; openness still comes from the loudness envelope.
+   */
+  pushShape(shape: MouthState, closure: number, nowMs: number): void {
+    if (!Number.isFinite(nowMs)) return;
+    const clean: MouthState = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
+    for (const key of VISEME_KEYS) clean[key] = Number.isFinite(shape[key]) ? clamp01(shape[key]) : 0;
+    this.latestShape = {
+      shape: clean,
+      closure: Number.isFinite(closure) ? clamp01(closure) : 0,
+      receivedAtMs: nowMs,
+    };
   }
 
   /** Records the playing audio's RMS loudness (0..~1). Non-finite values are ignored. */
@@ -176,11 +204,12 @@ export class VisemeChannel {
     }
   }
 
-  /** Empties the timing timeline, the latest analysis sample and the latest level. */
+  /** Empties the timing timeline and the latest analysis sample, level and shape. */
   clear(): void {
     this.timeline.length = 0;
     this.latestAnalysis = null;
     this.latestLevel = null;
+    this.latestShape = null;
   }
 
   /** Drops timeline entries that ended more than 1s before `nowMs` (T-18-06). */
@@ -198,7 +227,7 @@ export class VisemeChannel {
   }
 
   /**
-   * True when a fresh analysis sample, audible fresh level, or timing data
+   * True when a fresh analysis sample or shape, audible fresh level, or timing data
    * covers `nowMs`. Level only counts above the gate: the level feed keeps
    * running through silence, and silence alone must not claim the mouth.
    */
@@ -209,7 +238,11 @@ export class VisemeChannel {
       this.latestLevel !== null &&
       nowMs - this.latestLevel.receivedAtMs <= LEVEL_STALE_MS &&
       this.latestLevel.rms > LEVEL_GATE;
-    return analysisActive || levelActive || this.hasTimingAt(nowMs);
+    const shapeActive =
+      this.latestShape !== null &&
+      nowMs - this.latestShape.receivedAtMs <= CHANNEL_ACTIVE_WINDOW_MS &&
+      VISEME_KEYS.some((key) => this.latestShape!.shape[key] > 0.01);
+    return analysisActive || levelActive || shapeActive || this.hasTimingAt(nowMs);
   }
 
   /** True from `first.timestamp - TIMING_LEAD_MS` through `lastEnd + TIMING_TAIL_MS`. */
@@ -412,6 +445,8 @@ export interface VisemeState {
   carryoverAgeMs: number;
   /** Adaptive loudness reference: jumps to new peaks, decays toward LEVEL_MIN_REF. */
   levelPeak: number;
+  /** Valley follower for the loudness envelope (see LEVEL_FLOOR_RISE_MS). */
+  levelFloor: number;
   jawSlot: AdditiveBoneSlot;
 }
 
@@ -426,6 +461,7 @@ export function createVisemeState(): VisemeState {
     carryover: zeroMouthState(),
     carryoverAgeMs: 0,
     levelPeak: LEVEL_MIN_REF,
+    levelFloor: 0,
     jawSlot: createAdditiveBoneSlot(),
   };
 }
@@ -435,14 +471,25 @@ function isFresh(sample: { receivedAtMs: number } | null, nowMs: number, maxAgeM
 }
 
 /**
- * Maps RMS loudness to 0..1 mouth openness against an adaptive peak, so a
- * quiet voice and a loud one both use the full range. Mutates `state.levelPeak`.
+ * Maps RMS loudness to 0..1 mouth openness, measured between an adaptive valley
+ * floor and an adaptive peak — so quiet and loud voices both use the full range
+ * and the dip between words closes the mouth. Mutates `levelPeak`/`levelFloor`.
  */
 function levelToOpenness(state: VisemeState, rms: number, delta: number): number {
-  const decay = Math.exp(-(delta * 1000) / LEVEL_PEAK_DECAY_MS);
-  state.levelPeak = Math.max(rms, LEVEL_MIN_REF + (state.levelPeak - LEVEL_MIN_REF) * decay);
-  if (rms <= LEVEL_GATE) return 0;
-  return Math.pow(clamp01((rms - LEVEL_GATE) / (state.levelPeak - LEVEL_GATE)), LEVEL_CURVE);
+  const dtMs = delta * 1000;
+  state.levelPeak = Math.max(
+    rms,
+    LEVEL_MIN_REF + (state.levelPeak - LEVEL_MIN_REF) * Math.exp(-dtMs / LEVEL_PEAK_DECAY_MS),
+  );
+  state.levelFloor =
+    rms < state.levelFloor
+      ? rms
+      : state.levelFloor + (rms - state.levelFloor) * (1 - Math.exp(-dtMs / LEVEL_FLOOR_RISE_MS));
+  state.levelFloor = Math.min(state.levelFloor, state.levelPeak * LEVEL_FLOOR_MAX_RATIO);
+
+  const floor = Math.max(LEVEL_GATE, state.levelFloor);
+  if (rms <= floor) return 0;
+  return Math.pow(clamp01((rms - floor) / (state.levelPeak - floor)), LEVEL_CURVE);
 }
 
 export interface VisemeStepParams {
@@ -510,13 +557,28 @@ export function stepViseme(state: VisemeState, params: VisemeStepParams): Viseme
     releaseS = TIMING_RELEASE_S;
   } else if (
     channel &&
-    (isFresh(channel.latestAnalysis, nowMs, ANALYSIS_STALE_MS) || isFresh(channel.latestLevel, nowMs, LEVEL_STALE_MS))
+    (isFresh(channel.latestShape, nowMs, SHAPE_STALE_MS) ||
+      isFresh(channel.latestAnalysis, nowMs, ANALYSIS_STALE_MS) ||
+      isFresh(channel.latestLevel, nowMs, LEVEL_STALE_MS))
   ) {
-    const analysisFresh = isFresh(channel.latestAnalysis, nowMs, ANALYSIS_STALE_MS);
+    const shapeFresh = isFresh(channel.latestShape, nowMs, SHAPE_STALE_MS);
+    const analysisFresh = !shapeFresh && isFresh(channel.latestAnalysis, nowMs, ANALYSIS_STALE_MS);
     const latest = channel.latestAnalysis?.phoneme ?? null;
+    let closure = 0;
 
-    // Shape selection: the classifier picks WHICH mouth shape, debounced.
-    if (analysisFresh && latest) {
+    if (shapeFresh) {
+      // Shape source (e.g. HeadAudio) blends its own visemes, so no debounce or
+      // carryover here. A silent (all-zero) frame keeps the last shape, letting
+      // the envelope alone decide whether the mouth is open.
+      const pushed = channel.latestShape!;
+      closure = pushed.closure;
+      if (VISEME_KEYS.some((key) => pushed.shape[key] > 0.01)) {
+        state.dominantPhoneme = "aa"; // any non-"sil" marker: a real shape is held
+        state.dominantShape = { ...pushed.shape };
+        state.carryoverAgeMs = Number.POSITIVE_INFINITY;
+      }
+    } else if (analysisFresh && latest) {
+      // Shape selection: the classifier picks WHICH mouth shape, debounced.
       const latestKey: VisemeKey | "sil" = (VISEME_KEYS as readonly string[]).includes(latest.phoneme)
         ? (latest.phoneme as VisemeKey)
         : "sil";
@@ -543,16 +605,18 @@ export function stepViseme(state: VisemeState, params: VisemeStepParams): Viseme
       }
     }
 
-    // Openness: the loudness envelope decides HOW FAR the mouth opens. With no
-    // level feed (e.g. a consumer pushing analysis only), fall back to the
-    // sample's own intensity while it is fresh.
+    // Openness: the loudness envelope decides HOW FAR the mouth opens, and a
+    // bilabial (p/b/m) closes the lips over it. With no level feed (e.g. a
+    // consumer pushing analysis only), fall back to the sample's own intensity.
     let openness: number;
     if (isFresh(channel.latestLevel, nowMs, LEVEL_STALE_MS)) {
       openness = levelToOpenness(state, channel.latestLevel!.rms, delta);
+    } else if (shapeFresh) {
+      openness = state.dominantPhoneme === "sil" ? 0 : 0.7;
     } else {
       openness = analysisFresh && latest ? clamp01(latest.intensity) : 0;
     }
-    openness *= MAX_ANALYSIS_OPEN;
+    openness *= (1 - closure) * MAX_ANALYSIS_OPEN;
 
     const shape = state.dominantPhoneme === "sil" ? NEUTRAL_OPEN_SHAPE : state.dominantShape;
 

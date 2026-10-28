@@ -58,6 +58,7 @@
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@met4citizen/headaudio": "1.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19.1.9",
     "@types/three": "^0.180.0",

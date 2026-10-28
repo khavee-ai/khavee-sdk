@@ -213,7 +213,11 @@ All `VRMAvatar`-only and automatic once the avatar is inside a `KhaveeProvider`.
 **Lip sync.** Mouth shapes (`aa`, `ih`, `ou`, `ee`, `oh`) come from a viseme channel with two sources:
 
 1. **TTS timing** (primary) — when the TTS adapter reports phoneme/viseme timing (`TTSProvider.speak`'s `onViseme`, see `@khaveeai/core`), the mouth follows the actual speech timeline.
-2. **Audio analysis** (fallback) — when no timing exists (e.g. OpenAI TTS), the playing audio drives it: a client-side classifier picks the mouth *shape*, and the voice's loudness envelope sets how far it opens, so the mouth closes between syllables.
+2. **Audio analysis** (fallback) — when no timing exists (e.g. OpenAI TTS), the playing audio drives it:
+   - **Shape** comes from [HeadAudio](https://github.com/met4citizen/HeadAudio), a trained MFCC viseme classifier running in an AudioWorklet. Its consonant visemes count too: `p`/`b`/`m` close the lips.
+   - **Openness** follows the voice's loudness envelope, measured above an adaptive floor, so the mouth closes in the dip between words even though fluent speech rarely goes silent there.
+
+   HeadAudio's worklet and model are bundled — no files to serve. It needs AudioWorklet in a secure context (https or `localhost`); where that's unavailable, the shape falls back to a simpler built-in classifier and the loudness behaviour is unchanged.
 
 Both are smoothed with coarticulation (lip rounding anticipates upcoming vowels) and drive an additive jaw-bone motion on models that have a jaw bone. The channel is fed by `useRealtime()`, so at least one component in the tree must call it.
 
@@ -471,6 +475,10 @@ function ExpressionDebugPanel() {
 
 - `<VRMAvatar>` and `<GLBAvatar>` must be rendered inside an `@react-three/fiber` `<Canvas>`.
 - All hooks (`useRealtime`, `useVRMExpressions`, `useAnimations`, `useVRM`, `useKhavee`) and both avatar components must be used inside a `<KhaveeProvider>`. `useRealtime()` additionally requires `KhaveeProvider`'s `config.realtime` to be set.
+
+## Third-party code
+
+`@khaveeai/react` bundles [HeadAudio](https://github.com/met4citizen/HeadAudio) 1.0.0 by Mika Suominen (MIT) — its worklet, node and pre-trained viseme model — for audio-driven lip sync. The full license text is kept in the header of each file under `dist/lipsync/vendor/`.
 
 ## Other exports
 

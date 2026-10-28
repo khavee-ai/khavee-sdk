@@ -206,6 +206,34 @@ describe("beginCrossfade / stepCrossfade", () => {
 });
 
 describe("interrupted crossfade preserves total accumulated weight (T-pose/bind-pose snap fix)", () => {
+  it("keeps a running incoming clip at its current playback time", () => {
+    const root = new THREE.Object3D();
+    const bone = new THREE.Object3D();
+    bone.name = "bone";
+    root.add(bone);
+    const q0 = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 1);
+    const track = new THREE.QuaternionKeyframeTrack(
+      "bone.quaternion",
+      [0, 1],
+      [q0.x, q0.y, q0.z, q0.w, q1.x, q1.y, q1.z, q1.w],
+    );
+    const mixer = new THREE.AnimationMixer(root);
+    const idle = mixer.clipAction(new THREE.AnimationClip("idle", 1, [track]));
+    const thinking = mixer.clipAction(new THREE.AnimationClip("thinking", 1, [track.clone()]));
+    idle.play();
+    thinking.play();
+    idle.setEffectiveWeight(0.4);
+    thinking.setEffectiveWeight(0.6);
+    idle.time = 0.7;
+
+    expect(idle.isRunning()).toBe(true);
+    beginCrossfade(thinking, idle, root);
+
+    expect(idle.time).toBeCloseTo(0.7);
+    expect(idle.getEffectiveWeight()).toBeCloseTo(0.4);
+  });
+
   // Debug session: .planning/debug/tpose-snap-speak-toggle.md. A stateful
   // stub (unlike the vi.fn()-only stubs above) is required here because this
   // test reads back setEffectiveWeight/isRunning state, not just call args --

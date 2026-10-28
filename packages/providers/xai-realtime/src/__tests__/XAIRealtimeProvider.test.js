@@ -7,6 +7,29 @@ function serverEvent(type, fields = {}) {
 }
 
 describe("XAIRealtimeProvider state guards", () => {
+  it("ends a terminal tool turn without requesting another response", async () => {
+    vi.stubGlobal("WebSocket", { OPEN: 1 });
+    try {
+      const provider = new XAIRealtimeProvider({});
+      provider.registerFunction({
+        name: "wait_for_user",
+        description: "Wait for user",
+        parameters: {},
+        execute: async () => ({ success: true, message: "", continueResponse: false }),
+      });
+      const send = vi.fn();
+      provider.ws = { readyState: 1, send };
+      provider.isConnected = true;
+
+      await provider.executeToolCall("call-1", "wait_for_user", "{}");
+      const types = send.mock.calls.map(([payload]) => JSON.parse(payload).type);
+      expect(types).toEqual(["conversation.item.create"]);
+      expect(provider.chatStatus).toBe("ready");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("ignores unmatched commits and duplicate speech starts", async () => {
     const provider = new XAIRealtimeProvider({});
     provider.isConnected = true;

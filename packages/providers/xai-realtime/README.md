@@ -168,11 +168,13 @@ Tools passed via `config.tools` are registered in the constructor. `registerFunc
 
 `onToolCall(name, args, result)` fires after each execution.
 
+Tool results normally trigger another model response. Return `continueResponse: false` from a terminal tool such as `wait_for_user` when the assistant should stay quiet until the next user turn. The function call output is still sent to xAI.
+
 > If the model narrates tool syntax aloud instead of calling the tool, its declarations never reached the session. Check that the tool is actually registered rather than only described in `instructions`.
 
 ## Interrupting
 
-Barge-in is automatic: when server VAD reports `input_audio_buffer.speech_started` while the assistant is speaking, playback stops and `response.cancel` is sent. `sendMessage()` interrupts the same way, so a typed message cuts off an in-progress reply rather than queueing behind it. `interrupt()` triggers it manually.
+Mic capture pauses while assistant audio streams or plays, then resumes 300 ms after playback ends. This prevents the assistant's voice from triggering server VAD through the user's speakers. Voice barge-in is unavailable during that pause. `sendMessage()` still cuts off an in-progress reply, and `interrupt()` stops it manually.
 
 ## Microphone
 

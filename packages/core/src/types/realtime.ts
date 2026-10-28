@@ -18,6 +18,8 @@ export interface RealtimeTool {
   execute: (args: any) => Promise<{
     success: boolean;
     message: string;
+    /** Set false when the assistant should wait for new user input after this tool. */
+    continueResponse?: boolean;
   }>;
 }
 

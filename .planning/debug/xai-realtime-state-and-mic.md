@@ -18,6 +18,12 @@ reasoning_checkpoint:
   blind_spots: Real xAI/browser timing still requires manual verification.
 next_action: Test real xAI conversation at /xai: pause during assistant reply and mute while speaking; report status sequence and whether response arrives.
 
+## Follow-up: thinking/listening loop after 0.1.8
+- The share page displays provider `ready` as “listening” whenever the mic is on. Its `wait_for_user` tool handles noise or unaddressed audio.
+- xAI provider sent `response.create` after every tool, including `wait_for_user`. A repeated terminal tool call could therefore cycle `thinking` ↔ `ready` without new speech.
+- Tool results now support `continueResponse: false`. The app's `wait_for_user` sets it, and xAI provider ends that turn in `ready` regardless of `response.done` ordering.
+- Synthetic test confirms no follow-up `response.create`; live xAI event sequence remains unverified.
+
 ## Symptoms
 expected: Stable ready/listening/thinking/speaking transitions; mic toggle reflects actual mic state and reports mic errors accurately.
 actual: Thinking/listening repeats until user speaks; mic toggle sometimes displays Couldn't connect.

@@ -155,10 +155,13 @@ export function beginCrossfade(
   // (the ordinary, non-interrupted case — unchanged from prior behavior).
   // `fromAction`'s current weight is captured the same way so stepCrossfade
   // can ramp it down from where it genuinely is, not an assumed 1.
-  const toStartWeight = toAction.isRunning() ? toAction.getEffectiveWeight() : 0;
+  const toWasRunning = toAction.isRunning();
+  const toStartWeight = toWasRunning ? toAction.getEffectiveWeight() : 0;
   const fromStartWeight = fromAction?.isRunning() ? fromAction.getEffectiveWeight() : fromAction ? 1 : 0;
 
-  toAction.reset();
+  // Keep the playback time of an action that is still fading out. Resetting
+  // it here jumps its pose to frame zero while it has nonzero weight.
+  if (!toWasRunning) toAction.reset();
   // three.js's AnimationMixer only evaluates actions that are both
   // `enabled` and in the "playing" set — setEffectiveWeight alone does
   // NOT make an action contribute to the mixer's output. `.enabled = true`

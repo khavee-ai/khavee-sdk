@@ -783,8 +783,16 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         },
       });
 
-      // Trigger model to continue generating
-      this.sendEvent({ type: "response.create" });
+      // A terminal tool (for example, wait_for_user) ends this turn quietly.
+      // Starting another response here makes the model call the same tool
+      // again, cycling thinking/ready without new user input.
+      if (result.continueResponse !== false) {
+        this.sendEvent({ type: "response.create" });
+      } else {
+        // response.done can arrive before or after tool execution. Either
+        // order must leave a terminal tool idle, waiting for the user.
+        this.setChatStatus("ready");
+      }
     } catch (error) {
       console.error("Tool execution error:", error);
       this.onError?.(

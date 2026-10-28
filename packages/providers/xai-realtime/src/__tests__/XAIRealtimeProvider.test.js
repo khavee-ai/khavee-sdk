@@ -44,6 +44,9 @@ describe("XAIRealtimeProvider state guards", () => {
     expect(provider.chatStatus).toBe("listening");
     expect(provider.conversation).toHaveLength(1);
 
+    await provider.handleServerEvent(
+      serverEvent("conversation.item.input_audio_transcription.updated", { transcript: "hello" }),
+    );
     await provider.handleServerEvent(serverEvent("input_audio_buffer.committed", { item_id: "current" }));
     expect(provider.chatStatus).toBe("thinking");
     await provider.handleServerEvent(serverEvent("input_audio_buffer.committed", { item_id: "duplicate" }));
@@ -129,6 +132,7 @@ describe("XAIRealtimeProvider state guards", () => {
       expect(send).toHaveBeenCalledTimes(3);
       expect(JSON.parse(send.mock.calls[0][0]).type).toBe("input_audio_buffer.append");
 
+      provider.conversation.push({ id: "u1", role: "user", text: "hi", isFinal: false, timestamp: "" });
       await provider.handleServerEvent(serverEvent("input_audio_buffer.committed", { item_id: "turn" }));
       expect(provider.chatStatus).toBe("thinking");
       await vi.advanceTimersByTimeAsync(2000);
@@ -187,5 +191,78 @@ describe("XAIRealtimeProvider state guards", () => {
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
     }
+  });
+
+  describe("transcript-less turns (noise / echo)", () => {
+    function noiseReadyProvider() {
+      vi.stubGlobal("WebSocket", { OPEN: 1 });
+      const provider = new XAIRealtimeProvider({});
+      provider.registerFunction({
+        name: "wait_for_user",
+        description: "Wait for user",
+        parameters: {},
+        execute: async () => ({ success: true, message: "", continueResponse: false }),
+      });
+      provider.ws = { readyState: 1, send: vi.fn() };
+      provider.isConnected = true;
+      provider.chatStatus = "ready";
+      provider.micEnabled = true;
+      const statuses = [];
+      provider.onChatStatusChange = (s) => statuses.push(s);
+      return { provider, statuses };
+    }
+
+    it("never shows thinking when the model answers noise with wait_for_user", async () => {
+      vi.useFakeTimers();
+      try {
+        const { provider, statuses } = noiseReadyProvider();
+        for (let round = 0; round < 3; round++) {
+          await provider.handleServerEvent(serverEvent("input_audio_buffer.speech_started"));
+          await provider.handleServerEvent(serverEvent("input_audio_buffer.committed", { item_id: `n${round}` }));
+          await provider.handleServerEvent(serverEvent("response.created", { response: { id: `r${round}` } }));
+          await provider.executeToolCall(`c${round}`, "wait_for_user", "{}");
+          await provider.handleServerEvent(serverEvent("response.done", { response: { id: `r${round}` } }));
+          await vi.advanceTimersByTimeAsync(1000);
+        }
+        expect(statuses).not.toContain("thinking");
+        expect(provider.chatStatus).toBe("ready");
+      } finally {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+      }
+    });
+
+    it("promotes to thinking when a late transcript arrives", async () => {
+      vi.useFakeTimers();
+      try {
+        const { provider } = noiseReadyProvider();
+        await provider.handleServerEvent(serverEvent("input_audio_buffer.speech_started"));
+        await provider.handleServerEvent(serverEvent("input_audio_buffer.committed", { item_id: "t" }));
+        expect(provider.chatStatus).toBe("ready");
+        await provider.handleServerEvent(
+          serverEvent("conversation.item.input_audio_transcription.updated", { transcript: "what time is it" }),
+        );
+        expect(provider.chatStatus).toBe("thinking");
+      } finally {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+      }
+    });
+
+    it("promotes to thinking after the grace window when a response is still being generated", async () => {
+      vi.useFakeTimers();
+      try {
+        const { provider } = noiseReadyProvider();
+        await provider.handleServerEvent(serverEvent("input_audio_buffer.speech_started"));
+        await provider.handleServerEvent(serverEvent("input_audio_buffer.committed", { item_id: "t" }));
+        await provider.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+        expect(provider.chatStatus).toBe("ready");
+        await vi.advanceTimersByTimeAsync(700);
+        expect(provider.chatStatus).toBe("thinking");
+      } finally {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+      }
+    });
   });
 });

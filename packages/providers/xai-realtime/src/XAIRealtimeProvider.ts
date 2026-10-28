@@ -50,6 +50,17 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private micEnabled = false;
   private userSpeechActive = false;
   private speechCommitTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Set after a commit that carried no transcript. Server VAD also commits on
+   * background noise or speaker echo, and the model then answers with the
+   * terminal wait_for_user tool. Showing "thinking" for those turns made the
+   * status flap listening/thinking/ready until the user spoke. During this
+   * window the status stays "ready"; real speech is promoted to "thinking" as
+   * soon as its transcript, the assistant's output, or the timeout arrives.
+   */
+  private turnGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly TURN_GRACE_MS = 600;
+  private responseInFlight = false;
   private muteSilenceTimer: ReturnType<typeof setInterval> | null = null;
   private assistantAudioStreaming = false;
   private micSuppressedUntil = 0;
@@ -180,6 +191,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       this.isConnected = true;
       this.userSpeechActive = false;
       this.clearSpeechCommitTimer();
+      this.clearTurnGrace();
+      this.responseInFlight = false;
       this.clearMuteSilenceTimer();
       this.assistantAudioStreaming = false;
       this.setChatStatus("ready");
@@ -256,6 +269,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       this.micEngine = null;
       this.userSpeechActive = false;
       this.clearSpeechCommitTimer();
+      this.clearTurnGrace();
       // micEnabled is intentionally NOT reset here — the hardware capture
       // is torn down, but the flag must survive disconnect() so a silent
       // reconnect (idle-session reset) can read it in connect() to restore
@@ -459,6 +473,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         case "input_audio_buffer.speech_started":
           if (!this.micEnabled || this.userSpeechActive || this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) break;
           this.clearSpeechCommitTimer();
+          this.clearTurnGrace();
           this.userSpeechActive = true;
           // Barge-in: stop playback if assistant is speaking
           if (this.chatStatus === "speaking") {
@@ -508,9 +523,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           this.clearMuteSilenceTimer();
           this.userSpeechActive = false;
           // Finalize the pending user message, or remove if empty
+          let committedText = false;
           for (let i = this.conversation.length - 1; i >= 0; i--) {
             if (this.conversation[i].role === "user" && !this.conversation[i].isFinal) {
               if (this.conversation[i].text) {
+                committedText = true;
                 this.conversation[i].isFinal = true;
                 this.conversation[i].status = "final";
               } else {
@@ -521,12 +538,19 @@ export class XAIRealtimeProvider implements RealtimeProvider {
             }
           }
           this.onConversationUpdate?.(this.conversation);
-          this.setChatStatus("thinking");
+          if (committedText) {
+            this.setChatStatus("thinking");
+          } else {
+            this.beginTurnGrace();
+          }
           break;
 
         case "conversation.item.input_audio_transcription.updated":
           // Cumulative transcript update — update the last user message
           this.updateUserTranscript(data.transcript);
+          if (this.turnGraceTimer && typeof data.transcript === "string" && data.transcript.trim()) {
+            this.endTurnGrace(true);
+          }
           break;
 
         case "conversation.item.created":
@@ -546,6 +570,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.created":
+          this.responseInFlight = true;
+          if (this.turnGraceTimer) break; // the grace window decides
           if (!this.userSpeechActive || this.chatStatus !== "listening") {
             this.setChatStatus("thinking");
           }
@@ -557,6 +583,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.text.delta":
+          if (this.turnGraceTimer) this.endTurnGrace(true);
           this.handleAssistantTextDelta(data.delta);
           break;
 
@@ -568,6 +595,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         case "response.audio.delta":
         case "response.output_audio.delta":
           // Feed audio chunk to playback engine
+          if (this.turnGraceTimer) this.endTurnGrace(false);
           this.assistantAudioStreaming = true;
           this.playbackEngine?.appendChunk(data.delta);
           this.emitAudioDataOnce();
@@ -606,6 +634,10 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
         case "response.done":
           this.assistantAudioStreaming = false;
+          this.responseInFlight = false;
+          // A response that ends inside the grace window produced no output
+          // (the noise case): stay idle rather than flash "thinking".
+          this.clearTurnGrace();
           this.handleResponseDone(data.response);
           break;
 
@@ -763,7 +795,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     name: string,
     argsJson: string,
   ): Promise<void> {
-    this.setChatStatus("thinking");
+    const inGrace = this.turnGraceTimer !== null;
+    if (!inGrace) this.setChatStatus("thinking");
     console.log("[xAI] Tool call received:", name, argsJson);
 
     try {
@@ -787,8 +820,10 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       // Starting another response here makes the model call the same tool
       // again, cycling thinking/ready without new user input.
       if (result.continueResponse !== false) {
+        if (inGrace) this.endTurnGrace(true);
         this.sendEvent({ type: "response.create" });
       } else {
+        this.clearTurnGrace();
         // response.done can arrive before or after tool execution. Either
         // order must leave a terminal tool idle, waiting for the user.
         this.setChatStatus("ready");
@@ -986,10 +1021,37 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.isConnected = false;
     this.userSpeechActive = false;
     this.clearSpeechCommitTimer();
+    this.clearTurnGrace();
+    this.responseInFlight = false;
     this.clearMuteSilenceTimer();
     this.assistantAudioStreaming = false;
     this.setChatStatus("stopped");
     this.onDisconnect?.();
+  }
+
+  /** Holds "ready" after a transcript-less commit; see `turnGraceTimer`. */
+  private beginTurnGrace(): void {
+    this.clearTurnGrace();
+    this.setChatStatus("ready");
+    this.turnGraceTimer = setTimeout(() => {
+      this.turnGraceTimer = null;
+      if (this.responseInFlight && this.chatStatus === "ready") {
+        this.setChatStatus("thinking");
+      }
+    }, XAIRealtimeProvider.TURN_GRACE_MS);
+  }
+
+  /** Ends the grace window early; `think` promotes the turn to "thinking". */
+  private endTurnGrace(think: boolean): void {
+    this.clearTurnGrace();
+    if (think && this.chatStatus === "ready") this.setChatStatus("thinking");
+  }
+
+  private clearTurnGrace(): void {
+    if (this.turnGraceTimer) {
+      clearTimeout(this.turnGraceTimer);
+      this.turnGraceTimer = null;
+    }
   }
 
   private clearSpeechCommitTimer(): void {

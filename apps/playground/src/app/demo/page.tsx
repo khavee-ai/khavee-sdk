@@ -24,9 +24,17 @@ import {
   ShadowFloor,
   useRealtime,
   useKhavee,
+  useVRM,
   type AnimationConfig,
   type AvatarBackground,
 } from '@khaveeai/react';
+import {
+  LipSyncSpike,
+  MOUTH_KEYS,
+  createStats,
+  type LipSyncEngine,
+  type LipSyncStats,
+} from './lipsyncSpike';
 
 const openaiProvider = new OpenAIRealtimeProvider({
   useProxy: true,
@@ -118,10 +126,13 @@ const QUALITY_TOGGLES: { key: keyof Quality; label: string; hint: string }[] = [
 function Scene({
   background,
   quality,
+  lipSync,
 }: {
   background: AvatarBackground;
   quality: Quality;
+  lipSync: { engine: LipSyncEngine; gain: number; stats: React.MutableRefObject<LipSyncStats> };
 }) {
+  const vrm = useVRM();
   return (
     <>
       <AvatarBackdrop background={background} />
@@ -144,6 +155,9 @@ function Scene({
           the avatar only self-shadows and the backdrop plane sits at distance 6,
           outside the key light's -2..2 shadow frustum. */}
       <ShadowFloor y={0} opacity={0.35} />
+      {/* Mounts only once the model has loaded, so its frame runs after the
+          avatar's; keyed by model so a reload re-establishes that order. */}
+      {vrm && <LipSyncSpike key={vrm.scene.uuid} {...lipSync} />}
       {/* AvatarCamera, not OrbitControls: it owns the framing preset plus the
           procedural handheld drift and the speaking-state dolly. A plain
           OrbitControls + static Canvas camera has neither. */}
@@ -297,12 +311,110 @@ function ChatBox() {
   );
 }
 
+const LIPSYNC_ENGINES: { id: LipSyncEngine; label: string }[] = [
+  { id: 'sdk', label: 'SDK (HeadAudio)' },
+  { id: 'wlipsync', label: 'wLipSync' },
+];
+
+function LipSyncPanel({
+  engine,
+  onEngine,
+  gain,
+  onGain,
+  stats,
+}: {
+  engine: LipSyncEngine;
+  onEngine: (engine: LipSyncEngine) => void;
+  gain: number;
+  onGain: (gain: number) => void;
+  stats: React.MutableRefObject<LipSyncStats>;
+}) {
+  const [snapshot, setSnapshot] = useState<LipSyncStats>(createStats);
+
+  // Stats are mutated every frame; sample them at 10Hz for display.
+  useEffect(() => {
+    const id = setInterval(
+      () => setSnapshot({ counts: { ...stats.current.counts }, current: { ...stats.current.current } }),
+      100,
+    );
+    return () => clearInterval(id);
+  }, [stats]);
+
+  const total = Object.values(snapshot.counts).reduce((a, b) => a + b, 0);
+  const rows = [...MOUTH_KEYS, 'closed'] as const;
+
+  return (
+    <div className="absolute left-6 top-24 w-64 rounded-2xl bg-white/85 p-4 shadow-lg backdrop-blur-md">
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        Lip-sync engine (spike)
+      </h3>
+      <div className="mb-3 flex gap-1 rounded-full bg-gray-100 p-1">
+        {LIPSYNC_ENGINES.map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => onEngine(id)}
+            className={`flex-1 rounded-full py-1 text-xs font-medium ${
+              engine === id ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-white'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {engine !== 'sdk' && (
+        <label className="mb-3 flex items-center gap-2 text-xs text-gray-600">
+          Gain
+          <input
+            type="range"
+            min={0.5}
+            max={3}
+            step={0.1}
+            value={gain}
+            onChange={(e) => onGain(Number(e.target.value))}
+            className="flex-1 accent-blue-600"
+          />
+          <span className="w-8 text-right tabular-nums">{gain.toFixed(1)}</span>
+        </label>
+      )}
+
+      <p className="mb-1 text-[11px] text-gray-500">Live mouth / share of speaking frames</p>
+      <div className="space-y-1">
+        {rows.map((key) => {
+          const live = key === 'closed' ? 0 : snapshot.current[key];
+          const share = total ? snapshot.counts[key] / total : 0;
+          return (
+            <div key={key} className="flex items-center gap-2 text-xs">
+              <span className="w-10 font-mono text-gray-700">{key}</span>
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
+                <div className="h-full bg-blue-600" style={{ width: `${live * 100}%` }} />
+              </div>
+              <span className="w-10 text-right tabular-nums text-gray-500">
+                {(share * 100).toFixed(0)}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <button
+        onClick={() => onEngine(engine)}
+        className="mt-3 w-full rounded-full bg-gray-100 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
+      >
+        Reset stats
+      </button>
+    </div>
+  );
+}
+
 function DemoPage() {
   const { setGestureHint, setEmotionHint } = useKhavee();
   const [background, setBackground] = useState<AvatarBackground>(
     PRESET_BACKGROUNDS[0].background,
   );
   const [quality, setQuality] = useState<Quality>(DEFAULT_QUALITY);
+  const [lipSyncEngine, setLipSyncEngine] = useState<LipSyncEngine>('sdk');
+  const [lipSyncGain, setLipSyncGain] = useState(1);
+  const lipSyncStats = useRef<LipSyncStats>(createStats());
   const objectUrl = useRef<string | null>(null);
 
   useEffect(() => {
@@ -338,8 +450,23 @@ function DemoPage() {
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       <Canvas shadows>
-        <Scene background={background} quality={quality} />
+        <Scene
+          background={background}
+          quality={quality}
+          lipSync={{ engine: lipSyncEngine, gain: lipSyncGain, stats: lipSyncStats }}
+        />
       </Canvas>
+
+      <LipSyncPanel
+        engine={lipSyncEngine}
+        onEngine={(e) => {
+          setLipSyncEngine(e);
+          lipSyncStats.current = createStats();
+        }}
+        gain={lipSyncGain}
+        onGain={setLipSyncGain}
+        stats={lipSyncStats}
+      />
 
       {/* Quality A/B panel — every row is an SDK render-quality feature that
           is off unless opted into, so each can be judged in isolation. */}

@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@khaveeai/core": "workspace:*",
+    "@khaveeai/providers-generic-stt-tts": "workspace:*",
     "@khaveeai/providers-mock": "workspace:*",
     "@khaveeai/providers-openai-realtime": "workspace:*",
-    "@khaveeai/providers-generic-stt-tts": "workspace:*",
     "@khaveeai/providers-pgvector": "workspace:*",
     "@khaveeai/react": "workspace:*",
     "@pixiv/three-vrm": "^3.4.2",
@@ -31,7 +31,8 @@
     "pgvector": "^0.2.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "wlipsync": "^1.3.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

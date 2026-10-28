@@ -48,6 +48,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   // ── Private State ──────────────────────────────────────────────────────────
 
   private micEnabled = false;
+  private userSpeechActive = false;
+  private speechCommitTimer: ReturnType<typeof setTimeout> | null = null;
   private hasEmittedAudioData = false;
   private tools: RealtimeTool[] = [];
   private pendingToolArgs: Map<string, { name: string; args: string }> =
@@ -124,10 +126,6 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
       await this.waitForOpen(this.ws);
 
-      this.isConnected = true;
-      this.setChatStatus("ready");
-      this.onConnect?.();
-
       // Initialize audio engines
       const sampleRate = this.config.sampleRate ?? 24000;
       this.playbackEngine = new AudioPlaybackEngine({ sampleRate });
@@ -165,17 +163,37 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         this.micEnabled = shouldEnableMic;
       } catch (micError) {
         // Mic permission denied is non-fatal — text input still works
+        this.micEngine.destroy();
+        this.micEnabled = false;
         console.warn("Mic capture initialization failed:", micError);
       }
 
+      if (this.ws.readyState !== WebSocket.OPEN) {
+        throw new Error("xAI session closed during microphone setup");
+      }
+
+      this.isConnected = true;
+      this.userSpeechActive = false;
+      this.clearSpeechCommitTimer();
+      this.setChatStatus("ready");
+      this.onConnect?.();
+
       // Set up WebSocket message handling
-      this.ws.onmessage = (event: MessageEvent) => {
+      const activeSocket = this.ws;
+      activeSocket.onmessage = (event: MessageEvent) => {
         void this.handleServerEvent(event);
       };
-      this.ws.onclose = () => {
+      activeSocket.onclose = () => {
+        if (this.ws !== activeSocket) return;
+        this.ws = null;
         this.handleDisconnect();
+        this.micEngine?.destroy();
+        this.micEngine = null;
+        this.playbackEngine?.destroy();
+        this.playbackEngine = null;
       };
-      this.ws.onerror = (event: Event) => {
+      activeSocket.onerror = (event: Event) => {
+        if (this.ws !== activeSocket) return;
         this.onError?.(
           new Error(`WebSocket error: ${(event as ErrorEvent).message ?? "connection failed"}`),
         );
@@ -202,6 +220,14 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         this.sendEvent({ type: "response.create" });
       }
     } catch (error) {
+      this.ws?.close();
+      this.ws = null;
+      this.micEngine?.destroy();
+      this.micEngine = null;
+      this.playbackEngine?.destroy();
+      this.playbackEngine = null;
+      this.isConnected = false;
+      this.setChatStatus("stopped");
       this.onError?.(
         error instanceof Error ? error : new Error(String(error)),
       );
@@ -221,6 +247,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
       this.micEngine?.destroy();
       this.micEngine = null;
+      this.userSpeechActive = false;
+      this.clearSpeechCommitTimer();
       // micEnabled is intentionally NOT reset here — the hardware capture
       // is torn down, but the flag must survive disconnect() so a silent
       // reconnect (idle-session reset) can read it in connect() to restore
@@ -333,23 +361,33 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   async toggleMicrophone(): Promise<boolean> {
     if (this.micEnabled) {
       this.disableMicrophone();
-      return false;
     } else {
       await this.enableMicrophone();
-      return true;
     }
+    return this.isMicrophoneEnabled();
   }
 
   /**
    * Enable microphone capture. Initializes mic if not yet done.
    */
   async enableMicrophone(): Promise<void> {
-    if (!this.micEngine) {
-      console.warn("No mic engine available — cannot enable microphone");
+    if (!this.isConnected || !this.micEngine) {
+      this.micEnabled = false;
+      const reason = this.isConnected
+        ? "capture is not initialized"
+        : "xAI session is disconnected";
+      this.onError?.(new Error(`Microphone unavailable: ${reason}`));
       return;
     }
-    await this.micEngine.enable();
-    this.micEnabled = true;
+    try {
+      await this.micEngine.enable();
+      this.micEnabled = this.micEngine.isEnabled;
+    } catch (error) {
+      this.micEngine.destroy();
+      this.micEnabled = false;
+      const message = error instanceof Error ? error.message : String(error);
+      this.onError?.(new Error(`Microphone unavailable: ${message}`));
+    }
   }
 
   /**
@@ -358,17 +396,21 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   disableMicrophone(): void {
     if (!this.micEngine) {
       console.warn("No mic engine available — cannot disable microphone");
+      this.micEnabled = false;
       return;
     }
     this.micEngine.disable();
     this.micEnabled = false;
+    this.userSpeechActive = false;
+    this.clearSpeechCommitTimer();
+    if (this.chatStatus === "listening") this.setChatStatus("ready");
   }
 
   /**
    * Check if microphone is currently enabled.
    */
   isMicrophoneEnabled(): boolean {
-    return this.micEnabled;
+    return this.isConnected && this.micEnabled && (this.micEngine?.isEnabled ?? false);
   }
 
   // ── Audio Analysis ─────────────────────────────────────────────────────────
@@ -404,6 +446,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "input_audio_buffer.speech_started":
+          if (!this.micEnabled || this.userSpeechActive) break;
+          this.clearSpeechCommitTimer();
+          this.userSpeechActive = true;
           // Barge-in: stop playback if assistant is speaking
           if (this.chatStatus === "speaking") {
             this.playbackEngine?.cancel();
@@ -423,10 +468,33 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "input_audio_buffer.speech_stopped":
-          // VAD detected end of speech — keep "listening" until committed
+          // A missing commit must not leave the UI listening forever.
+          if (this.userSpeechActive) {
+            this.clearSpeechCommitTimer();
+            this.speechCommitTimer = setTimeout(() => {
+              if (this.userSpeechActive && this.chatStatus === "listening") {
+                this.userSpeechActive = false;
+                const last = this.conversation[this.conversation.length - 1];
+                if (last?.role === "user" && !last.isFinal) {
+                  if (last.text) {
+                    last.isFinal = true;
+                    last.status = "final";
+                  } else {
+                    this.conversation.pop();
+                  }
+                  this.onConversationUpdate?.(this.conversation);
+                }
+                this.setChatStatus("ready");
+              }
+              this.speechCommitTimer = null;
+            }, 5000);
+          }
           break;
 
         case "input_audio_buffer.committed":
+          if (!this.userSpeechActive) break;
+          this.clearSpeechCommitTimer();
+          this.userSpeechActive = false;
           // Finalize the pending user message, or remove if empty
           for (let i = this.conversation.length - 1; i >= 0; i--) {
             if (this.conversation[i].role === "user" && !this.conversation[i].isFinal) {
@@ -466,7 +534,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.created":
-          this.setChatStatus("thinking");
+          if (!this.userSpeechActive || this.chatStatus !== "listening") {
+            this.setChatStatus("thinking");
+          }
           break;
 
         case "response.output_item.added":
@@ -749,7 +819,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     }
 
     // If playback is not actively playing, set ready
-    if (!this.playbackEngine?.isPlaying) {
+    if (!this.userSpeechActive && !this.playbackEngine?.isPlaying) {
       this.setChatStatus("ready");
     }
   }
@@ -874,6 +944,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           ),
         { once: true },
       );
+      ws.addEventListener(
+        "close",
+        () => reject(new Error("WebSocket closed before connection opened")),
+        { once: true },
+      );
     });
   }
 
@@ -883,8 +958,17 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private handleDisconnect(): void {
     if (!this.isConnected) return;
     this.isConnected = false;
+    this.userSpeechActive = false;
+    this.clearSpeechCommitTimer();
     this.setChatStatus("stopped");
     this.onDisconnect?.();
+  }
+
+  private clearSpeechCommitTimer(): void {
+    if (this.speechCommitTimer) {
+      clearTimeout(this.speechCommitTimer);
+      this.speechCommitTimer = null;
+    }
   }
 
   /**

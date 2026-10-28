@@ -58,7 +58,6 @@ function Scene() {
 
 function XAIAvatarTest() {
   const {
-    connect,
     disconnect,
     sendMessage,
     conversation,
@@ -68,6 +67,48 @@ function XAIAvatarTest() {
   const { setGestureHint } = useKhavee();
   const [micOn, setMicOn] = useState(false);
   const [toolLog, setToolLog] = useState<string[]>([]);
+  const [eventLog, setEventLog] = useState<string[]>([]);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+
+  useEffect(() => {
+    const previousStatus = xaiProvider.onChatStatusChange;
+    const previousError = xaiProvider.onError;
+    const previousConnect = xaiProvider.onConnect;
+    const previousDisconnect = xaiProvider.onDisconnect;
+    const log = (message: string) => {
+      setEventLog((entries) => [
+        `${new Date().toLocaleTimeString()} ${message}`,
+        ...entries,
+      ].slice(0, 30));
+    };
+
+    xaiProvider.onChatStatusChange = (status) => {
+      previousStatus?.(status);
+      log(`status: ${status}`);
+    };
+    xaiProvider.onError = (error) => {
+      previousError?.(error);
+      setLastError(error.message);
+      log(`error: ${error.message}`);
+    };
+    xaiProvider.onConnect = () => {
+      previousConnect?.();
+      setLastError(null);
+      log("connected");
+    };
+    xaiProvider.onDisconnect = () => {
+      previousDisconnect?.();
+      log("disconnected");
+    };
+
+    return () => {
+      xaiProvider.onChatStatusChange = previousStatus;
+      xaiProvider.onError = previousError;
+      xaiProvider.onConnect = previousConnect;
+      xaiProvider.onDisconnect = previousDisconnect;
+    };
+  }, []);
 
   useEffect(() => {
     xaiProvider.registerFunction({
@@ -89,13 +130,29 @@ function XAIAvatarTest() {
   }, []);
 
   const handleConnect = async () => {
-    await xaiProvider.connect({ skipGreeting: true });
-    setMicOn(xaiProvider.isMicrophoneEnabled());
+    setIsBusy(true);
+    try {
+      await xaiProvider.connect({ skipGreeting: true });
+      setMicOn(xaiProvider.isMicrophoneEnabled());
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const toggleMic = async () => {
-    const enabled = await xaiProvider.toggleMicrophone();
-    setMicOn(enabled);
+    setIsBusy(true);
+    try {
+      const wasEnabled = xaiProvider.isMicrophoneEnabled();
+      const enabled = await xaiProvider.toggleMicrophone();
+      setMicOn(xaiProvider.isMicrophoneEnabled());
+      if (enabled || wasEnabled) setLastError(null);
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   return (
@@ -119,21 +176,21 @@ function XAIAvatarTest() {
           <div className="flex gap-3 mb-4">
             <button
               onClick={handleConnect}
-              disabled={isConnected}
+              disabled={isConnected || isBusy}
               className="px-5 py-2 bg-purple-600 rounded-lg disabled:opacity-50 hover:bg-purple-700"
             >
               {isConnected ? "Connected" : "Connect"}
             </button>
             <button
               onClick={disconnect}
-              disabled={!isConnected}
+              disabled={!isConnected || isBusy}
               className="px-5 py-2 bg-red-600 rounded-lg disabled:opacity-50 hover:bg-red-700"
             >
               Disconnect
             </button>
             <button
               onClick={toggleMic}
-              disabled={!isConnected}
+              disabled={!isConnected || isBusy}
               className={`px-5 py-2 rounded-lg disabled:opacity-50 ${
                 micOn
                   ? "bg-green-600 hover:bg-green-700"
@@ -143,6 +200,20 @@ function XAIAvatarTest() {
               {micOn ? "Mic ON" : "Mic OFF"}
             </button>
           </div>
+          {lastError && (
+            <p role="alert" className="mb-3 rounded bg-red-950 p-2 text-sm text-red-200">
+              {lastError}
+            </p>
+          )}
+          <details className="mb-4 rounded bg-gray-800 p-3 text-xs" open>
+            <summary className="cursor-pointer font-semibold">Session events</summary>
+            <p className="mt-2 text-gray-400">
+              Speak, pause, then toggle mic. Check status sequence and any error below.
+            </p>
+            <ol className="mt-2 max-h-32 overflow-y-auto font-mono text-gray-300">
+              {eventLog.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}
+            </ol>
+          </details>
 
           {/* Gesture test buttons */}
           <div className="flex gap-3 mb-4">

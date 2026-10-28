@@ -91,8 +91,12 @@ export function useRealtime() {
     };
     provider.onError = (error) => {
       upstreamOnError?.(error);
-      setConnectError(error);
-      setRetryCooldownSeconds(5);
+      // A mic or response error during an active session is not a failed
+      // connection. Keep connectError reserved for connection attempts.
+      if (!provider.isConnected) {
+        setConnectError(error);
+        setRetryCooldownSeconds(5);
+      }
     };
     provider.onDisconnect = () => {
       setIsConnected(false);

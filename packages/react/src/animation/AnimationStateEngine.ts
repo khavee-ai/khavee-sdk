@@ -414,6 +414,7 @@ import {
   easeInOutCubic,
   beginOrphanFade,
   stepOrphanFade,
+  fillWeightDeficit,
   type BlendState,
   type OrphanFade,
 } from "./crossfade";
@@ -761,6 +762,25 @@ const STATUS_CLIP_PATTERNS: Partial<Record<ChatStatus, RegExp>> = {
  * first `.find()` match. Loop-boundary-driven cycling across those clips is
  * handled by `stepClipCycle` (talkCycle.ts), not by this function.
  */
+/**
+ * Keeps the idle clip that is already playing when a status change resolves to
+ * a different idle variant. `ready` picks a random variant each time it is
+ * entered and statuses without their own clip (usually `listening`) fall back
+ * to the app's idle choice, so a quick ready/listening flap would otherwise
+ * crossfade between idle variants on every flip. The clip cycler still rotates
+ * idle variants at loop boundaries.
+ */
+export function holdIdleAcrossStatusChange(
+  target: string | null,
+  currentClipName: string | null,
+): string | null {
+  const idle = STATUS_CLIP_PATTERNS.ready!;
+  if (target && currentClipName && target !== currentClipName && idle.test(target) && idle.test(currentClipName)) {
+    return currentClipName;
+  }
+  return target;
+}
+
 export function resolveBaseClip(
   chatStatus: ChatStatus,
   currentAnimation: string | null,
@@ -1058,7 +1078,11 @@ export function useAnimationController(params: {
   // render (VRMAvatar builds it from processedClips.map()).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const targetName = useMemo(
-    () => resolveBaseClip(chatStatus, currentAnimation, availableNames, { order: cycleOrder }),
+    () =>
+      holdIdleAcrossStatusChange(
+        resolveBaseClip(chatStatus, currentAnimation, availableNames, { order: cycleOrder }),
+        currentClipNameRef.current,
+      ),
     [chatStatus, currentAnimation, availableNames.join(" "), cycleOrder],
   );
 
@@ -1234,6 +1258,13 @@ export function useAnimationController(params: {
     if (orphanFadesRef.current.length > 0) {
       orphanFadesRef.current = orphanFadesRef.current.filter((fade) => !stepOrphanFade(fade));
     }
+
+    // Never let the blended weight dip below 1 — the remainder would be filled
+    // with the bind pose (see fillWeightDeficit).
+    fillWeightDeficit(currentActionRef.current, [
+      blendRef.current.active ? blendRef.current.from : null,
+      ...orphanFadesRef.current.map((fade) => fade.action),
+    ]);
 
     // 2. Blink procedural delta — expression-only, no bone interaction, so
     // it has no ordering dependency on the bone-writing steps below. 18-04

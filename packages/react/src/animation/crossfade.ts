@@ -281,3 +281,28 @@ export function stepOrphanFade(fade: OrphanFade): boolean {
   }
   return false;
 }
+
+/**
+ * Tops up `target` so the weights of all actions the engine is blending sum to
+ * at least 1. three.js's PropertyMixer fills any weight below 1 with the
+ * model's bind pose, so a deficit shows as the avatar sagging toward a T-pose.
+ * One crossfade plus one orphan fade is weight-conserving by construction, but
+ * rapid status changes stack several orphan fades with their own start times
+ * and durations, and those can fall faster than the incoming clip rises.
+ *
+ * @returns the weight added to `target` (0 when there was no deficit).
+ */
+export function fillWeightDeficit(
+  target: THREE.AnimationAction | null,
+  others: ReadonlyArray<THREE.AnimationAction | null | undefined>,
+): number {
+  if (!target || !target.isRunning()) return 0;
+  let total = target.getEffectiveWeight();
+  for (const action of others) {
+    if (action && action !== target && action.isRunning()) total += action.getEffectiveWeight();
+  }
+  if (total >= 1) return 0;
+  const added = Math.min(1 - total, 1 - target.getEffectiveWeight());
+  target.setEffectiveWeight(target.getEffectiveWeight() + added);
+  return added;
+}

@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import {
+  fillWeightDeficit,
   beginCrossfade,
   beginOrphanFade,
   computePoseGapAngle,
@@ -435,3 +436,93 @@ describe("beginOrphanFade / stepOrphanFade (T-pose/bind-pose snap fix, part 3)",
     void fade;
   });
 });
+
+describe("fillWeightDeficit", () => {
+  function stub(weight: number, running = true) {
+    let w = weight;
+    return {
+      isRunning: () => running,
+      getEffectiveWeight: () => w,
+      setEffectiveWeight: (v: number) => {
+        w = v;
+      },
+    } as unknown as THREE.AnimationAction;
+  }
+
+  it("tops the target up so all blended weights sum to 1", () => {
+    const target = stub(0.25);
+    const added = fillWeightDeficit(target, [stub(0.35), stub(0.1)]);
+    expect(added).toBeCloseTo(0.3);
+    expect(target.getEffectiveWeight()).toBeCloseTo(0.55);
+  });
+
+  it("leaves weights alone when they already sum to 1 or more, and ignores stopped actions", () => {
+    const target = stub(0.6);
+    expect(fillWeightDeficit(target, [stub(0.4), stub(0.9, false)])).toBe(0);
+    expect(target.getEffectiveWeight()).toBe(0.6);
+  });
+
+  it("does nothing without a running target", () => {
+    expect(fillWeightDeficit(null, [stub(0.2)])).toBe(0);
+    expect(fillWeightDeficit(stub(0.2, false), [stub(0.2)])).toBe(0);
+  });
+
+  it("keeps a rapid status flap (stacked orphan fades) from leaking the bind pose", () => {
+    // Mirrors AnimationStateEngine's switchToClip: crossfade current -> next,
+    // and ramp the interrupted blend's `from` down as an orphan.
+    const root = new THREE.Object3D();
+    const bone = new THREE.Object3D();
+    bone.name = "bone";
+    root.add(bone);
+    const mixer = new THREE.AnimationMixer(root);
+    const clip = (name: string, angle: number) => {
+      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle);
+      return mixer.clipAction(
+        new THREE.AnimationClip(name, 1, [
+          new THREE.QuaternionKeyframeTrack("bone.quaternion", [0, 1], [q.x, q.y, q.z, q.w, q.x, q.y, q.z, q.w]),
+        ]),
+      );
+    };
+    const actions = [clip("idle", 0), clip("listen", 0.9), clip("think", 0.3)];
+
+    function simulate(fill: boolean): number {
+      let now = 0;
+      const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+      try {
+        mixer.stopAllAction();
+        let current = actions[0];
+        current.reset().play();
+        current.setEffectiveWeight(1);
+        let blend: ReturnType<typeof beginCrossfade> | null = null;
+        let orphans: ReturnType<typeof beginOrphanFade>[] = [];
+        let minTotal = 1;
+        const order = [1, 2, 0, 1, 2, 0, 1, 0, 2, 1];
+        for (let step = 0; step < 200; step++) {
+          if (step % 9 === 0 && step / 9 < order.length) {
+            const to = actions[order[step / 9]];
+            if (to !== current) {
+              const orphan = blend?.active && blend.from && blend.from !== to ? blend.from : null;
+              orphans = orphans.filter((o) => o.action !== to);
+              blend = beginCrossfade(current, to, root);
+              if (orphan) orphans.push(beginOrphanFade(orphan, blend.duration));
+              current = to;
+            }
+          }
+          if (blend?.active) stepCrossfade(blend);
+          orphans = orphans.filter((o) => !stepOrphanFade(o));
+          if (fill) fillWeightDeficit(current, [blend?.active ? blend.from : null, ...orphans.map((o) => o.action)]);
+          const total = actions.reduce((sum, a) => sum + (a.isRunning() ? a.getEffectiveWeight() : 0), 0);
+          minTotal = Math.min(minTotal, total);
+          now += 1000 / 60;
+        }
+        return minTotal;
+      } finally {
+        nowSpy.mockRestore();
+      }
+    }
+
+    expect(simulate(false)).toBeLessThan(0.999); // a real (if small here) deficit
+    expect(simulate(true)).toBeGreaterThanOrEqual(1 - 1e-9);
+  });
+});
+

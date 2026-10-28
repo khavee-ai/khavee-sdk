@@ -37,6 +37,7 @@ import {
   useAnimationController,
   selectGestureHint,
   type RestPoseAnchor,
+  holdIdleAcrossStatusChange,
 } from "./AnimationStateEngine";
 import { createBreathingState, stepBreathing } from "./breathing";
 import { createSwayState, stepSway } from "./sway";
@@ -1575,3 +1576,20 @@ describe("3+-deep interruption chain: orphaned action fades out smoothly, never 
     expect(talkAction.stop).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("holdIdleAcrossStatusChange", () => {
+  it("keeps the playing idle variant when the new status resolves to another idle variant", () => {
+    expect(holdIdleAcrossStatusChange("idle_2", "idle_0")).toBe("idle_0");
+  });
+
+  it("switches normally to or from a non-idle clip", () => {
+    expect(holdIdleAcrossStatusChange("thinking_0", "idle_0")).toBe("thinking_0");
+    expect(holdIdleAcrossStatusChange("idle_1", "thinking_0")).toBe("idle_1");
+  });
+
+  it("passes the target through when nothing is playing yet", () => {
+    expect(holdIdleAcrossStatusChange("idle_1", null)).toBe("idle_1");
+    expect(holdIdleAcrossStatusChange(null, "idle_0")).toBeNull();
+  });
+});
+

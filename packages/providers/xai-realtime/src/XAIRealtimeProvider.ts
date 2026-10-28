@@ -50,6 +50,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private micEnabled = false;
   private userSpeechActive = false;
   private speechCommitTimer: ReturnType<typeof setTimeout> | null = null;
+  private muteSilenceTimer: ReturnType<typeof setInterval> | null = null;
+  private assistantAudioStreaming = false;
+  private micSuppressedUntil = 0;
   private hasEmittedAudioData = false;
   private tools: RealtimeTool[] = [];
   private pendingToolArgs: Map<string, { name: string; args: string }> =
@@ -133,7 +136,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         this.setChatStatus("speaking");
       };
       this.playbackEngine.onPlaybackEnd = () => {
-        if (this.chatStatus === "speaking") {
+        this.micSuppressedUntil = Date.now() + 300;
+        if (!this.assistantAudioStreaming && this.chatStatus === "speaking") {
           this.setChatStatus("ready");
         }
       };
@@ -141,6 +145,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       // Initialize mic capture
       this.micEngine = new MicCaptureEngine(sampleRate);
       this.micEngine.onAudioFrame = (base64: string) => {
+        if (this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) return;
         this.sendEvent({ type: "input_audio_buffer.append", audio: base64 });
       };
       this.micEngine.onError = (error: Error) => {
@@ -175,6 +180,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       this.isConnected = true;
       this.userSpeechActive = false;
       this.clearSpeechCommitTimer();
+      this.clearMuteSilenceTimer();
+      this.assistantAudioStreaming = false;
       this.setChatStatus("ready");
       this.onConnect?.();
 
@@ -401,9 +408,13 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     }
     this.micEngine.disable();
     this.micEnabled = false;
-    this.userSpeechActive = false;
-    this.clearSpeechCommitTimer();
-    if (this.chatStatus === "listening") this.setChatStatus("ready");
+    if (this.userSpeechActive) {
+      // Server VAD needs paced silence to end the utterance. A manual commit
+      // is rejected while turn_detection is server_vad.
+      this.sendMuteSilenceTail();
+    } else if (this.chatStatus === "listening") {
+      this.setChatStatus("ready");
+    }
   }
 
   /**
@@ -446,7 +457,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "input_audio_buffer.speech_started":
-          if (!this.micEnabled || this.userSpeechActive) break;
+          if (!this.micEnabled || this.userSpeechActive || this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) break;
           this.clearSpeechCommitTimer();
           this.userSpeechActive = true;
           // Barge-in: stop playback if assistant is speaking
@@ -494,6 +505,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         case "input_audio_buffer.committed":
           if (!this.userSpeechActive) break;
           this.clearSpeechCommitTimer();
+          this.clearMuteSilenceTimer();
           this.userSpeechActive = false;
           // Finalize the pending user message, or remove if empty
           for (let i = this.conversation.length - 1; i >= 0; i--) {
@@ -556,13 +568,18 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         case "response.audio.delta":
         case "response.output_audio.delta":
           // Feed audio chunk to playback engine
+          this.assistantAudioStreaming = true;
           this.playbackEngine?.appendChunk(data.delta);
           this.emitAudioDataOnce();
           break;
 
         case "response.audio.done":
         case "response.output_audio.done":
-          // Audio stream complete — playbackEngine.onPlaybackEnd handles status
+          this.assistantAudioStreaming = false;
+          if (!this.playbackEngine?.isPlaying && this.chatStatus === "speaking") {
+            this.micSuppressedUntil = Date.now() + 300;
+            this.setChatStatus("ready");
+          }
           break;
 
         case "response.audio_transcript.delta":
@@ -588,6 +605,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.done":
+          this.assistantAudioStreaming = false;
           this.handleResponseDone(data.response);
           break;
 
@@ -960,6 +978,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.isConnected = false;
     this.userSpeechActive = false;
     this.clearSpeechCommitTimer();
+    this.clearMuteSilenceTimer();
+    this.assistantAudioStreaming = false;
     this.setChatStatus("stopped");
     this.onDisconnect?.();
   }
@@ -969,6 +989,35 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       clearTimeout(this.speechCommitTimer);
       this.speechCommitTimer = null;
     }
+  }
+
+  private clearMuteSilenceTimer(): void {
+    if (this.muteSilenceTimer) {
+      clearInterval(this.muteSilenceTimer);
+      this.muteSilenceTimer = null;
+    }
+  }
+
+  private sendMuteSilenceTail(): void {
+    this.clearMuteSilenceTimer();
+    const sampleRate = this.config.sampleRate ?? 24000;
+    const frameMs = 100;
+    const silenceMs = Math.max(1500, (this.config.turnDetection?.silence_duration_ms ?? 1000) + 500);
+    const frameCount = Math.ceil(silenceMs / frameMs);
+    const bytes = new Uint8Array(Math.ceil(sampleRate * frameMs / 1000) * 2);
+    const silence = btoa(String.fromCharCode(...bytes));
+    let sent = 0;
+    const sendFrame = () => {
+      if (!this.userSpeechActive || !this.isConnected) {
+        this.clearMuteSilenceTimer();
+        return;
+      }
+      this.sendEvent({ type: "input_audio_buffer.append", audio: silence });
+      sent++;
+      if (sent >= frameCount) this.clearMuteSilenceTimer();
+    };
+    sendFrame();
+    if (sent < frameCount) this.muteSilenceTimer = setInterval(sendFrame, frameMs);
   }
 
   /**

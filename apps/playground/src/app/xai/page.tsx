@@ -147,6 +147,10 @@ function XAIAvatarTest() {
       const wasEnabled = xaiProvider.isMicrophoneEnabled();
       const enabled = await xaiProvider.toggleMicrophone();
       setMicOn(xaiProvider.isMicrophoneEnabled());
+      setEventLog((entries) => [
+        `${new Date().toLocaleTimeString()} mic: ${wasEnabled ? "off" : enabled ? "on" : "failed to enable"}`,
+        ...entries,
+      ].slice(0, 30));
       if (enabled || wasEnabled) setLastError(null);
     } catch (error) {
       setLastError(error instanceof Error ? error.message : String(error));
@@ -208,7 +212,7 @@ function XAIAvatarTest() {
           <details className="mb-4 rounded bg-gray-800 p-3 text-xs" open>
             <summary className="cursor-pointer font-semibold">Session events</summary>
             <p className="mt-2 text-gray-400">
-              Speak, pause, then toggle mic. Check status sequence and any error below.
+              Speak, toggle mic off mid-sentence, then wait for reply. Also listen for status flicker during Grok audio.
             </p>
             <ol className="mt-2 max-h-32 overflow-y-auto font-mono text-gray-300">
               {eventLog.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}

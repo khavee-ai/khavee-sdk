@@ -7,15 +7,16 @@ updated: 2026-10-28
 
 ## Current Focus
 reasoning_checkpoint:
-  hypothesis: Unmatched VAD events overwrite chat status; toggle reports success when mic engine is missing and rejects on capture errors.
+  hypothesis: Captured assistant playback reaches server VAD, causing false speech starts and speaking/listening oscillation; stopping mic mid-utterance prevents VAD from receiving silence needed to commit the turn.
   confirming_evidence:
-    - speech_started and committed set status with no active-speech or mic guard.
-    - toggleMicrophone returns true after enableMicrophone returns early without mic engine.
-    - MicCaptureEngine.enable may reject from initialize or AudioContext.resume.
-  falsification_test: Synthetic unmatched events leave status unchanged; missing or failing mic enable returns false without rejection.
-  fix_rationale: Track active speech, ignore unmatched events, and derive toggle result from actual engine state.
-  blind_spots: Intermittent live xAI event ordering requires human verification in browser.
-next_action: User tests /xai with real mic and token endpoint, then reports whether status loop or mic error persists.
+    - Mic onAudioFrame sends all captured frames during assistant playback.
+    - Playback end debounce can set ready between streaming audio chunks.
+    - disableMicrophone stops frames and clears userSpeechActive before input_audio_buffer.committed arrives.
+    - xAI docs state server_vad commits/responds automatically after silence; manual commit only works when turn_detection is null.
+  falsification_test: Reproduced event sequence should not oscillate status during audio gaps; muting during active speech should send paced silence and accept server commit.
+  fix_rationale: Suppress mic audio while assistant output plays, hold speaking through streaming gaps, and feed paced silence after mute so server VAD can end the user turn.
+  blind_spots: Real xAI/browser timing still requires manual verification.
+next_action: Test real xAI conversation at /xai: pause during assistant reply and mute while speaking; report status sequence and whether response arrives.
 
 ## Symptoms
 expected: Stable ready/listening/thinking/speaking transitions; mic toggle reflects actual mic state and reports mic errors accurately.
@@ -47,9 +48,17 @@ started: Unknown.
   checked: WebSocket onclose
   found: Unexpected close changed status but left microphone and playback engines running.
   implication: Reconnect can leave stale capture resources and mic state.
+- timestamp: 2026-10-28
+  checked: User follow-up and xAI voice API docs
+  found: Assistant audio is captured while playing; manual commit is unavailable with server_vad; current mute clears active speech before server commit.
+  implication: Feedback can trigger false barge-in, and muting mid-speech strands the turn.
+- timestamp: 2026-10-28
+  checked: Provider regression tests
+  found: Paced silence reaches WebSocket after mute, server commit is still accepted, assistant audio suppresses mic/VAD events, and speaking survives an audio chunk gap.
+  implication: Previously failing event paths now preserve turn state in synthetic tests.
 
 ## Resolution
-root_cause: Provider trusts unmatched VAD events, lacks missing-commit recovery, announces connection before mic setup, and reports mic state from requested action rather than capture state.
-fix: Track active speech, ignore duplicate/unmatched VAD events, recover from missing commit after 5s, delay onConnect until mic setup, clean engines on unexpected close, and return actual mic state with specific errors.
-verification: Five synthetic provider tests pass via package test script; package TypeScript build passes. Real xAI browser run pending.
-files_changed: [packages/providers/xai-realtime/src/XAIRealtimeProvider.ts, packages/providers/xai-realtime/src/__tests__/XAIRealtimeProvider.test.js, packages/providers/xai-realtime/package.json, pnpm-lock.yaml]
+root_cause: Provider forwarded microphone capture during its own assistant playback, allowing server VAD to hear output and trigger false speech starts; playback gaps reset status; muting mid-speech stopped input before VAD could commit and discarded the eventual commit.
+fix: Suppress mic frames and VAD speech starts while assistant audio streams or plays and for 300ms after; hold speaking through streaming gaps; send paced silent PCM after a mid-speech mute and keep the turn active until server commit.
+verification: Eight provider tests pass via package test script; package TypeScript build passes. Real xAI browser run pending.
+files_changed: [packages/providers/xai-realtime/src/XAIRealtimeProvider.ts, packages/providers/xai-realtime/src/__tests__/XAIRealtimeProvider.test.js]

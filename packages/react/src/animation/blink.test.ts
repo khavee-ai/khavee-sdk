@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { VRMExpressionManager } from "@pixiv/three-vrm";
-import { createBlinkState, stepBlink } from "./blink";
+import { BLINK_DURATION_MS, blinkCurve, createBlinkState, stepBlink } from "./blink";
 import type { AvatarFormatAdapter } from "./types";
 
 function makeStubExpressionManager(
@@ -69,30 +69,30 @@ describe("stepBlink — legacy schedule (no options)", () => {
 });
 
 describe("stepBlink — forceBlink (D-02)", () => {
-  it("starts a blink on the same call: value is sin(0.15*PI) and setValue receives it", () => {
+  it("starts a blink on the same call, eyes still open, then closes over the following frames", () => {
     const state = createBlinkState(0, DETERMINISTIC_RANDOM);
     const expressionManager = makeStubExpressionManager();
     const adapter = makeStubAdapter(expressionManager);
 
     stepBlink(state, adapter, true, 1000, { forceBlink: true, random: DETERMINISTIC_RANDOM });
-
-    const expectedValue = Math.sin(0.15 * Math.PI);
     expect(state.isBlinking).toBe(true);
-    expect(state.value).toBeCloseTo(expectedValue, 10);
-    expect(expressionManager.setValue).toHaveBeenCalledWith("blinkLeft", expectedValue);
-    expect(expressionManager.setValue).toHaveBeenCalledWith("blinkRight", expectedValue);
+    expect(state.startedAtMs).toBe(1000);
+    expect(state.value).toBe(0);
+
+    stepBlink(state, adapter, true, 1060, { random: DETERMINISTIC_RANDOM });
+    expect(state.value).toBeCloseTo(blinkCurve(60), 10);
+    expect(expressionManager.setValue).toHaveBeenCalledWith("blinkLeft", state.value);
+    expect(expressionManager.setValue).toHaveBeenCalledWith("blinkRight", state.value);
   });
 
-  it("does not restart a blink already in progress — progress keeps advancing", () => {
+  it("does not restart a blink already in progress", () => {
     const state = createBlinkState(0, DETERMINISTIC_RANDOM);
-    const expressionManager = makeStubExpressionManager();
-    const adapter = makeStubAdapter(expressionManager);
+    const adapter = makeStubAdapter(makeStubExpressionManager());
 
     stepBlink(state, adapter, true, 1000, { forceBlink: true, random: DETERMINISTIC_RANDOM });
-    expect(state.progress).toBeCloseTo(0.15, 10);
-
-    stepBlink(state, adapter, true, 1010, { forceBlink: true, random: DETERMINISTIC_RANDOM });
-    expect(state.progress).toBeCloseTo(0.3, 10);
+    stepBlink(state, adapter, true, 1050, { forceBlink: true, random: DETERMINISTIC_RANDOM });
+    expect(state.startedAtMs).toBe(1000);
+    expect(state.value).toBeCloseTo(blinkCurve(50), 10);
   });
 
   it("ignores a forced blink within MIN_FORCED_BLINK_GAP_MS (400ms) of the previous blink's end", () => {
@@ -101,23 +101,22 @@ describe("stepBlink — forceBlink (D-02)", () => {
     const adapter = makeStubAdapter(expressionManager);
 
     // Run a full blink to completion via repeated forced triggers (only the
-    // first actually starts it; the rest just advance progress).
+    // first actually starts it; the rest just advance it).
     let t = 1000;
-    for (let i = 0; i < 7; i++) {
+    do {
       stepBlink(state, adapter, true, t, { forceBlink: true, random: DETERMINISTIC_RANDOM });
-      t += 10;
-    }
+      t += 16;
+    } while (state.isBlinking && t < 1000 + 2 * BLINK_DURATION_MS);
     expect(state.isBlinking).toBe(false);
     const endMs = state.lastBlinkEndMs;
-    const progressAfterCompletion = state.progress;
+    const startedAtCompletion = state.startedAtMs;
 
     // Attempt another forced blink well within the 400ms gap.
     stepBlink(state, adapter, true, endMs + 100, { forceBlink: true, random: DETERMINISTIC_RANDOM });
 
-    // No new blink was started — isBlinking stays false and progress is
-    // untouched (a real restart would reset progress to 0 then advance it).
+    // No new blink was started — a restart would set a new startedAtMs.
     expect(state.isBlinking).toBe(false);
-    expect(state.progress).toBe(progressAfterCompletion);
+    expect(state.startedAtMs).toBe(startedAtCompletion);
   });
 });
 
@@ -182,21 +181,71 @@ describe("stepBlink — enabled/expression-manager guards", () => {
 });
 
 describe("stepBlink — completion", () => {
-  it("completes after ceil(1/0.15) = 7 calls, ending with value 0 and isBlinking=false", () => {
+  it("completes once BLINK_DURATION_MS has elapsed, ending with value 0 and isBlinking=false", () => {
     const state = createBlinkState(0, DETERMINISTIC_RANDOM);
-    const expressionManager = makeStubExpressionManager();
-    const adapter = makeStubAdapter(expressionManager);
+    const adapter = makeStubAdapter(makeStubExpressionManager());
 
-    let t = 1000;
-    stepBlink(state, adapter, true, t, { forceBlink: true, random: DETERMINISTIC_RANDOM });
+    stepBlink(state, adapter, true, 1000, { forceBlink: true, random: DETERMINISTIC_RANDOM });
+    stepBlink(state, adapter, true, 1000 + BLINK_DURATION_MS - 1, { random: DETERMINISTIC_RANDOM });
     expect(state.isBlinking).toBe(true);
 
-    for (let i = 1; i < 7; i++) {
-      t += 10;
-      stepBlink(state, adapter, true, t, { random: DETERMINISTIC_RANDOM });
-    }
-
+    stepBlink(state, adapter, true, 1000 + BLINK_DURATION_MS, { random: DETERMINISTIC_RANDOM });
     expect(state.isBlinking).toBe(false);
     expect(state.value).toBe(0);
+    expect(state.lastBlinkEndMs).toBe(1000 + BLINK_DURATION_MS);
+  });
+});
+
+describe("blinkCurve", () => {
+  it("is open at both ends and fully closed through the hold", () => {
+    expect(blinkCurve(0)).toBe(0);
+    expect(blinkCurve(90)).toBe(1);
+    expect(blinkCurve(110)).toBe(1);
+    expect(blinkCurve(BLINK_DURATION_MS)).toBe(0);
+    expect(blinkCurve(-5)).toBe(0);
+  });
+
+  it("closes monotonically and opens monotonically, staying within [0, 1]", () => {
+    let prev = 0;
+    for (let t = 0; t <= 90; t += 5) {
+      expect(blinkCurve(t)).toBeGreaterThanOrEqual(prev);
+      prev = blinkCurve(t);
+    }
+    for (let t = 120; t < BLINK_DURATION_MS; t += 5) {
+      const v = blinkCurve(t);
+      expect(v).toBeLessThanOrEqual(prev);
+      expect(v).toBeGreaterThanOrEqual(0);
+      prev = v;
+    }
+  });
+
+  it("opens slower than it closes — the lid is still a quarter shut 90ms into opening", () => {
+    expect(blinkCurve(120 + 90)).toBeGreaterThan(0.2);
+  });
+});
+
+describe("stepBlink — frame-rate independence", () => {
+  function blinkAt(hz: number): { durationMs: number; peak: number } {
+    const state = createBlinkState(0, DETERMINISTIC_RANDOM);
+    const adapter = makeStubAdapter(makeStubExpressionManager());
+    const frameMs = 1000 / hz;
+    let t = 1000;
+    let peak = 0;
+    stepBlink(state, adapter, true, t, { forceBlink: true, random: DETERMINISTIC_RANDOM });
+    while (state.isBlinking) {
+      t += frameMs;
+      stepBlink(state, adapter, true, t, { random: DETERMINISTIC_RANDOM });
+      peak = Math.max(peak, state.value);
+    }
+    return { durationMs: state.lastBlinkEndMs - 1000, peak };
+  }
+
+  it("takes the same time and fully closes at 60Hz, 120Hz and 144Hz", () => {
+    for (const hz of [60, 120, 144]) {
+      const { durationMs, peak } = blinkAt(hz);
+      expect(durationMs).toBeGreaterThanOrEqual(BLINK_DURATION_MS);
+      expect(durationMs).toBeLessThan(BLINK_DURATION_MS + 1000 / hz + 1e-6);
+      expect(peak).toBe(1);
+    }
   });
 });

@@ -1295,8 +1295,17 @@ describe("Phase 18 facial steps 12-14 (EYE/VIS/EMO)", () => {
       camera,
     });
 
-    controller.update(1 / 60); // frame 1: eyeGaze (step 12) detects the shift, sets forceBlinkRef.
-    controller.update(1 / 60); // frame 2: blink (step 2) consumes forceBlinkRef, starts a blink.
+    // Blinks are timed in ms, so drive the clock: the idle timer isn't due for
+    // 2s+, so any blink within these frames can only come from the gaze shift.
+    vi.useFakeTimers({ now: 1_000_000 });
+    try {
+      controller.update(1 / 60); // frame 1: eyeGaze (step 12) detects the shift, sets forceBlinkRef.
+      controller.update(1 / 60); // frame 2: blink (step 2) consumes forceBlinkRef, starts a blink.
+      vi.setSystemTime(1_000_000 + 50);
+      controller.update(1 / 60); // frame 3: 50ms into the blink, the lid is closing.
+    } finally {
+      vi.useRealTimers();
+    }
 
     const blinkLeftCalls = em.setValue.mock.calls.filter(([name]) => name === "blinkLeft");
     const lastValue = blinkLeftCalls[blinkLeftCalls.length - 1]?.[1] ?? 0;

@@ -4,10 +4,12 @@
  *
  * This is an internal helper module and is NOT exported from index.ts.
  *
- * Migrated verbatim from `VRMAvatar.tsx` lines 308-317 (refs) and 516-553
- * (per-frame logic) — the timing constants, blink curve, and scheduling are
- * unchanged from the original inline implementation. The only behavioral
- * difference from that original migration is that this module reads/writes
+ * Migrated from `VRMAvatar.tsx` lines 308-317 (refs) and 516-553 (per-frame
+ * logic); scheduling is unchanged from that original inline implementation.
+ * The blink curve is not: it used to advance a fixed 0.15 per FRAME along a
+ * symmetric sine, so a blink lasted ~115ms at 60Hz but snapped shut in ~58ms
+ * on a 120Hz display. It is now timed in milliseconds (see `blinkCurve`).
+ * The other difference from the original migration is that this module reads/writes
  * through `adapter.getExpressionManager()` instead of
  * `currentVrm.expressionManager` directly, so it becomes a no-op on GLB
  * (whose adapter returns null) rather than something only VRMAvatar could
@@ -32,8 +34,16 @@
 import { useRef } from "react";
 import type { AvatarFormatAdapter } from "./types";
 
-/** Progress advanced per `stepBlink` call while a blink is in flight — the blink completes after `ceil(1 / BLINK_PROGRESS_STEP)` calls. Unchanged from the original inline implementation. */
-const BLINK_PROGRESS_STEP = 0.15;
+// Real blinks are asymmetric: the lid drops fast, rests a beat, and lifts
+// slower. Timed in ms so the blink looks the same at any frame rate.
+/** Lid closing time (ms), eased. */
+const BLINK_CLOSE_MS = 90;
+/** Time the lid stays fully closed (ms). */
+const BLINK_HOLD_MS = 30;
+/** Lid opening time (ms) — about twice the close, easing out. */
+const BLINK_OPEN_MS = 180;
+/** Total blink duration (ms). */
+export const BLINK_DURATION_MS = BLINK_CLOSE_MS + BLINK_HOLD_MS + BLINK_OPEN_MS;
 /** Legacy (non-coupled) minimum gap (ms) before the next random idle blink after a timer-triggered blink. Unchanged from the original inline implementation. */
 const LEGACY_NEXT_MIN_MS = 100;
 /** Legacy (non-coupled) random jitter (ms) added on top of `LEGACY_NEXT_MIN_MS`. Unchanged from the original inline implementation. */
@@ -45,16 +55,30 @@ const COUPLED_SAFETY_JITTER_MS = 3500;
 /** Minimum gap (ms) between a blink's end and the next FORCED blink — guards against a burst of rapid gaze shifts each trying to force their own blink in quick succession. */
 const MIN_FORCED_BLINK_GAP_MS = 400;
 
+const smoothstep = (x: number) => x * x * (3 - 2 * x);
+
+/**
+ * Lid closure (0 = open, 1 = closed) at `elapsedMs` into a blink: smoothstep
+ * close, a short hold, then an ease-out open. 0 outside [0, BLINK_DURATION_MS).
+ */
+export function blinkCurve(elapsedMs: number): number {
+  if (!(elapsedMs > 0) || elapsedMs >= BLINK_DURATION_MS) return 0;
+  if (elapsedMs < BLINK_CLOSE_MS) return smoothstep(elapsedMs / BLINK_CLOSE_MS);
+  if (elapsedMs < BLINK_CLOSE_MS + BLINK_HOLD_MS) return 1;
+  const x = (elapsedMs - BLINK_CLOSE_MS - BLINK_HOLD_MS) / BLINK_OPEN_MS;
+  return (1 - x) * (1 - x);
+}
+
 /** Mutable scheduling/animation state for one blink instance. */
 export interface BlinkState {
-  /** Current blink blendshape value (0 = eyes open, sine-curved up to a peak mid-blink). */
+  /** Current blink blendshape value (0 = eyes open, 1 = fully closed). */
   value: number;
   /** Timestamp (ms, `Date.now()`-scale) at which the next timer-triggered blink may begin. */
   nextBlinkTimeMs: number;
   /** Whether a blink is currently mid-animation. */
   isBlinking: boolean;
-  /** Progress through the current blink's sine envelope, 0 to 1+. Only meaningful while `isBlinking`. */
-  progress: number;
+  /** Timestamp (ms) the current blink started. Only meaningful while `isBlinking`. */
+  startedAtMs: number;
   /** Timestamp (ms) at which the most recent blink completed. `-Infinity` until the first blink ever completes, so an early forced blink is never blocked by `MIN_FORCED_BLINK_GAP_MS`. */
   lastBlinkEndMs: number;
 }
@@ -71,7 +95,7 @@ export function createBlinkState(nowMs: number, random: () => number = Math.rand
     value: 0,
     nextBlinkTimeMs: nowMs + 2000 + random() * 3000,
     isBlinking: false,
-    progress: 0,
+    startedAtMs: 0,
     lastBlinkEndMs: -Infinity,
   };
 }
@@ -87,7 +111,7 @@ export interface BlinkStepOptions {
 }
 
 /**
- * Starts a new blink: resets the animation progress and reschedules the
+ * Starts a new blink: records its start time and reschedules the
  * timer per the coupled/legacy rule, regardless of whether this blink was
  * triggered by the timer or by an external `forceBlink`. Shared by both
  * trigger paths in `stepBlink` so the reschedule logic lives in one place
@@ -95,7 +119,7 @@ export interface BlinkStepOptions {
  */
 function startBlink(state: BlinkState, nowMs: number, opts: { coupled: boolean; random: () => number }): void {
   state.isBlinking = true;
-  state.progress = 0;
+  state.startedAtMs = nowMs;
   state.nextBlinkTimeMs = opts.coupled
     ? nowMs + COUPLED_SAFETY_MIN_MS + opts.random() * COUPLED_SAFETY_JITTER_MS
     : nowMs + LEGACY_NEXT_MIN_MS + opts.random() * LEGACY_NEXT_JITTER_MS;
@@ -146,17 +170,16 @@ export function stepBlink(
     startBlink(state, nowMs, { coupled, random });
   }
 
-  // Handle blink animation — advances the SAME call that started it, so a
-  // forced blink's value is already non-zero by the time this call returns.
+  // Handle blink animation, by elapsed time rather than calls, so the blink
+  // takes BLINK_DURATION_MS whatever the frame rate.
   if (state.isBlinking) {
-    state.progress += BLINK_PROGRESS_STEP;
-    if (state.progress >= 1) {
+    const elapsedMs = nowMs - state.startedAtMs;
+    if (elapsedMs >= BLINK_DURATION_MS) {
       state.isBlinking = false;
       state.value = 0;
       state.lastBlinkEndMs = nowMs;
     } else {
-      // Smooth blink curve using sine.
-      state.value = Math.sin(state.progress * Math.PI);
+      state.value = blinkCurve(elapsedMs);
     }
   }
 
@@ -181,8 +204,8 @@ export function useBlink(): {
   // blinkState is a ref, not React state: it's only ever read synchronously
   // within the same useFrame callback that writes it, never rendered in
   // JSX — calling a state setter here would re-render this component on
-  // every single animation frame during a blink (blink lasts ~7 frames at
-  // BLINK_PROGRESS_STEP's 0.15/frame step), fighting the R3F render loop for
+  // every single animation frame during a blink (BLINK_DURATION_MS, ~18
+  // frames at 60Hz), fighting the R3F render loop for
   // the main thread and producing visible stutter.
   const stateRef = useRef<BlinkState>(createBlinkState(Date.now()));
 

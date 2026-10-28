@@ -20,6 +20,7 @@ describe("XAIRealtimeProvider state guards", () => {
       const send = vi.fn();
       provider.ws = { readyState: 1, send };
       provider.isConnected = true;
+      provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
 
       await provider.executeToolCall("call-1", "wait_for_user", "{}");
       const types = send.mock.calls.map(([payload]) => JSON.parse(payload).type);
@@ -33,6 +34,7 @@ describe("XAIRealtimeProvider state guards", () => {
   it("ignores unmatched commits and duplicate speech starts", async () => {
     const provider = new XAIRealtimeProvider({});
     provider.isConnected = true;
+    provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
     provider.chatStatus = "ready";
     provider.micEnabled = true;
 
@@ -56,6 +58,7 @@ describe("XAIRealtimeProvider state guards", () => {
   it("does not let an earlier response overwrite active listening", async () => {
     const provider = new XAIRealtimeProvider({});
     provider.isConnected = true;
+    provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
     provider.chatStatus = "thinking";
     provider.micEnabled = true;
 
@@ -70,6 +73,7 @@ describe("XAIRealtimeProvider state guards", () => {
     try {
       const provider = new XAIRealtimeProvider({});
       provider.isConnected = true;
+      provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
       provider.micEnabled = true;
       provider.chatStatus = "ready";
 
@@ -90,6 +94,7 @@ describe("XAIRealtimeProvider state guards", () => {
     const onError = vi.fn();
     provider.onError = onError;
     provider.isConnected = true;
+    provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
     provider.micEngine = {
       enable: vi.fn().mockRejectedValue(new Error("Permission denied")),
       destroy: vi.fn(),
@@ -104,6 +109,7 @@ describe("XAIRealtimeProvider state guards", () => {
   it("does not claim mic enabled when capture engine is absent", async () => {
     const provider = new XAIRealtimeProvider({});
     provider.isConnected = true;
+    provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
     provider.onError = vi.fn();
 
     await expect(provider.toggleMicrophone()).resolves.toBe(false);
@@ -119,6 +125,7 @@ describe("XAIRealtimeProvider state guards", () => {
       const send = vi.fn();
       provider.ws = { readyState: 1, send };
       provider.isConnected = true;
+      provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
       provider.micEnabled = true;
       provider.userSpeechActive = true;
       provider.chatStatus = "listening";
@@ -146,6 +153,7 @@ describe("XAIRealtimeProvider state guards", () => {
   it("ignores speech detection during assistant audio and holds speaking through audio gaps", async () => {
     const provider = new XAIRealtimeProvider({});
     provider.isConnected = true;
+    provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
     provider.micEnabled = true;
     provider.chatStatus = "speaking";
     provider.assistantAudioStreaming = true;
@@ -205,6 +213,7 @@ describe("XAIRealtimeProvider state guards", () => {
       });
       provider.ws = { readyState: 1, send: vi.fn() };
       provider.isConnected = true;
+      provider.hasHeardFirstGreeting = true; // mid-session: greeting already played
       provider.chatStatus = "ready";
       provider.micEnabled = true;
       const statuses = [];
@@ -263,6 +272,64 @@ describe("XAIRealtimeProvider state guards", () => {
         vi.unstubAllGlobals();
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe("greeting sequence (OpenAI parity)", () => {
+    function greetingProvider() {
+      const provider = new XAIRealtimeProvider({ instructions: "Be nice." });
+      provider.isConnected = true;
+      provider.micEnabled = true;
+      provider.chatStatus = "starting";
+      provider.ws = { readyState: 1, send: vi.fn() };
+      return provider;
+    }
+
+    it("stays starting through the greeting response and ignores speech until it has played", async () => {
+      const provider = greetingProvider();
+      await provider.handleServerEvent(serverEvent("response.created", { response: { id: "greet" } }));
+      expect(provider.chatStatus).toBe("starting");
+
+      await provider.handleServerEvent(serverEvent("input_audio_buffer.speech_started"));
+      expect(provider.chatStatus).toBe("starting");
+      expect(provider.conversation).toHaveLength(0);
+    });
+
+    it("goes ready once the greeting audio has finished, then opens turns normally", async () => {
+      const provider = greetingProvider();
+      provider.playbackEngine = { isPlaying: false, cancel: vi.fn() };
+      await provider.handleServerEvent(serverEvent("response.created", { response: { id: "greet" } }));
+      vi.useFakeTimers();
+      try {
+        await provider.handleServerEvent(serverEvent("response.output_audio.done"));
+        expect(provider.chatStatus).toBe("ready");
+
+        // Past the 300ms post-playback echo guard.
+        vi.advanceTimersByTime(301);
+        await provider.handleServerEvent(serverEvent("input_audio_buffer.speech_started"));
+        expect(provider.chatStatus).toBe("listening");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still opens the mic when the greeting produces no audio", async () => {
+      const provider = greetingProvider();
+      await provider.handleServerEvent(serverEvent("response.created", { response: { id: "greet" } }));
+      await provider.handleServerEvent(serverEvent("response.done", { response: { id: "greet" } }));
+      expect(provider.chatStatus).toBe("ready");
+
+      await provider.handleServerEvent(serverEvent("input_audio_buffer.speech_started"));
+      expect(provider.chatStatus).toBe("listening");
+    });
+
+    it("resets to stopped on disconnect so the next session greets from starting again", () => {
+      const provider = greetingProvider();
+      provider.hasHeardFirstGreeting = true;
+      provider.chatStatus = "ready";
+      provider.handleDisconnect();
+      expect(provider.chatStatus).toBe("stopped");
+      expect(provider.hasHeardFirstGreeting).toBe(false);
     });
   });
 });

@@ -64,6 +64,13 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private muteSilenceTimer: ReturnType<typeof setInterval> | null = null;
   private assistantAudioStreaming = false;
   private micSuppressedUntil = 0;
+  /**
+   * Matches OpenAIRealtimeProvider: the session reads "starting" from
+   * connect() until the opening greeting has finished playing (so the avatar
+   * plays its greeting clip, not idle→speaking), and the mic stays gated
+   * until then so noise can't open a turn over the greeting.
+   */
+  private hasHeardFirstGreeting = false;
   private hasEmittedAudioData = false;
   private tools: RealtimeTool[] = [];
   private pendingToolArgs: Map<string, { name: string; args: string }> =
@@ -119,6 +126,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
    */
   async connect(options?: RealtimeConnectOptions): Promise<void> {
     try {
+      this.setChatStatus("starting");
+      this.hasHeardFirstGreeting = false;
       // Resolve authentication token
       let token = this.config.apiKey;
       if (this.config.tokenEndpoint) {
@@ -144,18 +153,19 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       const sampleRate = this.config.sampleRate ?? 24000;
       this.playbackEngine = new AudioPlaybackEngine({ sampleRate });
       this.playbackEngine.onPlaybackStart = () => {
-        this.setChatStatus("speaking");
+        this.setChatStatus(this.hasHeardFirstGreeting ? "speaking" : "starting");
       };
       this.playbackEngine.onPlaybackEnd = () => {
         this.micSuppressedUntil = Date.now() + 300;
-        if (!this.assistantAudioStreaming && this.chatStatus === "speaking") {
-          this.setChatStatus("ready");
+        if (!this.assistantAudioStreaming && this.isAssistantAudible()) {
+          this.finishAssistantAudio();
         }
       };
 
       // Initialize mic capture
       this.micEngine = new MicCaptureEngine(sampleRate);
       this.micEngine.onAudioFrame = (base64: string) => {
+        if (!this.hasHeardFirstGreeting) return;
         if (this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) return;
         this.sendEvent({ type: "input_audio_buffer.append", audio: base64 });
       };
@@ -195,7 +205,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       this.responseInFlight = false;
       this.clearMuteSilenceTimer();
       this.assistantAudioStreaming = false;
-      this.setChatStatus("ready");
+      // With a greeting coming, stay "starting" until it has played (OpenAI
+      // parity); a silent reconnect goes straight to ready.
+      const willGreet = !options?.skipGreeting && !!this.config.instructions;
+      this.hasHeardFirstGreeting = !willGreet;
+      if (!willGreet) this.setChatStatus("ready");
       this.onConnect?.();
 
       // Set up WebSocket message handling
@@ -471,7 +485,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "input_audio_buffer.speech_started":
-          if (!this.micEnabled || this.userSpeechActive || this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) break;
+          if (!this.hasHeardFirstGreeting || !this.micEnabled || this.userSpeechActive || this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) break;
           this.clearSpeechCommitTimer();
           this.clearTurnGrace();
           this.userSpeechActive = true;
@@ -571,6 +585,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
         case "response.created":
           this.responseInFlight = true;
+          if (!this.hasHeardFirstGreeting) break; // the greeting stays "starting"
           if (this.turnGraceTimer) break; // the grace window decides
           if (!this.userSpeechActive || this.chatStatus !== "listening") {
             this.setChatStatus("thinking");
@@ -604,9 +619,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         case "response.audio.done":
         case "response.output_audio.done":
           this.assistantAudioStreaming = false;
-          if (!this.playbackEngine?.isPlaying && this.chatStatus === "speaking") {
+          if (!this.playbackEngine?.isPlaying && this.isAssistantAudible()) {
             this.micSuppressedUntil = Date.now() + 300;
-            this.setChatStatus("ready");
+            this.finishAssistantAudio();
           }
           break;
 
@@ -879,8 +894,10 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       });
     }
 
-    // If playback is not actively playing, set ready
+    // If playback is not actively playing, set ready. A greeting that ends
+    // without audio (text-only, or a failed response) still opens the mic.
     if (!this.userSpeechActive && !this.playbackEngine?.isPlaying) {
+      this.hasHeardFirstGreeting = true;
       this.setChatStatus("ready");
     }
   }
@@ -1025,8 +1042,20 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.responseInFlight = false;
     this.clearMuteSilenceTimer();
     this.assistantAudioStreaming = false;
+    this.hasHeardFirstGreeting = false;
     this.setChatStatus("stopped");
     this.onDisconnect?.();
+  }
+
+  /** "speaking", or "starting" while the opening greeting plays. */
+  private isAssistantAudible(): boolean {
+    return this.chatStatus === "speaking" || (this.chatStatus === "starting" && !this.hasHeardFirstGreeting);
+  }
+
+  /** Assistant audio has fully played: the greeting (if any) is done, back to ready. */
+  private finishAssistantAudio(): void {
+    this.hasHeardFirstGreeting = true;
+    this.setChatStatus("ready");
   }
 
   /** Holds "ready" after a transcript-less commit; see `turnGraceTimer`. */

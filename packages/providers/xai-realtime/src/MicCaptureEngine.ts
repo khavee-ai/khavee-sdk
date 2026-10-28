@@ -55,6 +55,10 @@ export class MicCaptureEngine {
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
+        // OpenAIRealtimeProvider requests `audio: true`, which browsers treat
+        // as all three processing stages on; match it so speech levels (and
+        // so server VAD) behave the same between the two providers.
+        autoGainControl: true,
       },
     });
 

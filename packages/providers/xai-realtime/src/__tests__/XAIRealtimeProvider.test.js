@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { XAIRealtimeProvider } from "../XAIRealtimeProvider";
+import { XAIRealtimeProvider, isStageDirectionOnly, mayBeStageDirection } from "../XAIRealtimeProvider";
 import { MicCaptureEngine } from "../MicCaptureEngine";
 
 function serverEvent(type, fields = {}) {
@@ -331,5 +331,151 @@ describe("XAIRealtimeProvider state guards", () => {
       expect(provider.chatStatus).toBe("stopped");
       expect(provider.hasHeardFirstGreeting).toBe(false);
     });
+  });
+});
+
+describe("tool follow-ups", () => {
+  function toolProvider() {
+    vi.stubGlobal("WebSocket", { OPEN: 1 });
+    const provider = new XAIRealtimeProvider({});
+    provider.registerFunction({
+      name: "wait_for_user",
+      description: "Wait for user",
+      parameters: {},
+      execute: async () => ({ success: true, message: "", continueResponse: false }),
+    });
+    provider.registerFunction({
+      name: "set_emotion",
+      description: "Set emotion",
+      parameters: {},
+      execute: async () => ({ success: true, message: "emotion set" }),
+    });
+    const send = vi.fn();
+    provider.ws = { readyState: 1, send };
+    provider.isConnected = true;
+    provider.hasHeardFirstGreeting = true;
+    provider.chatStatus = "thinking";
+    const sent = () => send.mock.calls.map(([payload]) => JSON.parse(payload).type);
+    return { provider, sent };
+  }
+
+  it("does not request a reply when a terminal tool shares the response", async () => {
+    try {
+      const { provider, sent } = toolProvider();
+      await provider.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+      await provider.executeToolCall("c1", "set_emotion", "{}");
+      await provider.executeToolCall("c2", "wait_for_user", "{}");
+      await provider.handleServerEvent(serverEvent("response.done", { response: { id: "r" } }));
+      expect(sent()).not.toContain("response.create");
+      expect(provider.chatStatus).toBe("ready");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("sends one follow-up after response.done for several continuing tools", async () => {
+    try {
+      const { provider, sent } = toolProvider();
+      await provider.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+      await provider.executeToolCall("c1", "set_emotion", "{}");
+      await provider.executeToolCall("c2", "set_emotion", "{}");
+      expect(sent()).not.toContain("response.create");
+      await provider.handleServerEvent(serverEvent("response.done", { response: { id: "r" } }));
+      expect(sent().filter((t) => t === "response.create")).toHaveLength(1);
+      expect(provider.chatStatus).toBe("thinking");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("waits for a tool still running when response.done arrives", async () => {
+    try {
+      const { provider, sent } = toolProvider();
+      let finish;
+      provider.registerFunction({
+        name: "slow",
+        description: "Slow",
+        parameters: {},
+        execute: () => new Promise((resolve) => (finish = resolve)),
+      });
+      await provider.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+      const call = provider.executeToolCall("c1", "slow", "{}");
+      await provider.handleServerEvent(serverEvent("response.done", { response: { id: "r" } }));
+      expect(sent()).not.toContain("response.create");
+      expect(provider.chatStatus).toBe("thinking");
+      finish({ success: true, message: "done" });
+      await call;
+      expect(sent()).toContain("response.create");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("stage-direction replies", () => {
+  it("recognizes bare stage directions", () => {
+    expect(isStageDirectionOnly("(silent)")).toBe(true);
+    expect(isStageDirectionOnly(" (waiting quietly). ")).toBe(true);
+    expect(isStageDirectionOnly("[stays quiet] *nods*")).toBe(true);
+    expect(isStageDirectionOnly("(laughs) That's funny!")).toBe(false);
+    expect(isStageDirectionOnly("Hello (smiles)")).toBe(false);
+    expect(isStageDirectionOnly("")).toBe(false);
+  });
+
+  it("treats partial transcripts as undecided until real words follow", () => {
+    expect(mayBeStageDirection("(sil")).toBe(true);
+    expect(mayBeStageDirection("(silent)")).toBe(true);
+    expect(mayBeStageDirection("(laughs) Th")).toBe(false);
+    expect(mayBeStageDirection("Hi")).toBe(false);
+  });
+
+  function replyProvider() {
+    const provider = new XAIRealtimeProvider({});
+    provider.isConnected = true;
+    provider.hasHeardFirstGreeting = true;
+    provider.chatStatus = "thinking";
+    const played = [];
+    provider.playbackEngine = {
+      appendChunk: (c) => played.push(c),
+      cancel: vi.fn(),
+      isPlaying: false,
+      getAnalyser: () => null,
+    };
+    return { provider, played };
+  }
+
+  async function reply(provider, parts, final) {
+    await provider.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+    await provider.handleServerEvent(
+      serverEvent("conversation.item.created", { item: { id: "a", role: "assistant" } }),
+    );
+    for (const [text, audio] of parts) {
+      await provider.handleServerEvent(serverEvent("response.output_audio_transcript.delta", { delta: text }));
+      await provider.handleServerEvent(serverEvent("response.output_audio.delta", { delta: audio }));
+    }
+    await provider.handleServerEvent(serverEvent("response.output_audio_transcript.done", { transcript: final }));
+    await provider.handleServerEvent(serverEvent("response.done", { response: { id: "r" } }));
+  }
+
+  it("drops a bare stage direction: no audio, no chat bubble", async () => {
+    const { provider, played } = replyProvider();
+    await reply(provider, [["(sil", "A"], ["ent)", "B"]], "(silent)");
+    expect(played).toEqual([]);
+    expect(provider.conversation).toHaveLength(0);
+    expect(provider.chatStatus).toBe("ready");
+  });
+
+  it("plays a reply that opens with an aside once real words follow", async () => {
+    const { provider, played } = replyProvider();
+    await reply(provider, [["(laughs)", "A"], [" Sure thing", "B"]], "(laughs) Sure thing");
+    expect(played).toEqual(["A", "B"]);
+    expect(provider.conversation.map((m) => m.text)).toEqual(["(laughs) Sure thing"]);
+  });
+
+  it("passes ordinary replies straight through", async () => {
+    const { provider, played } = replyProvider();
+    await reply(provider, [["Hello", "A"], [" there", "B"]], "Hello there");
+    expect(played).toEqual(["A", "B"]);
+    expect(provider.conversation.map((m) => m.text)).toEqual(["Hello there"]);
   });
 });

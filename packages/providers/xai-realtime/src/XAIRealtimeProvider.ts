@@ -24,6 +24,38 @@ import { XAIRealtimeConfig, XAIServerEvent } from "./types";
 import { AudioPlaybackEngine } from "./AudioPlaybackEngine";
 import { MicCaptureEngine } from "./MicCaptureEngine";
 
+// ── Stage directions ─────────────────────────────────────────────────────────
+
+/** Bracketed asides such as "(silent)", "[waiting quietly]", "*nods*". */
+const STAGE_DIRECTION_GROUP = /\([^()]*\)|\[[^[\]]*\]|\*[^*]*\*/g;
+const OPENS_STAGE_DIRECTION = /^[([*]/;
+const ONLY_PUNCTUATION = /^[\s.,!?…]*$/;
+
+/**
+ * Whether a reply transcript is nothing but stage directions. Grok sometimes
+ * "answers" a turn it should skip by narrating its silence, and the voice then
+ * speaks it aloud.
+ */
+export function isStageDirectionOnly(text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    OPENS_STAGE_DIRECTION.test(trimmed) &&
+    ONLY_PUNCTUATION.test(trimmed.replace(STAGE_DIRECTION_GROUP, ""))
+  );
+}
+
+/**
+ * Whether a partial transcript could still turn out to be stage directions
+ * only: it opens with one and nothing but further asides or punctuation has
+ * followed so far (an unclosed aside counts).
+ */
+export function mayBeStageDirection(partial: string): boolean {
+  const trimmed = partial.trim();
+  if (!OPENS_STAGE_DIRECTION.test(trimmed)) return false;
+  const rest = trimmed.replace(STAGE_DIRECTION_GROUP, "").trim();
+  return ONLY_PUNCTUATION.test(rest) || OPENS_STAGE_DIRECTION.test(rest);
+}
+
 // ── XAIRealtimeProvider ──────────────────────────────────────────────────────
 
 export class XAIRealtimeProvider implements RealtimeProvider {
@@ -75,6 +107,26 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private tools: RealtimeTool[] = [];
   private pendingToolArgs: Map<string, { name: string; args: string }> =
     new Map();
+  /**
+   * Tool calls of the response in flight. The follow-up response.create is
+   * sent once, after response.done and every call has finished, and only if
+   * no call was terminal. Sending one per call let a set_emotion in the same
+   * response as wait_for_user force a reply to noise, which Grok voiced as
+   * "(silent)".
+   */
+  private toolBatch: {
+    pending: number;
+    followUp: boolean;
+    terminal: boolean;
+    responseDone: boolean;
+  } | null = null;
+  /**
+   * Reply transcript so far, and its audio held back while that transcript
+   * could still be a bare stage direction ("(silent)"); see `releaseReply`.
+   */
+  private replyTranscript = "";
+  private heldReplyAudio: string[] | null = null;
+  private replyDropped = false;
   private sessionId?: string;
 
   // ── Event Callbacks (RealtimeEvents interface) ─────────────────────────────
@@ -494,6 +546,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
             this.playbackEngine?.cancel();
             this.sendEvent({ type: "response.cancel" });
           }
+          // The user has moved on: no follow-up for the old response's tools.
+          this.toolBatch = null;
           this.setChatStatus("listening");
           // Create a placeholder user message for this utterance
           this.conversation.push({
@@ -585,6 +639,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
         case "response.created":
           this.responseInFlight = true;
+          this.replyTranscript = "";
+          this.heldReplyAudio = null;
+          this.replyDropped = false;
           if (!this.hasHeardFirstGreeting) break; // the greeting stays "starting"
           if (this.turnGraceTimer) break; // the grace window decides
           if (!this.userSpeechActive || this.chatStatus !== "listening") {
@@ -599,21 +656,26 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
         case "response.text.delta":
           if (this.turnGraceTimer) this.endTurnGrace(true);
-          this.handleAssistantTextDelta(data.delta);
+          this.handleReplyDelta(data.delta);
           break;
 
         case "response.text.done":
         case "response.output_text.done":
-          this.finalizeAssistantText(data.text);
+          this.handleReplyDone(data.text);
           break;
 
         case "response.audio.delta":
         case "response.output_audio.delta":
           // Feed audio chunk to playback engine
           if (this.turnGraceTimer) this.endTurnGrace(false);
+          if (this.replyDropped) break;
           this.assistantAudioStreaming = true;
-          this.playbackEngine?.appendChunk(data.delta);
-          this.emitAudioDataOnce();
+          if (this.heldReplyAudio) {
+            this.heldReplyAudio.push(data.delta);
+          } else {
+            this.playbackEngine?.appendChunk(data.delta);
+            this.emitAudioDataOnce();
+          }
           break;
 
         case "response.audio.done":
@@ -627,12 +689,12 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
         case "response.audio_transcript.delta":
         case "response.output_audio_transcript.delta":
-          this.handleAssistantTextDelta(data.delta);
+          this.handleReplyDelta(data.delta);
           break;
 
         case "response.audio_transcript.done":
         case "response.output_audio_transcript.done":
-          this.finalizeAssistantText(
+          this.handleReplyDone(
             data.transcript ?? (data as { text?: string }).text ?? "",
           );
           break;
@@ -653,7 +715,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           // A response that ends inside the grace window produced no output
           // (the noise case): stay idle rather than flash "thinking".
           this.clearTurnGrace();
+          // A reply whose transcript never finished is played as it was.
+          this.releaseReply();
+          if (this.toolBatch) this.toolBatch.responseDone = true;
           this.handleResponseDone(data.response);
+          this.settleToolBatch();
           break;
 
         case "error":
@@ -729,6 +795,59 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       this.conversation.push(newMsg);
     }
     this.onConversationUpdate?.(this.conversation);
+  }
+
+  /**
+   * Route a reply transcript delta. While the reply so far could be a bare
+   * stage direction, its text and audio are held back; once it reads as real
+   * speech, everything held is released.
+   */
+  private handleReplyDelta(delta: string): void {
+    if (this.replyDropped) return;
+    const started = this.replyTranscript === "";
+    this.replyTranscript += delta;
+    if (mayBeStageDirection(this.replyTranscript)) {
+      // Hold audio only if none of this reply has played yet; otherwise it is
+      // cut short in handleReplyDone instead.
+      if (started && !this.assistantAudioStreaming) this.heldReplyAudio = [];
+      if (this.heldReplyAudio) return;
+    }
+    if (this.heldReplyAudio) {
+      this.releaseReply();
+      return;
+    }
+    this.handleAssistantTextDelta(delta);
+  }
+
+  /** Final reply transcript: drop a bare stage direction, else finalize. */
+  private handleReplyDone(text?: string): void {
+    if (this.replyDropped) return;
+    const final = text || this.replyTranscript;
+    if (!isStageDirectionOnly(final)) {
+      this.releaseReply();
+      this.finalizeAssistantText(text);
+      return;
+    }
+    this.replyDropped = true;
+    this.heldReplyAudio = null;
+    const last = this.conversation[this.conversation.length - 1];
+    if (last?.role === "assistant" && !last.isFinal) {
+      this.conversation.pop();
+      this.onConversationUpdate?.(this.conversation);
+    }
+    // Audio that started before the transcript did is cut off here; ending
+    // playback returns the status to ready.
+    if (this.playbackEngine?.isPlaying) this.playbackEngine.cancel();
+  }
+
+  /** Play held reply audio and show the transcript held with it. */
+  private releaseReply(): void {
+    const held = this.heldReplyAudio;
+    if (!held) return;
+    this.heldReplyAudio = null;
+    if (this.replyTranscript) this.handleAssistantTextDelta(this.replyTranscript);
+    for (const chunk of held) this.playbackEngine?.appendChunk(chunk);
+    if (held.length > 0) this.emitAudioDataOnce();
   }
 
   /**
@@ -814,6 +933,16 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     if (!inGrace) this.setChatStatus("thinking");
     console.log("[xAI] Tool call received:", name, argsJson);
 
+    // Joined synchronously, before the first await, so the response.done
+    // that follows always finds this call counted.
+    const batch = (this.toolBatch ??= {
+      pending: 0,
+      followUp: false,
+      terminal: false,
+      responseDone: false,
+    });
+    batch.pending++;
+
     try {
       const args = JSON.parse(argsJson);
       const result = await this.toolExecutor.execute(name, args);
@@ -831,17 +960,19 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         },
       });
 
-      // A terminal tool (for example, wait_for_user) ends this turn quietly.
-      // Starting another response here makes the model call the same tool
-      // again, cycling thinking/ready without new user input.
-      if (result.continueResponse !== false) {
-        if (inGrace) this.endTurnGrace(true);
-        this.sendEvent({ type: "response.create" });
-      } else {
+      // A terminal tool (for example, wait_for_user) ends this turn quietly,
+      // and wins over every other call in the same response. Starting another
+      // response makes the model call the same tool again, cycling
+      // thinking/ready without new user input, or voice a stage direction.
+      if (result.continueResponse === false) {
+        batch.terminal = true;
         this.clearTurnGrace();
         // response.done can arrive before or after tool execution. Either
         // order must leave a terminal tool idle, waiting for the user.
-        this.setChatStatus("ready");
+        if (this.toolBatch === batch) this.setChatStatus("ready");
+      } else {
+        batch.followUp = true;
+        if (inGrace) this.endTurnGrace(true);
       }
     } catch (error) {
       console.error("Tool execution error:", error);
@@ -850,6 +981,25 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       );
     } finally {
       this.pendingToolArgs.delete(callId);
+      batch.pending--;
+      if (this.toolBatch === batch) this.settleToolBatch();
+    }
+  }
+
+  /**
+   * Once the response is done and all of its tool calls have finished, send
+   * the single follow-up response, unless a terminal tool ended the turn.
+   */
+  private settleToolBatch(): void {
+    const batch = this.toolBatch;
+    if (!batch || !batch.responseDone || batch.pending > 0) return;
+    this.toolBatch = null;
+    if (batch.terminal) return;
+    if (batch.followUp) {
+      this.sendEvent({ type: "response.create" });
+    } else {
+      // Every call failed: nothing will answer, so go idle.
+      this.settleIdle();
     }
   }
 
@@ -894,8 +1044,16 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       });
     }
 
-    // If playback is not actively playing, set ready. A greeting that ends
-    // without audio (text-only, or a failed response) still opens the mic.
+    // A follow-up response is still coming for this response's tools.
+    if (this.toolBatch && !this.toolBatch.terminal) return;
+    this.settleIdle();
+  }
+
+  /**
+   * If playback is not actively playing, set ready. A greeting that ends
+   * without audio (text-only, or a failed response) still opens the mic.
+   */
+  private settleIdle(): void {
     if (!this.userSpeechActive && !this.playbackEngine?.isPlaying) {
       this.hasHeardFirstGreeting = true;
       this.setChatStatus("ready");
@@ -1040,6 +1198,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.clearSpeechCommitTimer();
     this.clearTurnGrace();
     this.responseInFlight = false;
+    this.toolBatch = null;
+    this.heldReplyAudio = null;
     this.clearMuteSilenceTimer();
     this.assistantAudioStreaming = false;
     this.hasHeardFirstGreeting = false;

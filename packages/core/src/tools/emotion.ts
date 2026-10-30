@@ -50,13 +50,15 @@ export const DEFAULT_EMOTION_INTENSITY = 0.7;
  */
 export const emotionSystemPrompt =
   "Before you speak your reply each turn, call the set_emotion tool exactly once, " +
-  "before saying any words. Choose the emotion that best matches the emotional tone " +
+  "before saying any words. Only call it when you are about to speak: if the turn " +
+  "needs no spoken reply (silence, background noise, speech not addressed to you), " +
+  "do not call set_emotion at all. Choose the emotion that best matches the emotional tone " +
   "of the reply you are about to give, from: happy, sad, angry, surprised, neutral, " +
   "thinking. Pick an intensity between 0.0 and 1.0 to convey how strongly you feel " +
   "it — roughly 0.3 for subtle, 0.7 for clear, 1.0 for strong. Use neutral for plain " +
   "informational replies, and thinking when you are reasoning through something or " +
   "unsure. Never mention the set_emotion tool or say the emotion's name out loud in " +
-  "your reply.";
+  "your reply, and never say stage directions such as \"(silent)\" or \"(waiting quietly)\".";
 
 function clampIntensity(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {

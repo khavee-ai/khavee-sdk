@@ -223,6 +223,7 @@ interface VRMAvatarProps {
 // Re-export for backward compatibility (index.ts re-exports from here).
 export type { AnimationConfig } from "./animation/animationConfig";
 import { expandAnimationConfig, type AnimationConfig } from "./animation/animationConfig";
+import { ENTRANCE_CLIP_NAME } from "./animation/entrance";
 import type { AnimationCycleOrder } from "./animation/AnimationStateEngine";
 
 // Internal component to load FBX and GLB animation files.
@@ -502,7 +503,10 @@ export function VRMAvatar({
         if (type === 'fbx') {
           // FBX files - Automatically remap Mixamo animation to VRM format
           // @ts-ignore - VRM type compatibility with remap function
-          const remappedClip = remapMixamoAnimationToVrm(currentVrm, data as THREE.Group);
+          // An entrance lands where idle stands, so pin its last frame.
+          const remappedClip = remapMixamoAnimationToVrm(currentVrm, data as THREE.Group, {
+            anchor: name === ENTRANCE_CLIP_NAME ? "end" : "start",
+          });
           remappedClip.name = name;
           clips.push(remappedClip);
         } else if (type === 'glb') {
@@ -518,7 +522,9 @@ export function VRMAvatar({
             if (isMixamoAnimation && gltf.scene) {
               // Remap Mixamo GLB animation to VRM
               // @ts-ignore - VRM type compatibility
-              const remappedClip = remapMixamoAnimationToVrm(currentVrm, gltf.scene);
+              const remappedClip = remapMixamoAnimationToVrm(currentVrm, gltf.scene, {
+                anchor: name === ENTRANCE_CLIP_NAME ? "end" : "start",
+              });
               remappedClip.name = name;
               clips.push(remappedClip);
             } else {

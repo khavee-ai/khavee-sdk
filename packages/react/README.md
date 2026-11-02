@@ -166,6 +166,12 @@ The **key** — not the filename — is matched against `chatStatus` to decide w
 
 Array entries are flattened to `idle_0`, `idle_1`, …, so they still match on the key prefix. When a status has more than one matching clip, the avatar rotates between them at loop boundaries (`ready`, `listening`, `thinking` and `speaking` cycle), ordered by `animationCycleOrder` and held for at least `animationMinDwellSeconds`. A clip is never cut mid-loop.
 
+**Entrance.** An `entrance` key names a clip that plays once when the avatar first appears, before any status clip: running, jumping or dropping in. It holds its last frame, and the status clip (idle, or the greeting while `starting`) crossfades in 0.5 s before it ends. The entrance is retargeted against its last frame, so it can start anywhere (off-screen, or above the frame for a drop) and still land exactly where idle stands. Export it with root motion, not "in place", and end it in a relaxed standing pose facing forward.
+
+```tsx
+animations={{ entrance: '/animations/drop-in.fbx', idle: '/animations/idle.fbx', greeting: '/animations/wave.fbx' }}
+```
+
 ## `GLBAvatar`
 
 Renders a `.glb`/`.gltf` model that already contains both the mesh **and** its animations in one file (e.g. exported from Blender or downloaded with embedded animation clips).

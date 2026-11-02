@@ -430,6 +430,13 @@ import { useEyeGaze, NEUTRAL_EYE_GAZE_BIAS, type EyeGazeBias } from "./eyeGaze";
 import { useViseme, type VisemeChannel } from "./viseme";
 import { useEmotion, type EmotionHint } from "./emotion";
 import { volumeToAmplitudeScale } from "./audioAmplitude";
+import {
+  ENTRANCE_CLIP_NAME,
+  isEntranceHandoffDue,
+  startEntrance,
+  withoutEntrance,
+  type EntrancePhase,
+} from "./entrance";
 import type { AvatarFormatAdapter } from "./types";
 
 /**
@@ -1071,6 +1078,11 @@ export function useAnimationController(params: {
   const pendingEmotionGestureRef = useRef<{ gesture: "nod" | "shake"; ageS: number } | null>(
     null,
   );
+  // The one-shot entrance clip (see entrance.ts). Never useState, same
+  // per-frame-state convention as the refs above.
+  const entranceRef = useRef<EntrancePhase>("pending");
+  // The entrance never takes part in status-driven selection or fallback.
+  const statusNames = withoutEntrance(availableNames);
 
   // Memoized: with random entry, calling resolveBaseClip every render would
   // re-roll the target each render and thrash crossfades (T-gzb-02). The
@@ -1080,10 +1092,10 @@ export function useAnimationController(params: {
   const targetName = useMemo(
     () =>
       holdIdleAcrossStatusChange(
-        resolveBaseClip(chatStatus, currentAnimation, availableNames, { order: cycleOrder }),
+        resolveBaseClip(chatStatus, currentAnimation, statusNames, { order: cycleOrder }),
         currentClipNameRef.current,
       ),
-    [chatStatus, currentAnimation, availableNames.join(" "), cycleOrder],
+    [chatStatus, currentAnimation, statusNames.join(" "), cycleOrder],
   );
 
   // Single-owner crossfade-trigger helper: starts (or no-ops on) a
@@ -1150,6 +1162,38 @@ export function useAnimationController(params: {
     currentClipNameRef.current = name;
   }
 
+  /**
+   * Advances the entrance (see entrance.ts) and reports whether it still
+   * owns the base clip, in which case status-driven switching must wait.
+   * Starts it the first time its action is resolvable; hands over shortly
+   * before it ends. Without an entrance clip it finishes immediately.
+   */
+  function stepEntrance(): boolean {
+    const phase = entranceRef.current;
+    if (phase === "done") return false;
+    if (phase === "pending") {
+      if (!availableNames.includes(ENTRANCE_CLIP_NAME)) {
+        // Clips not loaded yet: keep waiting. Loaded without one: done.
+        if (availableNames.length === 0) return true;
+        entranceRef.current = "done";
+        return false;
+      }
+      const action = getAction(ENTRANCE_CLIP_NAME);
+      if (!action || !getRoot()) return true;
+      startEntrance(action);
+      currentActionRef.current = action;
+      currentClipNameRef.current = ENTRANCE_CLIP_NAME;
+      entranceRef.current = "playing";
+      return true;
+    }
+    const action = currentActionRef.current;
+    if (action && currentClipNameRef.current === ENTRANCE_CLIP_NAME && !isEntranceHandoffDue(action)) {
+      return true;
+    }
+    entranceRef.current = "done";
+    return false;
+  }
+
   // 11-13 gap-closure fix (G1/G3 — see the file-header 11-13 diagnosis
   // block): the "should switchToClip run" decision (including the
   // TALK-01/TRANS-01 speaking-variant ownership guard, previously inlined
@@ -1165,6 +1209,7 @@ export function useAnimationController(params: {
   // for the ordinary chatStatus/targetName-change-driven case (Connect,
   // status transitions, `animate()` calls).
   useEffect(() => {
+    if (stepEntrance()) return;
     if (
       shouldTriggerClipSwitch({
         targetName,
@@ -1229,8 +1274,10 @@ export function useAnimationController(params: {
     // unconditionally every frame: once `switchToClip` succeeds,
     // `currentClipNameRef.current` matches `targetName` and
     // `shouldTriggerClipSwitch` returns `false` on every subsequent frame
-    // (no repeated re-triggering).
+    // (no repeated re-triggering). The entrance, while it plays, owns the
+    // base clip and holds this off.
     if (
+      !stepEntrance() &&
       shouldTriggerClipSwitch({
         targetName,
         chatStatus,
@@ -1459,8 +1506,10 @@ export function useAnimationController(params: {
     // amplitude (step 3 above), never clip selection.
     const cyclePattern = STATUS_CLIP_PATTERNS[chatStatus];
     const variants =
-      (CYCLING_STATUSES as readonly string[]).includes(chatStatus) && cyclePattern
-        ? availableNames.filter((name) => cyclePattern.test(name))
+      entranceRef.current === "done" &&
+      (CYCLING_STATUSES as readonly string[]).includes(chatStatus) &&
+      cyclePattern
+        ? statusNames.filter((name) => cyclePattern.test(name))
         : [];
     const nextVariant = clipCycle.step({
       chatStatus,

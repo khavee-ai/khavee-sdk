@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { mixamoVRMRigMap } from "./mixamoVRMRigMap";
 
-export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNode: (arg0: string) => { (): any; new(): any; getWorldPosition: { (arg0: THREE.Vector3): { (): any; new(): any; y: any; }; new(): any; }; name: any; position: { y: number }; }; }; scene: { getWorldPosition: (arg0: THREE.Vector3) => { (): any; new(): any; y: any; }; }; meta: { metaVersion: string; }; }, asset: THREE.Group<THREE.Object3DEventMap>) {
+export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNode: (arg0: string) => { (): any; new(): any; getWorldPosition: { (arg0: THREE.Vector3): { (): any; new(): any; y: any; }; new(): any; }; name: any; position: { x: number; y: number; z: number }; }; }; scene: { getWorldPosition: (arg0: THREE.Vector3) => { (): any; new(): any; y: any; }; }; meta: { metaVersion: string; }; }, asset: THREE.Group<THREE.Object3DEventMap>, options?: {
+  /**
+   * Which keyframe the hips are pinned to the bind pose at. "start" (default)
+   * suits loops. "end" suits entrance clips (drop, run or jump in): the clip
+   * may start anywhere but lands standing at the avatar's own spot.
+   */
+  anchor?: "start" | "end";
+}) {
   const foundClip = THREE.AnimationClip.findByName(
     asset.animations,
     "mixamo.com"
@@ -114,10 +121,20 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
         // `applied(w) = original*(1-w) + animated*w = bindPoseHipsY` at
         // EVERY weight -- the blend is flat across the whole settle, no
         // drop and no mid-ramp overshoot.
-        const firstY = scaled[1] ?? 0;
-        const value = scaled.map((v, i) =>
-          i % 3 === 1 ? v - firstY + bindPoseHipsY : v
-        );
+        let value: Float32Array;
+        if (options?.anchor === "end") {
+          // Pin the LAST keyframe on all three axes to the bind-pose hips,
+          // so an entrance ends exactly where the idle loop stands.
+          const bind = vrm.humanoid?.getNormalizedBoneNode("hips")?.position;
+          const last = scaled.length - 3;
+          const target = [bind?.x ?? 0, bindPoseHipsY, bind?.z ?? 0];
+          value = scaled.map((v, i) => v - scaled[last + (i % 3)] + target[i % 3]);
+        } else {
+          const firstY = scaled[1] ?? 0;
+          value = scaled.map((v, i) =>
+            i % 3 === 1 ? v - firstY + bindPoseHipsY : v
+          );
+        }
 
         tracks.push(
           new THREE.VectorKeyframeTrack(

@@ -158,3 +158,21 @@ describe("remapMixamoAnimationToVrm — hips Y anchor (11-15 gap closure G5 fix)
     expect(firstYA).toBeCloseTo(firstYB, 6);
   });
 });
+
+describe("remapMixamoAnimationToVrm anchor: end", () => {
+  it("lands an entrance clip on the bind-pose hips, wherever it starts", () => {
+    const asset = makeSyntheticMixamoAsset({ motionHipsHeight: 1, rawYKeyframes: [3, 1] });
+    const hips = new THREE.Object3D();
+    hips.position.set(0, 0.9, 0);
+    const vrm = {
+      humanoid: { getNormalizedBoneNode: () => Object.assign(hips, { getWorldPosition: (v: THREE.Vector3) => v.set(0, 0.9, 0) }) },
+      scene: { getWorldPosition: (v: THREE.Vector3) => v.set(0, 0, 0) },
+      meta: { metaVersion: "1" },
+    };
+    const clip = remapMixamoAnimationToVrm(vrm as any, asset, { anchor: "end" });
+    const track = clip.tracks.find((t) => t instanceof THREE.VectorKeyframeTrack)!;
+    const v = Array.from(track.values);
+    expect(v[v.length - 2]).toBeCloseTo(0.9); // lands at stand height
+    expect(v[1]).toBeGreaterThan(0.9); // starts above (the drop)
+  });
+});

@@ -50,7 +50,8 @@ export const DEFAULT_EMOTION_INTENSITY = 0.7;
  */
 export const emotionSystemPrompt =
   "Before you speak your reply each turn, call the set_emotion tool exactly once, " +
-  "before saying any words. Only call it when you are about to speak: if the turn " +
+  "before saying any words, then go straight on to your spoken reply in the same " +
+  "response. Only call it when you are about to speak: if the turn " +
   "needs no spoken reply (silence, background noise, speech not addressed to you), " +
   "do not call set_emotion at all. Choose the emotion that best matches the emotional tone " +
   "of the reply you are about to give, from: happy, sad, angry, surprised, neutral, " +
@@ -135,6 +136,7 @@ export function createEmotionTool(
       return {
         success: true,
         message: `emotion set: ${emotionArg} (${intensity.toFixed(2)})`,
+        sideEffectOnly: true,
       };
     },
   };

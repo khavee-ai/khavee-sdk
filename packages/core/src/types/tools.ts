@@ -20,6 +20,12 @@ export interface ToolResult {
   message: string;
   /** Set false when the assistant should wait for new user input after this tool. */
   continueResponse?: boolean;
+  /**
+   * The model does not need this result to keep talking (an avatar emotion
+   * or gesture). If the response that called it already spoke, no follow-up
+   * response is requested for it, saving a full model round trip.
+   */
+  sideEffectOnly?: boolean;
 }
 
 /**

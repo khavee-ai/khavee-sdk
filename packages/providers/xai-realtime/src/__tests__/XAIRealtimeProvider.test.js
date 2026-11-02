@@ -479,3 +479,118 @@ describe("stage-direction replies", () => {
     expect(provider.conversation.map((m) => m.text)).toEqual(["Hello there"]);
   });
 });
+
+describe("side-effect tools", () => {
+  function provider() {
+    vi.stubGlobal("WebSocket", { OPEN: 1 });
+    const p = new XAIRealtimeProvider({});
+    p.registerFunction({
+      name: "set_emotion",
+      description: "Set emotion",
+      parameters: {},
+      execute: async () => ({ success: true, message: "ok", sideEffectOnly: true }),
+    });
+    const send = vi.fn();
+    p.ws = { readyState: 1, send };
+    p.isConnected = true;
+    p.hasHeardFirstGreeting = true;
+    p.chatStatus = "thinking";
+    p.playbackEngine = { appendChunk: vi.fn(), cancel: vi.fn(), isPlaying: false, getAnalyser: () => null };
+    const sent = () => send.mock.calls.map(([payload]) => JSON.parse(payload).type);
+    return { p, sent };
+  }
+
+  it("skips the follow-up when the same response already spoke", async () => {
+    try {
+      const { p, sent } = provider();
+      await p.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+      await p.executeToolCall("c1", "set_emotion", "{}");
+      await p.handleServerEvent(serverEvent("response.output_audio.delta", { delta: "AAAA" }));
+      await p.handleServerEvent(serverEvent("response.done", { response: { id: "r" } }));
+      expect(sent()).not.toContain("response.create");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("asks for the reply when the response only set the emotion", async () => {
+    try {
+      const { p, sent } = provider();
+      await p.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+      await p.executeToolCall("c1", "set_emotion", "{}");
+      await p.handleServerEvent(serverEvent("response.done", { response: { id: "r" } }));
+      expect(sent()).toContain("response.create");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("push-to-talk", () => {
+  function pttProvider() {
+    vi.stubGlobal("WebSocket", { OPEN: 1 });
+    const p = new XAIRealtimeProvider({ pushToTalk: true });
+    const send = vi.fn();
+    p.ws = { readyState: 1, send };
+    p.isConnected = true;
+    p.hasHeardFirstGreeting = true;
+    p.chatStatus = "ready";
+    p.micEnabled = true;
+    p.micEngine = { isEnabled: true, enable: vi.fn(), destroy: vi.fn() };
+    const sent = () => send.mock.calls.map(([payload]) => JSON.parse(payload));
+    return { p, sent };
+  }
+
+  it("turns server VAD off in the session", () => {
+    try {
+      const { p, sent } = pttProvider();
+      p.sendSessionUpdate();
+      const update = sent().find((e) => e.type === "session.update" && "turn_detection" in e.session);
+      expect(update.session.turn_detection).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("commits and requests a reply when the user lets go", async () => {
+    try {
+      const { p, sent } = pttProvider();
+      await p.startTalking();
+      expect(p.chatStatus).toBe("listening");
+      p.pttSamples = 24000; // one second captured
+      p.stopTalking();
+      const types = sent().map((e) => e.type);
+      expect(types).toEqual(["input_audio_buffer.clear", "input_audio_buffer.commit", "response.create"]);
+      expect(p.chatStatus).toBe("thinking");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("drops a press too short to send", async () => {
+    try {
+      const { p, sent } = pttProvider();
+      await p.startTalking();
+      p.stopTalking();
+      expect(sent().map((e) => e.type)).not.toContain("input_audio_buffer.commit");
+      expect(p.conversation).toHaveLength(0);
+      expect(p.chatStatus).toBe("ready");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("interrupts the assistant when pressed mid-reply", async () => {
+    try {
+      const { p, sent } = pttProvider();
+      const cancel = vi.fn();
+      p.playbackEngine = { cancel, isPlaying: true };
+      p.responseInFlight = true;
+      await p.startTalking();
+      expect(cancel).toHaveBeenCalled();
+      expect(sent().map((e) => e.type)).toContain("response.cancel");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

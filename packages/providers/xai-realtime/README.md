@@ -127,6 +127,8 @@ A working example lives at `apps/playground/src/app/xai/page.tsx` in this monore
 | `inputAudioFormat` | `"pcm16" \| "opus" \| "pcmu" \| "pcma"` | `"pcm16"` | |
 | `outputAudioFormat` | `"pcm16" \| "opus" \| "pcmu" \| "pcma"` | `"pcm16"` | |
 | `sampleRate` | `number` | `24000` | Applied to both capture and playback |
+| `pushToTalk` | `boolean` | `false` | Manual turns via `startTalking()` / `stopTalking()`; see Push-to-talk |
+| `microphoneDeviceId` | `string` | *(system default)* | Input device id from `enumerateDevices()` |
 
 `connect()` takes `{ skipGreeting?: boolean }`. Pass `skipGreeting: true` to connect silently — worth doing during development, since each greeting is billable audio.
 
@@ -168,7 +170,11 @@ Tools passed via `config.tools` are registered in the constructor. `registerFunc
 
 `onToolCall(name, args, result)` fires after each execution.
 
-Tool results normally trigger another model response. Return `continueResponse: false` from a terminal tool such as `wait_for_user` when the assistant should stay quiet until the next user turn. The function call output is still sent to xAI.
+Tool results normally trigger another model response: one per response, sent after `response.done` once every call in it has finished. Return `continueResponse: false` from a terminal tool such as `wait_for_user` when the assistant should stay quiet until the next user turn. A terminal call wins over every other call in the same response. The function call output is still sent to xAI.
+
+Return `sideEffectOnly: true` from a tool whose result the model doesn't need, such as an avatar emotion or gesture. If the response that called it already spoke, no follow-up is requested, which saves a full model round trip. `createEmotionTool` from `@khaveeai/core` does this.
+
+Replies that are only stage directions, such as `(silent)` or `[waiting quietly]`, are dropped. Their audio is held until the transcript shows real words, and they never reach the conversation.
 
 > If the model narrates tool syntax aloud instead of calling the tool, its declarations never reached the session. Check that the tool is actually registered rather than only described in `instructions`.
 
@@ -180,7 +186,22 @@ Mic capture pauses while assistant audio streams or plays, then resumes 300 ms a
 
 `enableMicrophone()` / `disableMicrophone()` / `toggleMicrophone()` / `isMicrophoneEnabled()`.
 
+`setMicrophoneDevice(deviceId?)` switches input device, restarting capture if the mic is on.
+
 `disableMicrophone()` fully stops the media tracks and closes the capture `AudioContext` — the browser's recording indicator goes away, and nothing streams (so nothing bills). `enableMicrophone()` re-acquires, which means a fresh permission check.
+
+## Push-to-talk
+
+For noisy venues: server VAD is turned off, so only audio captured while the user holds the talk control is sent, and other voices or background noise can't start a turn.
+
+```ts
+const provider = new XAIRealtimeProvider({ tokenEndpoint: "/api/xai-token", pushToTalk: true });
+
+button.onpointerdown = () => void provider.startTalking(); // interrupts any reply
+button.onpointerup = () => provider.stopTalking(); // commits and asks for a reply
+```
+
+Presses under 100 ms are dropped instead of committed. `setPushToTalk(enabled)` switches modes mid-session, and `isPushToTalk` reads the current mode.
 
 ## Direct apiKey mode
 

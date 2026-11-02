@@ -116,10 +116,21 @@ export class XAIRealtimeProvider implements RealtimeProvider {
    */
   private toolBatch: {
     pending: number;
-    followUp: boolean;
+    /** A call whose result the model needs in order to answer. */
+    needsReply: boolean;
+    /** A side-effect call (emotion, gesture): reply only if nothing was said. */
+    wantsSpeech: boolean;
     terminal: boolean;
     responseDone: boolean;
   } | null = null;
+  /** The response in flight has produced audio that was not dropped. */
+  private responseSpoke = false;
+  /** Push-to-talk: the user is holding the talk control. */
+  private pttActive = false;
+  /** Samples sent since startTalking(), to skip committing an empty press. */
+  private pttSamples = 0;
+  /** xAI rejects commits under 100ms of audio. */
+  private static readonly PTT_MIN_SAMPLES_MS = 100;
   /**
    * Reply transcript so far, and its audio held back while that transcript
    * could still be a bare stage direction ("(silent)"); see `releaseReply`.
@@ -215,8 +226,19 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       };
 
       // Initialize mic capture
-      this.micEngine = new MicCaptureEngine(sampleRate);
+      this.micEngine = new MicCaptureEngine(
+        sampleRate,
+        this.config.microphoneDeviceId,
+      );
       this.micEngine.onAudioFrame = (base64: string) => {
+        if (this.config.pushToTalk) {
+          // The user is deliberately talking: no echo gating, playback was
+          // cancelled when they pressed.
+          if (!this.pttActive) return;
+          this.pttSamples += Math.floor((base64.length * 3) / 4 / 2);
+          this.sendEvent({ type: "input_audio_buffer.append", audio: base64 });
+          return;
+        }
         if (!this.hasHeardFirstGreeting) return;
         if (this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) return;
         this.sendEvent({ type: "input_audio_buffer.append", audio: base64 });
@@ -504,6 +526,102 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     return this.isConnected && this.micEnabled && (this.micEngine?.isEnabled ?? false);
   }
 
+  /**
+   * Capture from another microphone (a device id from enumerateDevices, or
+   * undefined for the system default). Takes effect immediately if the mic
+   * is on.
+   */
+  async setMicrophoneDevice(deviceId?: string): Promise<void> {
+    this.config.microphoneDeviceId = deviceId;
+    if (!this.micEngine) return;
+    try {
+      await this.micEngine.setDevice(deviceId);
+      if (this.micEnabled) this.micEnabled = this.micEngine.isEnabled;
+    } catch (error) {
+      this.micEngine.destroy();
+      this.micEnabled = false;
+      const message = error instanceof Error ? error.message : String(error);
+      this.onError?.(new Error(`Microphone unavailable: ${message}`));
+    }
+  }
+
+  // ── Push-to-talk ───────────────────────────────────────────────────────────
+
+  /** Whether turns are taken with startTalking()/stopTalking(). */
+  get isPushToTalk(): boolean {
+    return !!this.config.pushToTalk;
+  }
+
+  /** Switch between push-to-talk and automatic (server VAD) turns. */
+  setPushToTalk(enabled: boolean): void {
+    if (!!this.config.pushToTalk === enabled) return;
+    if (!enabled && this.pttActive) this.cancelTalking();
+    this.config.pushToTalk = enabled;
+    if (this.isConnected) this.sendSessionUpdate();
+  }
+
+  /**
+   * Push-to-talk: the user pressed the talk control. Interrupts the
+   * assistant and starts a fresh utterance.
+   */
+  async startTalking(): Promise<void> {
+    if (!this.config.pushToTalk || !this.isConnected || this.pttActive) return;
+    if (!this.micEngine?.isEnabled) await this.enableMicrophone();
+    if (!this.micEngine?.isEnabled) return;
+
+    if (this.responseInFlight || this.playbackEngine?.isPlaying) {
+      this.playbackEngine?.cancel();
+      // Cancelling with nothing in flight comes back as a server error.
+      if (this.responseInFlight) this.sendEvent({ type: "response.cancel" });
+      this.toolBatch = null;
+      const last = this.conversation[this.conversation.length - 1];
+      if (last?.role === "assistant" && !last.isFinal) this.finalizeAssistantText();
+    }
+    this.hasHeardFirstGreeting = true;
+    this.sendEvent({ type: "input_audio_buffer.clear" });
+    this.pttSamples = 0;
+    this.pttActive = true;
+    this.userSpeechActive = true;
+    this.setChatStatus("listening");
+    this.conversation.push({
+      id: this.generateId(),
+      role: "user",
+      text: "",
+      timestamp: new Date().toISOString(),
+      isFinal: false,
+      status: "speaking",
+    });
+    this.onConversationUpdate?.(this.conversation);
+  }
+
+  /** Push-to-talk: the user let go. Sends the utterance for a reply. */
+  stopTalking(): void {
+    if (!this.pttActive) return;
+    const sampleRate = this.config.sampleRate ?? 24000;
+    const minSamples = (sampleRate * XAIRealtimeProvider.PTT_MIN_SAMPLES_MS) / 1000;
+    if (this.pttSamples < minSamples) {
+      this.cancelTalking();
+      return;
+    }
+    this.pttActive = false;
+    this.sendEvent({ type: "input_audio_buffer.commit" });
+    this.sendEvent({ type: "response.create" });
+    this.setChatStatus("thinking");
+  }
+
+  /** Drops a press too short to send, or one cut off by a mode switch. */
+  private cancelTalking(): void {
+    this.pttActive = false;
+    this.userSpeechActive = false;
+    this.sendEvent({ type: "input_audio_buffer.clear" });
+    const last = this.conversation[this.conversation.length - 1];
+    if (last?.role === "user" && !last.isFinal && !last.text) {
+      this.conversation.pop();
+      this.onConversationUpdate?.(this.conversation);
+    }
+    this.setChatStatus("ready");
+  }
+
   // ── Audio Analysis ─────────────────────────────────────────────────────────
 
   /**
@@ -606,7 +724,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
             }
           }
           this.onConversationUpdate?.(this.conversation);
-          if (committedText) {
+          // A push-to-talk press is deliberate; its transcript may land later.
+          if (committedText || this.config.pushToTalk) {
             this.setChatStatus("thinking");
           } else {
             this.beginTurnGrace();
@@ -642,6 +761,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           this.replyTranscript = "";
           this.heldReplyAudio = null;
           this.replyDropped = false;
+          this.responseSpoke = false;
           if (!this.hasHeardFirstGreeting) break; // the greeting stays "starting"
           if (this.turnGraceTimer) break; // the grace window decides
           if (!this.userSpeechActive || this.chatStatus !== "listening") {
@@ -670,6 +790,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           if (this.turnGraceTimer) this.endTurnGrace(false);
           if (this.replyDropped) break;
           this.assistantAudioStreaming = true;
+          this.responseSpoke = true;
           if (this.heldReplyAudio) {
             this.heldReplyAudio.push(data.delta);
           } else {
@@ -829,6 +950,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       return;
     }
     this.replyDropped = true;
+    this.responseSpoke = false;
     this.heldReplyAudio = null;
     const last = this.conversation[this.conversation.length - 1];
     if (last?.role === "assistant" && !last.isFinal) {
@@ -937,7 +1059,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     // that follows always finds this call counted.
     const batch = (this.toolBatch ??= {
       pending: 0,
-      followUp: false,
+      needsReply: false,
+      wantsSpeech: false,
       terminal: false,
       responseDone: false,
     });
@@ -971,7 +1094,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         // order must leave a terminal tool idle, waiting for the user.
         if (this.toolBatch === batch) this.setChatStatus("ready");
       } else {
-        batch.followUp = true;
+        if (result.sideEffectOnly) batch.wantsSpeech = true;
+        else batch.needsReply = true;
         if (inGrace) this.endTurnGrace(true);
       }
     } catch (error) {
@@ -988,17 +1112,18 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
   /**
    * Once the response is done and all of its tool calls have finished, send
-   * the single follow-up response, unless a terminal tool ended the turn.
+   * the single follow-up response, unless a terminal tool ended the turn or
+   * only side-effect tools ran alongside a reply that was already spoken.
    */
   private settleToolBatch(): void {
     const batch = this.toolBatch;
     if (!batch || !batch.responseDone || batch.pending > 0) return;
     this.toolBatch = null;
     if (batch.terminal) return;
-    if (batch.followUp) {
+    if (batch.needsReply || (batch.wantsSpeech && !this.responseSpoke)) {
       this.sendEvent({ type: "response.create" });
     } else {
-      // Every call failed: nothing will answer, so go idle.
+      // Already answered, or every call failed: nothing more is coming.
       this.settleIdle();
     }
   }
@@ -1081,7 +1206,10 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     if (this.config.temperature !== undefined) {
       session.temperature = this.config.temperature;
     }
-    if (this.config.turnDetection) {
+    if (this.config.pushToTalk) {
+      // Manual turns: the client commits when the user lets go.
+      session.turn_detection = null;
+    } else if (this.config.turnDetection) {
       session.turn_detection = this.config.turnDetection;
     } else {
       // Default server VAD
@@ -1200,6 +1328,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.responseInFlight = false;
     this.toolBatch = null;
     this.heldReplyAudio = null;
+    this.pttActive = false;
     this.clearMuteSilenceTimer();
     this.assistantAudioStreaming = false;
     this.hasHeardFirstGreeting = false;

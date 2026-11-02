@@ -52,6 +52,14 @@ export interface XAIRealtimeConfig extends Omit<RealtimeConfig, "voice"> {
    * with `{ client_secret: { value: string } }`.
    */
   tokenEndpoint?: string;
+  /**
+   * Push-to-talk: server VAD is turned off and only audio captured between
+   * startTalking() and stopTalking() is sent, so other voices and background
+   * noise can't open a turn. Default: false.
+   */
+  pushToTalk?: boolean;
+  /** Input device id (from enumerateDevices) to capture. Default: the system mic. */
+  microphoneDeviceId?: string;
 }
 
 // ── Server → Client Events ───────────────────────────────────────────────────

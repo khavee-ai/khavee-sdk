@@ -18,14 +18,16 @@ export class MicCaptureEngine {
   private workletNode: AudioWorkletNode | null = null;
   private _isEnabled = false;
   private sampleRate: number;
+  private deviceId?: string;
 
   /** Fires with a base64-encoded PCM16 frame for each captured audio chunk. */
   public onAudioFrame?: (base64: string) => void;
   /** Fires on capture errors. */
   public onError?: (error: Error) => void;
 
-  constructor(sampleRate: number = 24000) {
+  constructor(sampleRate: number = 24000, deviceId?: string) {
     this.sampleRate = sampleRate;
+    this.deviceId = deviceId;
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ export class MicCaptureEngine {
     // Request microphone access
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        deviceId: this.deviceId ? { exact: this.deviceId } : undefined,
         sampleRate: this.sampleRate,
         channelCount: 1,
         echoCancellation: true,
@@ -92,6 +95,19 @@ export class MicCaptureEngine {
 
     this.sourceNode.connect(this.workletNode);
     // Worklet does not connect to destination — capture only, no feedback loop
+  }
+
+  /**
+   * Capture from another input device. A running capture is restarted on the
+   * new device; a stopped one picks it up on its next enable().
+   */
+  async setDevice(deviceId?: string): Promise<void> {
+    if (deviceId === this.deviceId) return;
+    this.deviceId = deviceId;
+    if (!this.audioContext) return;
+    const wasEnabled = this._isEnabled;
+    this.disable();
+    if (wasEnabled) await this.enable();
   }
 
   /**

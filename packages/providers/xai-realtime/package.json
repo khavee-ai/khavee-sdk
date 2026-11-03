@@ -1,6 +1,6 @@
 {
   "name": "@khaveeai/providers-xai-realtime",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "xAI Realtime API provider for Khavee AI SDK",
   "keywords": [
     "xai",

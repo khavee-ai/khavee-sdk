@@ -60,6 +60,18 @@ export interface XAIRealtimeConfig extends Omit<RealtimeConfig, "voice"> {
   pushToTalk?: boolean;
   /** Input device id (from enumerateDevices) to capture. Default: the system mic. */
   microphoneDeviceId?: string;
+  /**
+   * Background-noise removal on the mic. "rnnoise" (default) runs the RNNoise
+   * model in the browser (~270 KB, loaded on first mic use) and falls back to
+   * "browser" if it can't load. "browser" uses only the browser's built-in
+   * noiseSuppression.
+   */
+  noiseReduction?: "rnnoise" | "browser";
+  /**
+   * Browser auto gain on the mic. Default: false — in a quiet room it boosts
+   * the mic, so background chatter gets loud enough to open turns.
+   */
+  autoGainControl?: boolean;
 }
 
 // ── Server → Client Events ───────────────────────────────────────────────────

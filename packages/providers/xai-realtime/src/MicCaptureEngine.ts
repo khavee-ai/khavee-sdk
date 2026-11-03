@@ -8,6 +8,22 @@
  */
 
 import { PCM_CAPTURE_PROCESSOR_SOURCE } from "./pcm-capture-processor";
+import { RNNOISE_SAMPLE_RATE, createRnnoiseNode, destroyRnnoiseNode } from "./denoise";
+
+export interface MicCaptureOptions {
+  /** Input device id from enumerateDevices. Default: the system mic. */
+  deviceId?: string;
+  /**
+   * "rnnoise" (default): RNNoise strips background noise in the browser.
+   * "browser": the browser's built-in noiseSuppression only.
+   */
+  noiseReduction?: "rnnoise" | "browser";
+  /**
+   * Browser auto gain. Off by default: in a quiet room it turns the mic up,
+   * which makes background chatter loud enough to open turns.
+   */
+  autoGainControl?: boolean;
+}
 
 // ── MicCaptureEngine ─────────────────────────────────────────────────────────
 
@@ -18,16 +34,17 @@ export class MicCaptureEngine {
   private workletNode: AudioWorkletNode | null = null;
   private _isEnabled = false;
   private sampleRate: number;
-  private deviceId?: string;
+  private options: MicCaptureOptions;
+  private denoiseNode: AudioWorkletNode | null = null;
 
   /** Fires with a base64-encoded PCM16 frame for each captured audio chunk. */
   public onAudioFrame?: (base64: string) => void;
   /** Fires on capture errors. */
   public onError?: (error: Error) => void;
 
-  constructor(sampleRate: number = 24000, deviceId?: string) {
+  constructor(sampleRate: number = 24000, options: MicCaptureOptions = {}) {
     this.sampleRate = sampleRate;
-    this.deviceId = deviceId;
+    this.options = { noiseReduction: "rnnoise", autoGainControl: false, ...options };
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -49,24 +66,38 @@ export class MicCaptureEngine {
    */
   async initialize(): Promise<void> {
     if (this.audioContext) return;
+    const useRnnoise = this.options.noiseReduction !== "browser";
+    try {
+      await this.setUpCapture(useRnnoise);
+    } catch (error) {
+      if (!useRnnoise) throw error;
+      // RNNoise could not load (no AudioWorklet wasm support, blocked blob
+      // URLs): fall back to the browser's own noise suppression.
+      console.warn("RNNoise unavailable, using browser noise suppression:", error);
+      this.teardown();
+      await this.setUpCapture(false);
+    }
+  }
+
+  private async setUpCapture(useRnnoise: boolean): Promise<void> {
+    const contextRate = useRnnoise ? RNNOISE_SAMPLE_RATE : this.sampleRate;
+    const deviceId = this.options.deviceId;
 
     // Request microphone access
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        deviceId: this.deviceId ? { exact: this.deviceId } : undefined,
-        sampleRate: this.sampleRate,
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        sampleRate: contextRate,
         channelCount: 1,
         echoCancellation: true,
-        noiseSuppression: true,
-        // OpenAIRealtimeProvider requests `audio: true`, which browsers treat
-        // as all three processing stages on; match it so speech levels (and
-        // so server VAD) behave the same between the two providers.
-        autoGainControl: true,
+        // RNNoise replaces the browser's suppressor; stacking both muffles
+        // speech.
+        noiseSuppression: !useRnnoise,
+        autoGainControl: this.options.autoGainControl ?? false,
       },
     });
 
-    // Create AudioContext matching the desired sample rate
-    this.audioContext = new AudioContext({ sampleRate: this.sampleRate });
+    this.audioContext = new AudioContext({ sampleRate: contextRate });
 
     // Register the worklet processor via Blob URL (avoids needing a static file)
     const blob = new Blob([PCM_CAPTURE_PROCESSOR_SOURCE], {
@@ -76,14 +107,11 @@ export class MicCaptureEngine {
     await this.audioContext.audioWorklet.addModule(workletUrl);
     URL.revokeObjectURL(workletUrl);
 
-    // Wire up: mic → source → worklet
-    this.sourceNode = this.audioContext.createMediaStreamSource(
-      this.mediaStream,
-    );
-    this.workletNode = new AudioWorkletNode(
-      this.audioContext,
-      "pcm-capture-processor",
-    );
+    // Wire up: mic → source → [RNNoise] → capture worklet (→ 24 kHz frames)
+    this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+    this.workletNode = new AudioWorkletNode(this.audioContext, "pcm-capture-processor", {
+      processorOptions: { decimate: contextRate / this.sampleRate },
+    });
 
     // Listen for PCM frames from the worklet
     this.workletNode.port.onmessage = (event: MessageEvent) => {
@@ -93,7 +121,13 @@ export class MicCaptureEngine {
       this.onAudioFrame?.(base64);
     };
 
-    this.sourceNode.connect(this.workletNode);
+    if (useRnnoise) {
+      this.denoiseNode = await createRnnoiseNode(this.audioContext);
+      this.sourceNode.connect(this.denoiseNode);
+      this.denoiseNode.connect(this.workletNode);
+    } else {
+      this.sourceNode.connect(this.workletNode);
+    }
     // Worklet does not connect to destination — capture only, no feedback loop
   }
 
@@ -102,8 +136,8 @@ export class MicCaptureEngine {
    * new device; a stopped one picks it up on its next enable().
    */
   async setDevice(deviceId?: string): Promise<void> {
-    if (deviceId === this.deviceId) return;
-    this.deviceId = deviceId;
+    if (deviceId === this.options.deviceId) return;
+    this.options.deviceId = deviceId;
     if (!this.audioContext) return;
     const wasEnabled = this._isEnabled;
     this.disable();
@@ -128,25 +162,7 @@ export class MicCaptureEngine {
    */
   disable(): void {
     this._isEnabled = false;
-
-    if (this.workletNode) {
-      this.workletNode.disconnect();
-      this.workletNode = null;
-    }
-    if (this.sourceNode) {
-      this.sourceNode.disconnect();
-      this.sourceNode = null;
-    }
-    if (this.mediaStream) {
-      for (const track of this.mediaStream.getTracks()) {
-        track.stop();
-      }
-      this.mediaStream = null;
-    }
-    if (this.audioContext && this.audioContext.state !== "closed") {
-      void this.audioContext.close();
-    }
-    this.audioContext = null;
+    this.teardown();
   }
 
   /**
@@ -154,10 +170,18 @@ export class MicCaptureEngine {
    */
   destroy(): void {
     this._isEnabled = false;
+    this.teardown();
+  }
 
+  /** Stop mic tracks and release every audio node and the context. */
+  private teardown(): void {
     if (this.workletNode) {
       this.workletNode.disconnect();
       this.workletNode = null;
+    }
+    if (this.denoiseNode) {
+      destroyRnnoiseNode(this.denoiseNode);
+      this.denoiseNode = null;
     }
     if (this.sourceNode) {
       this.sourceNode.disconnect();

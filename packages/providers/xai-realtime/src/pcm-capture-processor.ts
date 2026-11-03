@@ -17,10 +17,15 @@
 // The worklet processor source as a string (inlined for Blob URL creation)
 export const PCM_CAPTURE_PROCESSOR_SOURCE = `
 class PcmCaptureProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
     this._buffer = new Float32Array(4096);
     this._bufferIndex = 0;
+    // Integer downsampling factor: the context runs at 48 kHz when RNNoise
+    // is on, and frames are averaged down to the 24 kHz xAI expects.
+    this._decimate = Math.max(1, Math.round((options && options.processorOptions && options.processorOptions.decimate) || 1));
+    this._acc = 0;
+    this._accCount = 0;
   }
 
   process(inputs) {
@@ -30,7 +35,11 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
     const channelData = input[0];
 
     for (let i = 0; i < channelData.length; i++) {
-      this._buffer[this._bufferIndex++] = channelData[i];
+      this._acc += channelData[i];
+      if (++this._accCount < this._decimate) continue;
+      this._buffer[this._bufferIndex++] = this._acc / this._decimate;
+      this._acc = 0;
+      this._accCount = 0;
 
       if (this._bufferIndex >= 4096) {
         // Send full frame to main thread

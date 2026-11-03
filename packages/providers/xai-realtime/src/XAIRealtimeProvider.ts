@@ -229,10 +229,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       };
 
       // Initialize mic capture
-      this.micEngine = new MicCaptureEngine(
-        sampleRate,
-        this.config.microphoneDeviceId,
-      );
+      this.micEngine = new MicCaptureEngine(sampleRate, {
+        deviceId: this.config.microphoneDeviceId,
+        noiseReduction: this.config.noiseReduction,
+        autoGainControl: this.config.autoGainControl,
+      });
       this.micEngine.onAudioFrame = (base64: string) => {
         if (this.config.pushToTalk) {
           // The user is deliberately talking: no echo gating, playback was

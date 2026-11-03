@@ -48,6 +48,7 @@
     "@khaveeai/core": "workspace:*"
   },
   "devDependencies": {
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
     "typescript": "^5.0.0",
     "vitest": "^2.0.0"
   }

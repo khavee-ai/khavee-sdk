@@ -541,18 +541,19 @@ describe("push-to-talk", () => {
     return { p, sent };
   }
 
-  it("turns server VAD off in the session", () => {
+  it("keeps server VAD on in the session", () => {
     try {
       const { p, sent } = pttProvider();
       p.sendSessionUpdate();
       const update = sent().find((e) => e.type === "session.update" && "turn_detection" in e.session);
-      expect(update.session.turn_detection).toBeNull();
+      expect(update.session.turn_detection).toEqual({ type: "server_vad" });
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("commits and requests a reply when the user lets go", async () => {
+  it("lets server VAD end the turn on release: silence, no client commit", async () => {
+    vi.useFakeTimers();
     try {
       const { p, sent } = pttProvider();
       await p.startTalking();
@@ -560,8 +561,43 @@ describe("push-to-talk", () => {
       p.pttSamples = 24000; // one second captured
       p.stopTalking();
       const types = sent().map((e) => e.type);
-      expect(types).toEqual(["input_audio_buffer.clear", "input_audio_buffer.commit", "response.create"]);
+      expect(types).toContain("input_audio_buffer.append");
+      expect(types).not.toContain("input_audio_buffer.commit");
+      expect(types).not.toContain("response.create");
+      await p.handleServerEvent(serverEvent("conversation.item.input_audio_transcription.updated", { transcript: "hello" }));
+      await p.handleServerEvent(serverEvent("input_audio_buffer.committed", { item_id: "u" }));
       expect(p.chatStatus).toBe("thinking");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(p.chatStatus).toBe("thinking"); // the timeout was cleared by the commit
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("goes idle when a released press never becomes a turn", async () => {
+    vi.useFakeTimers();
+    try {
+      const { p } = pttProvider();
+      await p.startTalking();
+      p.pttSamples = 24000;
+      p.stopTalking();
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(p.chatStatus).toBe("ready");
+      expect(p.conversation).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a reply VAD starts while the control is still held", async () => {
+    try {
+      const { p, sent } = pttProvider();
+      await p.startTalking();
+      await p.handleServerEvent(serverEvent("response.created", { response: { id: "early" } }));
+      expect(sent().map((e) => e.type)).toContain("response.cancel");
+      expect(p.chatStatus).toBe("listening");
     } finally {
       vi.unstubAllGlobals();
     }

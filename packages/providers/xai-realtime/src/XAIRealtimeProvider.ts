@@ -129,8 +129,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private pttActive = false;
   /** Samples sent since startTalking(), to skip committing an empty press. */
   private pttSamples = 0;
-  /** xAI rejects commits under 100ms of audio. */
+  /** Presses shorter than this are treated as accidental taps. */
   private static readonly PTT_MIN_SAMPLES_MS = 100;
+  /** Gives up on a released press that server VAD never turned into a turn. */
+  private pttCommitTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly PTT_COMMIT_TIMEOUT_MS = 4000;
   /**
    * Reply transcript so far, and its audio held back while that transcript
    * could still be a bare stage direction ("(silent)"); see `releaseReply`.
@@ -557,7 +560,6 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     if (!!this.config.pushToTalk === enabled) return;
     if (!enabled && this.pttActive) this.cancelTalking();
     this.config.pushToTalk = enabled;
-    if (this.isConnected) this.sendSessionUpdate();
   }
 
   /**
@@ -578,6 +580,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       if (last?.role === "assistant" && !last.isFinal) this.finalizeAssistantText();
     }
     this.hasHeardFirstGreeting = true;
+    this.clearPttCommitTimer();
+    this.clearMuteSilenceTimer();
     this.sendEvent({ type: "input_audio_buffer.clear" });
     this.pttSamples = 0;
     this.pttActive = true;
@@ -594,7 +598,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.onConversationUpdate?.(this.conversation);
   }
 
-  /** Push-to-talk: the user let go. Sends the utterance for a reply. */
+  /**
+   * Push-to-talk: the user let go. Paced silence lets server VAD end the
+   * turn and reply, exactly as in automatic mode (and as when the mic is
+   * muted mid-sentence).
+   */
   stopTalking(): void {
     if (!this.pttActive) return;
     const sampleRate = this.config.sampleRate ?? 24000;
@@ -604,13 +612,25 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       return;
     }
     this.pttActive = false;
-    this.sendEvent({ type: "input_audio_buffer.commit" });
-    this.sendEvent({ type: "response.create" });
-    this.setChatStatus("thinking");
+    this.sendMuteSilenceTail();
+    // A press with no speech in it never becomes a turn: go idle.
+    this.pttCommitTimer = setTimeout(() => {
+      this.pttCommitTimer = null;
+      if (this.userSpeechActive && !this.pttActive) this.cancelTalking();
+    }, XAIRealtimeProvider.PTT_COMMIT_TIMEOUT_MS);
+  }
+
+  private clearPttCommitTimer(): void {
+    if (this.pttCommitTimer) {
+      clearTimeout(this.pttCommitTimer);
+      this.pttCommitTimer = null;
+    }
   }
 
   /** Drops a press too short to send, or one cut off by a mode switch. */
   private cancelTalking(): void {
+    this.clearPttCommitTimer();
+    this.clearMuteSilenceTimer();
     this.pttActive = false;
     this.userSpeechActive = false;
     this.sendEvent({ type: "input_audio_buffer.clear" });
@@ -705,6 +725,10 @@ export class XAIRealtimeProvider implements RealtimeProvider {
 
         case "input_audio_buffer.committed":
           if (!this.userSpeechActive) break;
+          // Server VAD can close a held turn at a pause; the rest of the
+          // press then opens the next one.
+          if (this.pttActive) break;
+          this.clearPttCommitTimer();
           this.clearSpeechCommitTimer();
           this.clearMuteSilenceTimer();
           this.userSpeechActive = false;
@@ -757,6 +781,12 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.created":
+          // VAD answered a pause while the talk control is still held: the
+          // user isn't done, so drop it; releasing brings the real reply.
+          if (this.pttActive) {
+            this.sendEvent({ type: "response.cancel" });
+            break;
+          }
           this.responseInFlight = true;
           this.replyTranscript = "";
           this.heldReplyAudio = null;
@@ -1206,10 +1236,11 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     if (this.config.temperature !== undefined) {
       session.temperature = this.config.temperature;
     }
-    if (this.config.pushToTalk) {
-      // Manual turns: the client commits when the user lets go.
-      session.turn_detection = null;
-    } else if (this.config.turnDetection) {
+    // Push-to-talk keeps server VAD on: xAI's manual mode (turn_detection
+    // null) is for text turns, and a client commit raced VAD and handed the
+    // model a clipped turn it answered with wait_for_user. Gating the audio
+    // is what keeps noise out.
+    if (this.config.turnDetection) {
       session.turn_detection = this.config.turnDetection;
     } else {
       // Default server VAD
@@ -1329,6 +1360,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.toolBatch = null;
     this.heldReplyAudio = null;
     this.pttActive = false;
+    this.clearPttCommitTimer();
     this.clearMuteSilenceTimer();
     this.assistantAudioStreaming = false;
     this.hasHeardFirstGreeting = false;

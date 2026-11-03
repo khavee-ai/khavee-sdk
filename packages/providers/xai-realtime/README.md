@@ -127,7 +127,7 @@ A working example lives at `apps/playground/src/app/xai/page.tsx` in this monore
 | `inputAudioFormat` | `"pcm16" \| "opus" \| "pcmu" \| "pcma"` | `"pcm16"` | |
 | `outputAudioFormat` | `"pcm16" \| "opus" \| "pcmu" \| "pcma"` | `"pcm16"` | |
 | `sampleRate` | `number` | `24000` | Applied to both capture and playback |
-| `pushToTalk` | `boolean` | `false` | Manual turns via `startTalking()` / `stopTalking()`; see Push-to-talk |
+| `pushToTalk` | `boolean` | `false` | Only send audio between `startTalking()` and `stopTalking()`; see Push-to-talk |
 | `microphoneDeviceId` | `string` | *(system default)* | Input device id from `enumerateDevices()` |
 
 `connect()` takes `{ skipGreeting?: boolean }`. Pass `skipGreeting: true` to connect silently — worth doing during development, since each greeting is billable audio.
@@ -192,16 +192,16 @@ Mic capture pauses while assistant audio streams or plays, then resumes 300 ms a
 
 ## Push-to-talk
 
-For noisy venues: server VAD is turned off, so only audio captured while the user holds the talk control is sent, and other voices or background noise can't start a turn.
+For noisy venues: only audio captured while the user holds the talk control is sent, so other voices and background noise can't start a turn.
 
 ```ts
 const provider = new XAIRealtimeProvider({ tokenEndpoint: "/api/xai-token", pushToTalk: true });
 
 button.onpointerdown = () => void provider.startTalking(); // interrupts any reply
-button.onpointerup = () => provider.stopTalking(); // commits and asks for a reply
+button.onpointerup = () => provider.stopTalking(); // server VAD closes the turn and replies
 ```
 
-Presses under 100 ms are dropped instead of committed. `setPushToTalk(enabled)` switches modes mid-session, and `isPushToTalk` reads the current mode.
+Server VAD stays on. On release the provider sends ~1.5 s of silence so VAD ends the turn exactly as in automatic mode; xAI's manual mode (`turn_detection: null`) is for text turns, and a client commit there handed the model a clipped turn. A reply VAD starts at a pause while the control is still held is cancelled. Presses under 100 ms are ignored, and a released press that never becomes a turn (no speech in it) returns to `ready` after 4 s. `setPushToTalk(enabled)` switches modes mid-session, and `isPushToTalk` reads the current mode.
 
 ## Direct apiKey mode
 

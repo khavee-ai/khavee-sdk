@@ -27,6 +27,13 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
    * getRootMotionSpeed. Vertical bounce is kept.
    */
   inPlace?: boolean;
+  /**
+   * Per VRM bone (e.g. `{ neck: 0.3 }`), the share of the clip's rotation to
+   * keep; the rest blends back to the clip's own rest pose. Softens motion
+   * made for adult proportions, such as a walk's head bob, on big-headed
+   * mascots.
+   */
+  soften?: Partial<Record<string, number>>;
 }) {
   let measuredSpeed: number | undefined;
   const foundClip = THREE.AnimationClip.findByName(
@@ -45,6 +52,7 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
   const restRotationInverse = new THREE.Quaternion();
   const parentRestWorldRotation = new THREE.Quaternion();
   const _quatA = new THREE.Quaternion();
+  const _quatB = new THREE.Quaternion();
   const _vec3 = new THREE.Vector3();
 
   // Adjust with reference to hips height.
@@ -89,6 +97,12 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
           const flatQuaternion = track.values.slice(i, i + 4);
 
           _quatA.fromArray(flatQuaternion);
+
+          const keep = options?.soften?.[vrmBoneName];
+          if (keep !== undefined && keep < 1) {
+            // Blend toward the source rig's local rest (its T-pose).
+            _quatA.copy(_quatB.copy(mixamoRigNode!.quaternion).slerp(_quatA, Math.max(0, keep)));
+          }
 
           // 親のレスト時ワールド回転 * トラックの回転 * レスト時ワールド回転の逆
           _quatA

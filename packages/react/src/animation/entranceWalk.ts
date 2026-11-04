@@ -16,7 +16,22 @@ export interface EntranceWalkOptions {
   speed?: number;
   /** Seconds spent turning to face the camera after arriving. Default: 0.5 */
   turnSeconds?: number;
+  /**
+   * Soften the walk clip's head bob and forward lean (neck/head to 30%,
+   * spine to 50%). Walks are captured on adult proportions; on big-headed
+   * mascots the full motion reads as the neck poking forward. Default: true
+   */
+  steadyHead?: boolean;
 }
+
+/** Rotation kept per VRM bone when `steadyHead` is on. */
+export const STEADY_HEAD_SOFTEN: Partial<Record<string, number>> = {
+  neck: 0.3,
+  head: 0.3,
+  spine: 0.5,
+  chest: 0.5,
+  upperChest: 0.5,
+};
 
 export interface EntranceWalkSample {
   /** Sideways offset from the avatar's own spot, in metres (camera's +X is right). */

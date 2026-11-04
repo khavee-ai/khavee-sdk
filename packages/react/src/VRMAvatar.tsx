@@ -234,6 +234,7 @@ export type { EntranceWalkOptions } from "./animation/entranceWalk";
 import { expandAnimationConfig, type AnimationConfig } from "./animation/animationConfig";
 import { ENTRANCE_CLIP_NAME, ENTRANCE_WALK_CLIP_NAME } from "./animation/entrance";
 import {
+  STEADY_HEAD_SOFTEN,
   sampleEntranceWalk,
   type EntranceWalkOptions,
   type EntranceWalkSample,
@@ -499,6 +500,8 @@ export function VRMAvatar({
 
   // SDK automatically loads FBX and GLB files from URLs!
   const loadedAnimations = useAnimationFiles(animations);
+  // Walk-in clips soften their head bob unless asked not to (entranceWalk.ts).
+  const steadyWalk = !(typeof entranceWalk === "object" && entranceWalk?.steadyHead === false);
 
   // Process and remap animations automatically - SDK handles EVERYTHING!
   const processedClips = useMemo(() => {
@@ -523,6 +526,7 @@ export function VRMAvatar({
             anchor: name === ENTRANCE_CLIP_NAME ? "end" : "start",
             // The walk-in moves the avatar itself, so its walk loops in place.
             inPlace: name === ENTRANCE_WALK_CLIP_NAME,
+            soften: name === ENTRANCE_WALK_CLIP_NAME && steadyWalk ? STEADY_HEAD_SOFTEN : undefined,
           });
           remappedClip.name = name;
           clips.push(remappedClip);
@@ -542,6 +546,7 @@ export function VRMAvatar({
               const remappedClip = remapMixamoAnimationToVrm(currentVrm, gltf.scene, {
                 anchor: name === ENTRANCE_CLIP_NAME ? "end" : "start",
                 inPlace: name === ENTRANCE_WALK_CLIP_NAME,
+                soften: name === ENTRANCE_WALK_CLIP_NAME && steadyWalk ? STEADY_HEAD_SOFTEN : undefined,
               });
               remappedClip.name = name;
               clips.push(remappedClip);
@@ -567,7 +572,7 @@ export function VRMAvatar({
     });
 
     return clips;
-  }, [loadedAnimations, currentVrm]);
+  }, [loadedAnimations, currentVrm, steadyWalk]);
 
   // Initialize animation mixer and maintain animation state
   useEffect(() => {

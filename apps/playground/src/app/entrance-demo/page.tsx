@@ -36,6 +36,9 @@ export default function EntranceDemo() {
   const [entrance, setEntrance] = useState<EntranceKey>('walkRight');
   // null: the SDK matches the walk clip's own stride.
   const [speed, setSpeed] = useState<number | null>(null);
+  // The SDK softens the walk's head bob (neck/head 30%, spine 50%) so
+  // big-headed mascots don't poke their neck out.
+  const [steadyHead, setSteadyHead] = useState(true);
   const [replay, setReplay] = useState(0);
 
   // Free the previous upload's blob URL when it is replaced or on unmount.
@@ -53,7 +56,8 @@ export default function EntranceDemo() {
       : chosen.kind === 'walk'
         ? { entranceWalk: WALK, idle: IDLE }
         : { idle: IDLE };
-  const entranceWalk = chosen.kind === 'walk' ? { from: chosen.from, speed: speed ?? undefined } : undefined;
+  const entranceWalk =
+    chosen.kind === 'walk' ? { from: chosen.from, speed: speed ?? undefined, steadyHead } : undefined;
 
   return (
     <div className="relative h-screen w-screen bg-gradient-to-b from-[#dfe7f5] to-[#f6f1ea]">
@@ -63,7 +67,7 @@ export default function EntranceDemo() {
           <Suspense fallback={null}>
             {/* Remounting replays the entrance: it only plays on first appearance. */}
             <VRMAvatar
-              key={`${model.url}|${entrance}|${speed}|${replay}`}
+              key={`${model.url}|${entrance}|${speed}|${steadyHead}|${replay}`}
               src={model.url}
               animations={animations}
               entranceWalk={entranceWalk}
@@ -108,6 +112,10 @@ export default function EntranceDemo() {
 
         {chosen.kind === 'walk' && (
           <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={steadyHead} onChange={(e) => setSteadyHead(e.target.checked)} />
+              Steady head (soften head bob)
+            </label>
             <label className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={speed === null} onChange={(e) => setSpeed(e.target.checked ? null : 1.2)} />
               Speed from the clip&apos;s stride (feet match)

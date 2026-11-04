@@ -205,3 +205,36 @@ describe("remapMixamoAnimationToVrm inPlace", () => {
     expect(getRootMotionSpeed(clip)).toBeCloseTo(2);
   });
 });
+
+describe("remapMixamoAnimationToVrm soften", () => {
+  it("keeps only the given share of a bone's rotation, measured from its rest", () => {
+    const root = new THREE.Group();
+    const hipsNode = new THREE.Object3D();
+    hipsNode.name = "mixamorigHips";
+    hipsNode.position.set(0, 1, 0);
+    const neckNode = new THREE.Object3D();
+    neckNode.name = "mixamorigNeck";
+    hipsNode.add(neckNode);
+    root.add(hipsNode);
+    const bent = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 3);
+    root.animations = [
+      new THREE.AnimationClip("mixamo.com", 1, [
+        new THREE.QuaternionKeyframeTrack("mixamorigNeck.quaternion", [0], bent.toArray()),
+      ]),
+    ];
+    root.updateMatrixWorld(true);
+    const neck = new THREE.Object3D();
+    neck.name = "Normalized_neck";
+    const vrm = {
+      humanoid: { getNormalizedBoneNode: () => Object.assign(neck, { getWorldPosition: (v: THREE.Vector3) => v.set(0, 1, 0) }) },
+      scene: { getWorldPosition: (v: THREE.Vector3) => v.set(0, 0, 0) },
+      meta: { metaVersion: "1" },
+    };
+    const angleOf = (clip: THREE.AnimationClip) =>
+      new THREE.Quaternion().fromArray(clip.tracks[0].values).angleTo(new THREE.Quaternion());
+    const full = remapMixamoAnimationToVrm(vrm as any, root);
+    const soft = remapMixamoAnimationToVrm(vrm as any, root, { soften: { neck: 0.5 } });
+    expect(angleOf(full)).toBeCloseTo(Math.PI / 3);
+    expect(angleOf(soft)).toBeCloseTo(Math.PI / 6);
+  });
+});

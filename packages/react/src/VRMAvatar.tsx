@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lerp } from "three/src/math/MathUtils.js";
 import { useKhavee } from "./KhaveeProvider";
-import { remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
+import { getRootMotionSpeed, remapMixamoAnimationToVrm } from "./utils/remapMixamoAnimationToVrm";
 import {
   applyMeshRenderFlags,
   applyRendererDefaults,
@@ -206,6 +206,14 @@ interface VRMAvatarProps {
    */
   onLoad?: () => void;
   /**
+   * Walk on from the side of the frame when the avatar first appears. Needs
+   * an in-place walk loop under the `entranceWalk` animation key; the avatar
+   * slides in facing the way it walks, then turns to the camera as idle (or
+   * the greeting) crossfades in. `true` uses the defaults (from the right,
+   * 3 m, 1.2 m/s). Takes precedence over an `entrance` clip.
+   */
+  entranceWalk?: boolean | EntranceWalkOptions;
+  /**
    * Composite a background inside the canvas and derive the rim light's colour from it.
    * Omitting this prop leaves the canvas transparent and the existing CSS-background path untouched.
    * There is no separate enable flag. The image host must send CORS headers.
@@ -222,8 +230,14 @@ interface VRMAvatarProps {
 
 // Re-export for backward compatibility (index.ts re-exports from here).
 export type { AnimationConfig } from "./animation/animationConfig";
+export type { EntranceWalkOptions } from "./animation/entranceWalk";
 import { expandAnimationConfig, type AnimationConfig } from "./animation/animationConfig";
-import { ENTRANCE_CLIP_NAME } from "./animation/entrance";
+import { ENTRANCE_CLIP_NAME, ENTRANCE_WALK_CLIP_NAME } from "./animation/entrance";
+import {
+  sampleEntranceWalk,
+  type EntranceWalkOptions,
+  type EntranceWalkSample,
+} from "./animation/entranceWalk";
 import type { AnimationCycleOrder } from "./animation/AnimationStateEngine";
 
 // Internal component to load FBX and GLB animation files.
@@ -413,6 +427,7 @@ export function VRMAvatar({
   outlines = true,
   outlineWidth,
   onLoad,
+  entranceWalk,
   background,
   onBackgroundError,
   ...props
@@ -506,6 +521,8 @@ export function VRMAvatar({
           // An entrance lands where idle stands, so pin its last frame.
           const remappedClip = remapMixamoAnimationToVrm(currentVrm, data as THREE.Group, {
             anchor: name === ENTRANCE_CLIP_NAME ? "end" : "start",
+            // The walk-in moves the avatar itself, so its walk loops in place.
+            inPlace: name === ENTRANCE_WALK_CLIP_NAME,
           });
           remappedClip.name = name;
           clips.push(remappedClip);
@@ -524,6 +541,7 @@ export function VRMAvatar({
               // @ts-ignore - VRM type compatibility
               const remappedClip = remapMixamoAnimationToVrm(currentVrm, gltf.scene, {
                 anchor: name === ENTRANCE_CLIP_NAME ? "end" : "start",
+                inPlace: name === ENTRANCE_WALK_CLIP_NAME,
               });
               remappedClip.name = name;
               clips.push(remappedClip);
@@ -709,6 +727,41 @@ export function VRMAvatar({
   );
   const getRoot = useCallback(() => currentVrm?.scene ?? scene ?? null, [currentVrm, scene]);
 
+  // Walk-in (see entranceWalk.ts): the inner group below carries its offset
+  // and turn. The clock starts the first frame the clips are ready, the same
+  // frame the controller starts the walk loop.
+  const walkGroupRef = useRef<THREE.Group>(null);
+  const walkClockRef = useRef<number | null>(null);
+  const walkSampleRef = useRef<EntranceWalkSample | null>(null);
+  const walkClip = processedClips.find((c) => c.name === ENTRANCE_WALK_CLIP_NAME);
+  const hasWalkClip = !!walkClip;
+  // Without an explicit speed, slide at the walk clip's own stride.
+  const clipSpeed = walkClip ? getRootMotionSpeed(walkClip) : undefined;
+  const walkOptions =
+    entranceWalk === true || (entranceWalk && typeof entranceWalk === "object")
+      ? {
+          ...(entranceWalk === true ? {} : entranceWalk),
+          speed:
+            (entranceWalk !== true && entranceWalk.speed) ||
+            (clipSpeed && clipSpeed > 0.2 ? clipSpeed : undefined),
+        }
+      : null;
+  // Configured but still loading: wait off-frame rather than flash centre.
+  const walkConfigured = !!animations && ENTRANCE_WALK_CLIP_NAME in animations;
+  const walkEnabled = !!walkOptions && walkConfigured && (hasWalkClip || processedClips.length === 0);
+  useEffect(() => {
+    walkClockRef.current = null;
+    walkSampleRef.current = null;
+  }, [scene]);
+  const entrancePlan =
+    walkOptions && hasWalkClip
+      ? {
+          clipName: ENTRANCE_WALK_CLIP_NAME,
+          loop: true,
+          isFinished: () => walkSampleRef.current !== null && !walkSampleRef.current.walking,
+        }
+      : null;
+
   const controller = useAnimationController({
     adapter: vrmAdapter,
     chatStatus,
@@ -726,6 +779,7 @@ export function VRMAvatar({
     emotionHint,
     onEmotionConsumed: () => setEmotionHint(null),
     visemeChannel,
+    entrance: entrancePlan,
   });
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {
@@ -768,6 +822,24 @@ export function VRMAvatar({
 
     // Crossfade ramp + blink step (shared animation module — see
     // packages/react/src/animation/AnimationStateEngine.ts). Frame-ordering
+    // Walk-in offset and turn, ahead of the controller so it sees this
+    // frame's sample. Until the clips load the avatar waits off-frame.
+    const walkGroup = walkGroupRef.current;
+    if (walkGroup && walkOptions && walkEnabled && !walkSampleRef.current?.done) {
+      if (processedClips.length > 0) {
+        walkClockRef.current = walkClockRef.current === null ? 0 : walkClockRef.current + delta;
+      }
+      const sample = sampleEntranceWalk(walkClockRef.current ?? 0, walkOptions);
+      walkSampleRef.current = processedClips.length > 0 ? sample : null;
+      // The outer group is turned to face the camera, so its local X runs
+      // opposite to the camera's.
+      walkGroup.position.x = -sample.x;
+      walkGroup.rotation.y = sample.yaw;
+    } else if (walkGroup && !walkSampleRef.current?.done && (walkGroup.position.x !== 0 || walkGroup.rotation.y !== 0)) {
+      walkGroup.position.x = 0;
+      walkGroup.rotation.y = 0;
+    }
+
     // contract: mixer.update -> controller.update -> vrm.update.
     controller.update(delta);
 
@@ -790,7 +862,11 @@ export function VRMAvatar({
             <AvatarLightRig options={mergeRimColor(lighting, derivedRim)} />
           </group>
         )}
-        {scene && <primitive object={scene} />}
+        {scene && (
+          <group ref={walkGroupRef}>
+            <primitive object={scene} />
+          </group>
+        )}
       </group>
     </>
   );

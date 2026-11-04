@@ -7,7 +7,7 @@ export {
   useAnimations,
 } from "./VRMAvatar";
 export { GLBAvatar } from "./GLBAvatar";
-export type { AnimationConfig } from "./VRMAvatar";
+export type { AnimationConfig, EntranceWalkOptions } from "./VRMAvatar";
 export type { AnimationCycleOrder } from "./animation/AnimationStateEngine";
 export {
   AvatarPostFX,

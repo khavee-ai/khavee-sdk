@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { useAnimationController } from "./AnimationStateEngine";
-import { ENTRANCE_CLIP_NAME, isEntranceHandoffDue, startEntrance, withoutEntrance } from "./entrance";
+import { ENTRANCE_CLIP_NAME, ENTRANCE_WALK_CLIP_NAME, isEntranceHandoffDue, startEntrance, withoutEntrance } from "./entrance";
 import type { AvatarFormatAdapter } from "./types";
 
 // Same hook stand-ins as AnimationStateEngine.test.ts: the controller is
@@ -28,7 +28,7 @@ function rig() {
     new THREE.AnimationClip(name, duration, [
       new THREE.VectorKeyframeTrack("hips.position", [0, duration], [0, 2, 0, 0, 1, 0]),
     ]);
-  const clips = [clip(ENTRANCE_CLIP_NAME, 2), clip("idle", 3)];
+  const clips = [clip(ENTRANCE_CLIP_NAME, 2), clip(ENTRANCE_WALK_CLIP_NAME, 1), clip("idle", 3)];
   const getAction = (name: string) => {
     const found = clips.find((c) => c.name === name);
     return found ? mixer.clipAction(found) : null;
@@ -39,7 +39,7 @@ function rig() {
     getHumanoidBoneNode: () => null,
     getExpressionManager: () => null,
   };
-  return { root, mixer, getAction, adapter, names: clips.map((c) => c.name) };
+  return { root, mixer, getAction, adapter, names: clips.filter((c) => c.name !== ENTRANCE_WALK_CLIP_NAME).map((c) => c.name) };
 }
 
 describe("entrance helpers", () => {
@@ -103,5 +103,35 @@ describe("useAnimationController with an entrance clip", () => {
     });
     expect(getAction("idle")!.isRunning()).toBe(true);
     expect(getAction(ENTRANCE_CLIP_NAME)!.isRunning()).toBe(false);
+  });
+});
+
+describe("useAnimationController with a walk-in plan", () => {
+  it("loops the walk until the plan says it's finished, then hands to idle", () => {
+    const { root, mixer, getAction, adapter } = rig();
+    let walking = true;
+    const controller = useAnimationController({
+      adapter,
+      chatStatus: "ready",
+      currentAnimation: null,
+      availableNames: [ENTRANCE_WALK_CLIP_NAME, "idle"],
+      getAction,
+      getRoot: () => root,
+      enableBlinking: false,
+      entrance: { clipName: ENTRANCE_WALK_CLIP_NAME, loop: true, isFinished: () => !walking },
+    });
+    const walk = getAction(ENTRANCE_WALK_CLIP_NAME)!;
+    const idle = getAction("idle")!;
+    expect(walk.loop).toBe(THREE.LoopRepeat);
+    for (let i = 0; i < 30; i++) {
+      mixer.update(0.1);
+      controller.update(0.1); // 3s: well past the 1s clip, still looping
+    }
+    expect(walk.isRunning()).toBe(true);
+    expect(idle.isRunning()).toBe(false);
+    walking = false;
+    mixer.update(0.1);
+    controller.update(0.1);
+    expect(idle.isRunning()).toBe(true);
   });
 });

@@ -1,6 +1,19 @@
 import * as THREE from "three";
 import { mixamoVRMRigMap } from "./mixamoVRMRigMap";
 
+// Ground speed (m/s) of clips remapped with `inPlace`, measured before their
+// travel was stripped. Keyed weakly so clips are not kept alive.
+const rootMotionSpeeds = new WeakMap<THREE.AnimationClip, number>();
+
+/**
+ * Ground speed in m/s that an `inPlace`-remapped clip originally travelled at
+ * (a walk's stride), or undefined if it was not remapped in place. Moving the
+ * avatar at this speed keeps its feet from sliding.
+ */
+export function getRootMotionSpeed(clip: THREE.AnimationClip): number | undefined {
+  return rootMotionSpeeds.get(clip);
+}
+
 export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNode: (arg0: string) => { (): any; new(): any; getWorldPosition: { (arg0: THREE.Vector3): { (): any; new(): any; y: any; }; new(): any; }; name: any; position: { x: number; y: number; z: number }; }; }; scene: { getWorldPosition: (arg0: THREE.Vector3) => { (): any; new(): any; y: any; }; }; meta: { metaVersion: string; }; }, asset: THREE.Group<THREE.Object3DEventMap>, options?: {
   /**
    * Which keyframe the hips are pinned to the bind pose at. "start" (default)
@@ -8,7 +21,14 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
    * may start anywhere but lands standing at the avatar's own spot.
    */
   anchor?: "start" | "end";
+  /**
+   * Strip horizontal travel from the hips (a walk exported without Mixamo's
+   * "In Place"), so the clip loops on the spot; the travel speed is kept for
+   * getRootMotionSpeed. Vertical bounce is kept.
+   */
+  inPlace?: boolean;
 }) {
+  let measuredSpeed: number | undefined;
   const foundClip = THREE.AnimationClip.findByName(
     asset.animations,
     "mixamo.com"
@@ -122,7 +142,16 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
         // EVERY weight -- the blend is flat across the whole settle, no
         // drop and no mid-ramp overshoot.
         let value: Float32Array;
-        if (options?.anchor === "end") {
+        if (options?.inPlace) {
+          const last = scaled.length - 3;
+          const dx = scaled[last] - scaled[0];
+          const dz = scaled[last + 2] - scaled[2];
+          const span = track.times[track.times.length - 1] - track.times[0];
+          if (span > 0) measuredSpeed = Math.hypot(dx, dz) / span;
+          value = scaled.map((v, i) =>
+            i % 3 === 1 ? v - (scaled[1] ?? 0) + bindPoseHipsY : i % 3 === 0 ? scaled[0] : scaled[2]
+          );
+        } else if (options?.anchor === "end") {
           // Pin the LAST keyframe on all three axes to the bind-pose hips,
           // so an entrance ends exactly where the idle loop stands.
           const bind = vrm.humanoid?.getNormalizedBoneNode("hips")?.position;
@@ -147,5 +176,7 @@ export function remapMixamoAnimationToVrm(vrm: { humanoid: { getNormalizedBoneNo
     }
   });
 
-  return new THREE.AnimationClip("vrmAnimation", clip.duration, tracks);
+  const result = new THREE.AnimationClip("vrmAnimation", clip.duration, tracks);
+  if (measuredSpeed !== undefined) rootMotionSpeeds.set(result, measuredSpeed);
+  return result;
 }

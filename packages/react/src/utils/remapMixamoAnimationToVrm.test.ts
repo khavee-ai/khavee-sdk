@@ -176,3 +176,32 @@ describe("remapMixamoAnimationToVrm anchor: end", () => {
     expect(v[1]).toBeGreaterThan(0.9); // starts above (the drop)
   });
 });
+
+describe("remapMixamoAnimationToVrm inPlace", () => {
+  it("strips forward travel, keeps bounce, and records the stride speed", async () => {
+    const { getRootMotionSpeed } = await import("./remapMixamoAnimationToVrm");
+    const root = new THREE.Group();
+    const hipsNode = new THREE.Object3D();
+    hipsNode.name = "mixamorigHips";
+    hipsNode.position.set(0, 1, 0);
+    root.add(hipsNode);
+    // Travels 2 units forward in 1 s while bobbing 0.1 up and down.
+    root.animations = [
+      new THREE.AnimationClip("mixamo.com", 1, [
+        new THREE.VectorKeyframeTrack("mixamorigHips.position", [0, 0.5, 1], [0, 1, 0, 0, 1.1, 1, 0, 1, 2]),
+      ]),
+    ];
+    const hips = new THREE.Object3D();
+    hips.position.set(0, 1, 0);
+    const vrm = {
+      humanoid: { getNormalizedBoneNode: () => Object.assign(hips, { getWorldPosition: (v: THREE.Vector3) => v.set(0, 1, 0) }) },
+      scene: { getWorldPosition: (v: THREE.Vector3) => v.set(0, 0, 0) },
+      meta: { metaVersion: "1" },
+    };
+    const clip = remapMixamoAnimationToVrm(vrm as any, root, { inPlace: true });
+    const v = Array.from(clip.tracks.find((t) => t instanceof THREE.VectorKeyframeTrack)!.values);
+    expect([v[2], v[5], v[8]]).toEqual([0, 0, 0]); // no forward travel
+    expect(v[4] - v[1]).toBeCloseTo(0.1); // bounce kept
+    expect(getRootMotionSpeed(clip)).toBeCloseTo(2);
+  });
+});

@@ -172,6 +172,16 @@ Array entries are flattened to `idle_0`, `idle_1`, …, so they still match on t
 animations={{ entrance: '/animations/drop-in.fbx', idle: '/animations/idle.fbx', greeting: '/animations/wave.fbx' }}
 ```
 
+**Walk-in.** Pass `entranceWalk` and an `entranceWalk` walk clip to have the avatar walk on from the side of the frame: it slides in from off-frame facing the way it walks, then turns to the camera as idle (or the greeting) crossfades in. The walk clip's forward travel is stripped so it loops in place, and its measured stride becomes the slide speed, so the feet don't slide; export from Mixamo either way. Options: `from` (`"right"` default, or `"left"`), `distance` (m, default 3), `speed` (m/s, default: the clip's stride), `turnSeconds` (default 0.5). It takes precedence over an `entrance` clip.
+
+```tsx
+<VRMAvatar
+  src="/models/character.vrm"
+  animations={{ entranceWalk: '/animations/happy-walk.fbx', idle: '/animations/idle.fbx' }}
+  entranceWalk={{ from: 'right' }}
+/>
+```
+
 ## `GLBAvatar`
 
 Renders a `.glb`/`.gltf` model that already contains both the mesh **and** its animations in one file (e.g. exported from Blender or downloaded with embedded animation clips).

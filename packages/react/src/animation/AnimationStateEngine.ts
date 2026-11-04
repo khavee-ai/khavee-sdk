@@ -436,6 +436,7 @@ import {
   startEntrance,
   withoutEntrance,
   type EntrancePhase,
+  type EntrancePlan,
 } from "./entrance";
 import type { AvatarFormatAdapter } from "./types";
 
@@ -980,6 +981,12 @@ export function useAnimationController(params: {
    * selection against deterministic timestamps instead of the real clock.
    */
   getNowMs?: () => number;
+  /**
+   * Overrides which clip the entrance plays and when it ends (VRMAvatar's
+   * walk-in passes its walk loop here). Omitted: an `entrance` clip, if
+   * loaded, plays once (see entrance.ts).
+   */
+  entrance?: EntrancePlan | null;
 }): { update: (delta: number) => void } {
   const {
     adapter,
@@ -1000,6 +1007,7 @@ export function useAnimationController(params: {
     onEmotionConsumed,
     visemeChannel,
     getNowMs,
+    entrance: entrancePlan,
   } = params;
 
   // Sanitize minDwellSeconds: non-finite or negative → default (T-gzb-01).
@@ -1171,28 +1179,35 @@ export function useAnimationController(params: {
   function stepEntrance(): boolean {
     const phase = entranceRef.current;
     if (phase === "done") return false;
+    const plan: EntrancePlan | null =
+      entrancePlan ??
+      (availableNames.includes(ENTRANCE_CLIP_NAME) ? { clipName: ENTRANCE_CLIP_NAME, loop: false } : null);
     if (phase === "pending") {
-      if (!availableNames.includes(ENTRANCE_CLIP_NAME)) {
+      if (!plan || !availableNames.includes(plan.clipName)) {
         // Clips not loaded yet: keep waiting. Loaded without one: done.
         if (availableNames.length === 0) return true;
         entranceRef.current = "done";
         return false;
       }
-      const action = getAction(ENTRANCE_CLIP_NAME);
+      const action = getAction(plan.clipName);
       if (!action || !getRoot()) return true;
-      startEntrance(action);
+      startEntrance(action, plan.loop);
       currentActionRef.current = action;
-      currentClipNameRef.current = ENTRANCE_CLIP_NAME;
+      currentClipNameRef.current = plan.clipName;
       entranceRef.current = "playing";
       return true;
     }
     const action = currentActionRef.current;
-    if (action && currentClipNameRef.current === ENTRANCE_CLIP_NAME && !isEntranceHandoffDue(action)) {
-      return true;
-    }
+    const finished = !plan || currentClipNameRef.current !== plan.clipName || !action
+      ? true
+      : plan.isFinished
+        ? plan.isFinished()
+        : isEntranceHandoffDue(action);
+    if (!finished) return true;
     entranceRef.current = "done";
     return false;
   }
+
 
   // 11-13 gap-closure fix (G1/G3 — see the file-header 11-13 diagnosis
   // block): the "should switchToClip run" decision (including the

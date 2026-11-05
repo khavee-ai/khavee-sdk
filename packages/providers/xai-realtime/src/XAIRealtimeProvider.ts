@@ -129,6 +129,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private pttActive = false;
   /** Samples sent since startTalking(), to skip committing an empty press. */
   private pttSamples = 0;
+  private thinkingWatchdog: ReturnType<typeof setTimeout> | null = null;
+  private static readonly THINKING_WATCHDOG_MS = 20000;
   /** Presses shorter than this are treated as accidental taps. */
   private static readonly PTT_MIN_SAMPLES_MS = 100;
   /** Gives up on a released press that server VAD never turned into a turn. */
@@ -221,12 +223,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
       this.playbackEngine.onPlaybackStart = () => {
         this.setChatStatus(this.hasHeardFirstGreeting ? "speaking" : "starting");
       };
-      this.playbackEngine.onPlaybackEnd = () => {
-        this.micSuppressedUntil = Date.now() + 300;
-        if (!this.assistantAudioStreaming && this.isAssistantAudible()) {
-          this.finishAssistantAudio();
-        }
-      };
+      this.playbackEngine.onPlaybackEnd = () => this.handlePlaybackEnd();
 
       // Initialize mic capture
       this.micEngine = new MicCaptureEngine(sampleRate, {
@@ -668,6 +665,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     try {
       const data = JSON.parse(event.data as string) as XAIServerEvent;
       console.log("[xAI event]", data.type);
+      // Keep-alive pings arrive regardless, so they don't count as progress.
+      if (this.chatStatus === "thinking" && (data.type as string) !== "ping") this.armThinkingWatchdog();
 
       switch (data.type) {
         case "session.created":
@@ -903,6 +902,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     const prevStatus = this.chatStatus;
     this.chatStatus = status;
     this.onChatStatusChange?.(status);
+    if (status === "thinking") this.armThinkingWatchdog();
+    else this.clearThinkingWatchdog();
 
     // Fire audio lifecycle events on transitions
     if (status === "speaking" && prevStatus !== "speaking") {
@@ -1083,7 +1084,12 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     argsJson: string,
   ): Promise<void> {
     const inGrace = this.turnGraceTimer !== null;
-    if (!inGrace) this.setChatStatus("thinking");
+    // A tool called alongside speech (set_emotion mid-reply) must not flip
+    // the status to "thinking": playback-end only finishes from "speaking",
+    // so the status stuck on "thinking" after the reply.
+    const audible =
+      this.isAssistantAudible() || this.assistantAudioStreaming || !!this.playbackEngine?.isPlaying;
+    if (!inGrace && !audible) this.setChatStatus("thinking");
     console.log("[xAI] Tool call received:", name, argsJson);
 
     // Joined synchronously, before the first await, so the response.done
@@ -1362,11 +1368,22 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.heldReplyAudio = null;
     this.pttActive = false;
     this.clearPttCommitTimer();
+    this.clearThinkingWatchdog();
     this.clearMuteSilenceTimer();
     this.assistantAudioStreaming = false;
     this.hasHeardFirstGreeting = false;
     this.setChatStatus("stopped");
     this.onDisconnect?.();
+  }
+
+  /** All queued assistant audio has played. */
+  private handlePlaybackEnd(): void {
+    this.micSuppressedUntil = Date.now() + 300;
+    // "thinking" with nothing in flight is a reply that already ended.
+    const idleThinking = this.chatStatus === "thinking" && !this.responseInFlight && !this.toolBatch;
+    if (!this.assistantAudioStreaming && (this.isAssistantAudible() || idleThinking)) {
+      this.finishAssistantAudio();
+    }
   }
 
   /** "speaking", or "starting" while the opening greeting plays. */
@@ -1378,6 +1395,32 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private finishAssistantAudio(): void {
     this.hasHeardFirstGreeting = true;
     this.setChatStatus("ready");
+  }
+
+  /**
+   * Safety net: "thinking" that hears nothing from the server for
+   * THINKING_WATCHDOG_MS (a lost response.done, a hung tool) falls back to
+   * ready so the visitor isn't left waiting on a turn that will never end.
+   * Re-armed by every server event while thinking.
+   */
+  private armThinkingWatchdog(): void {
+    this.clearThinkingWatchdog();
+    this.thinkingWatchdog = setTimeout(() => {
+      this.thinkingWatchdog = null;
+      if (this.chatStatus !== "thinking" || this.userSpeechActive) return;
+      console.warn("[xAI] No server activity while thinking; returning to ready");
+      this.responseInFlight = false;
+      this.toolBatch = null;
+      this.hasHeardFirstGreeting = true;
+      this.setChatStatus("ready");
+    }, XAIRealtimeProvider.THINKING_WATCHDOG_MS);
+  }
+
+  private clearThinkingWatchdog(): void {
+    if (this.thinkingWatchdog) {
+      clearTimeout(this.thinkingWatchdog);
+      this.thinkingWatchdog = null;
+    }
   }
 
   /** Holds "ready" after a transcript-less commit; see `turnGraceTimer`. */

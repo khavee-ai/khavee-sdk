@@ -630,3 +630,77 @@ describe("push-to-talk", () => {
     }
   });
 });
+
+describe("thinking status", () => {
+  function talking() {
+    vi.stubGlobal("WebSocket", { OPEN: 1 });
+    const p = new XAIRealtimeProvider({});
+    p.registerFunction({
+      name: "set_emotion",
+      description: "Set emotion",
+      parameters: {},
+      execute: async () => ({ success: true, message: "ok", sideEffectOnly: true }),
+    });
+    p.ws = { readyState: 1, send: vi.fn() };
+    p.isConnected = true;
+    p.hasHeardFirstGreeting = true;
+    p.chatStatus = "speaking";
+    p.playbackEngine = { appendChunk: vi.fn(), cancel: vi.fn(), isPlaying: true, getAnalyser: () => null };
+    return p;
+  }
+
+  it("does not flip to thinking when a tool is called while the reply plays", async () => {
+    try {
+      const p = talking();
+      await p.executeToolCall("c1", "set_emotion", "{}");
+      expect(p.chatStatus).toBe("speaking");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("returns to ready when playback ends on a finished reply left on thinking", async () => {
+    try {
+      const p = talking();
+      p.playbackEngine.isPlaying = false;
+      p.chatStatus = "thinking";
+      p.responseInFlight = false;
+      p.handlePlaybackEnd();
+      expect(p.chatStatus).toBe("ready");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("falls back to ready after 20s of no server activity while thinking", async () => {
+    vi.useFakeTimers();
+    try {
+      const p = talking();
+      p.playbackEngine.isPlaying = false;
+      p.setChatStatus("thinking");
+      await vi.advanceTimersByTimeAsync(15000);
+      await p.handleServerEvent(serverEvent("ping"));
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(p.chatStatus).toBe("ready");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps thinking while the server is still working", async () => {
+    vi.useFakeTimers();
+    try {
+      const p = talking();
+      p.playbackEngine.isPlaying = false;
+      p.setChatStatus("thinking");
+      await vi.advanceTimersByTimeAsync(15000);
+      await p.handleServerEvent(serverEvent("response.function_call_arguments.delta", { call_id: "x", delta: "{" }));
+      await vi.advanceTimersByTimeAsync(15000);
+      expect(p.chatStatus).toBe("thinking");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+});

@@ -172,6 +172,8 @@ Array entries are flattened to `idle_0`, `idle_1`, …, so they still match on t
 animations={{ entrance: '/animations/drop-in.fbx', idle: '/animations/idle.fbx', greeting: '/animations/wave.fbx' }}
 ```
 
+**Goodbye.** A clip whose key matches `stop|bye|goodbye|outro` (e.g. `bye: '/animations/wave.fbx'`) plays once when a live session ends (status goes to `stopped`), then the avatar settles back into idle. It never plays on the initial `stopped` before anyone has talked.
+
 **Walk-in.** Pass `entranceWalk` and an `entranceWalk` walk clip to have the avatar walk on from the side of the frame: it slides in from off-frame facing the way it walks, then turns to the camera as idle (or the greeting) crossfades in. The walk clip's forward travel is stripped so it loops in place, and its measured stride becomes the slide speed, so the feet don't slide; export from Mixamo either way. Options: `from` (`"right"` default, or `"left"`), `distance` (m, default 3), `speed` (m/s, default: the clip's stride), `turnSeconds` (default 0.5), `steadyHead` (default `true`: keeps 30% of the clip's neck/head motion and 50% of its spine lean, since walks captured on adult proportions read as the neck poking forward on big-headed mascots; the file is untouched). It takes precedence over an `entrance` clip.
 
 ```tsx

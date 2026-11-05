@@ -723,6 +723,15 @@ export function resetToRestPoseIfNotDriven(
  * "stop"/"bye") auto-wires for that status with zero further code changes,
  * the same mechanism `speaking` already used before this table existed.
  */
+/** Statuses during a session; ending one in "stopped" plays the goodbye. */
+const LIVE_STATUSES: ReadonlySet<ChatStatus> = new Set<ChatStatus>([
+  "starting",
+  "ready",
+  "listening",
+  "thinking",
+  "speaking",
+]);
+
 const STATUS_CLIP_PATTERNS: Partial<Record<ChatStatus, RegExp>> = {
   // "taking" is a documented one-off accommodation for the bundled GLB
   // placeholder clip `happy.glb`'s "State 4 Taking (loop)" (spelled "Taking",
@@ -1089,6 +1098,13 @@ export function useAnimationController(params: {
   // The one-shot entrance clip (see entrance.ts). Never useState, same
   // per-frame-state convention as the refs above.
   const entranceRef = useRef<EntrancePhase>("pending");
+  // The goodbye clip (a `stopped`-pattern clip such as "bye") plays once,
+  // and only when a live session ends — not on the initial "stopped" before
+  // anyone has talked. Afterwards the avatar settles back into idle.
+  const goodbyeRef = useRef<{ phase: "idle" | "playing" | "done"; lastStatus: ChatStatus }>({
+    phase: "idle",
+    lastStatus: chatStatus,
+  });
   // The entrance never takes part in status-driven selection or fallback.
   const statusNames = withoutEntrance(availableNames);
 
@@ -1105,6 +1121,45 @@ export function useAnimationController(params: {
       ),
     [chatStatus, currentAnimation, statusNames.join(" "), cycleOrder],
   );
+  // What idle would be, for a "stopped" with no goodbye to play.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const readyTargetName = useMemo(
+    () =>
+      holdIdleAcrossStatusChange(
+        resolveBaseClip("ready", currentAnimation, statusNames, { order: cycleOrder }),
+        currentClipNameRef.current,
+      ),
+    [currentAnimation, statusNames.join(" "), cycleOrder],
+  );
+
+  /**
+   * The clip to show now: `targetName`, except that "stopped" plays its
+   * goodbye clip once after a live session (looping it would wave forever)
+   * and otherwise shows idle.
+   */
+  function resolveShownClip(): string | null {
+    const goodbye = goodbyeRef.current;
+    if (chatStatus !== goodbye.lastStatus) {
+      const endedLive = chatStatus === "stopped" && LIVE_STATUSES.has(goodbye.lastStatus);
+      const hasGoodbye = !!targetName && STATUS_CLIP_PATTERNS.stopped!.test(targetName);
+      goodbye.phase = endedLive && hasGoodbye ? "playing" : "idle";
+      goodbye.lastStatus = chatStatus;
+    }
+    if (chatStatus !== "stopped") return targetName;
+    if (goodbye.phase === "playing" && targetName) {
+      const action = getAction(targetName);
+      if (currentClipNameRef.current !== targetName) {
+        if (action) {
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = true;
+        }
+        return targetName;
+      }
+      if (action && !isEntranceHandoffDue(action)) return targetName;
+      goodbye.phase = "done";
+    }
+    return readyTargetName;
+  }
 
   // Single-owner crossfade-trigger helper: starts (or no-ops on) a
   // pose-gap-adaptive crossfade to the clip named `name` and updates
@@ -1225,16 +1280,17 @@ export function useAnimationController(params: {
   // status transitions, `animate()` calls).
   useEffect(() => {
     if (stepEntrance()) return;
+    const shown = resolveShownClip();
     if (
       shouldTriggerClipSwitch({
-        targetName,
+        targetName: shown,
         chatStatus,
         currentClipName: currentClipNameRef.current,
-        canResolveAction: targetName ? !!getAction(targetName) : false,
+        canResolveAction: shown ? !!getAction(shown) : false,
         canResolveRoot: !!getRoot(),
       })
     ) {
-      switchToClip(targetName!);
+      switchToClip(shown!);
     }
     // getRoot/getAction intentionally omitted from deps: they're stable
     // per-render accessor closures (memoized via useCallback in both
@@ -1291,17 +1347,19 @@ export function useAnimationController(params: {
     // `shouldTriggerClipSwitch` returns `false` on every subsequent frame
     // (no repeated re-triggering). The entrance, while it plays, owns the
     // base clip and holds this off.
-    if (
-      !stepEntrance() &&
-      shouldTriggerClipSwitch({
-        targetName,
-        chatStatus,
-        currentClipName: currentClipNameRef.current,
-        canResolveAction: targetName ? !!getAction(targetName) : false,
-        canResolveRoot: !!getRoot(),
-      })
-    ) {
-      switchToClip(targetName!);
+    if (!stepEntrance()) {
+      const shown = resolveShownClip();
+      if (
+        shouldTriggerClipSwitch({
+          targetName: shown,
+          chatStatus,
+          currentClipName: currentClipNameRef.current,
+          canResolveAction: shown ? !!getAction(shown) : false,
+          canResolveRoot: !!getRoot(),
+        })
+      ) {
+        switchToClip(shown!);
+      }
     }
 
     // 1. Advance the in-progress base-clip crossfade, if any (existing).

@@ -704,3 +704,30 @@ describe("thinking status", () => {
     }
   });
 });
+
+describe("terminal tool during a reply", () => {
+  it("leaves a still-playing reply speaking instead of jumping to ready", async () => {
+    vi.stubGlobal("WebSocket", { OPEN: 1 });
+    try {
+      const p = new XAIRealtimeProvider({});
+      p.registerFunction({
+        name: "end_conversation",
+        description: "End",
+        parameters: {},
+        execute: async () => ({ success: true, message: "", continueResponse: false }),
+      });
+      p.ws = { readyState: 1, send: vi.fn() };
+      p.isConnected = true;
+      p.hasHeardFirstGreeting = true;
+      p.chatStatus = "speaking";
+      p.playbackEngine = { appendChunk: vi.fn(), cancel: vi.fn(), isPlaying: true, getAnalyser: () => null };
+      await p.executeToolCall("c1", "end_conversation", "{}");
+      expect(p.chatStatus).toBe("speaking");
+      p.playbackEngine.isPlaying = false;
+      p.handlePlaybackEnd();
+      expect(p.chatStatus).toBe("ready");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

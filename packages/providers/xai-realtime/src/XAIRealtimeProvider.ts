@@ -1128,8 +1128,12 @@ export class XAIRealtimeProvider implements RealtimeProvider {
         batch.terminal = true;
         this.clearTurnGrace();
         // response.done can arrive before or after tool execution. Either
-        // order must leave a terminal tool idle, waiting for the user.
-        if (this.toolBatch === batch) this.setChatStatus("ready");
+        // order must leave a terminal tool idle, waiting for the user —
+        // but not cut a reply still playing (a goodbye before
+        // end_conversation); playback-end finishes that one.
+        const stillAudible =
+          this.isAssistantAudible() || this.assistantAudioStreaming || !!this.playbackEngine?.isPlaying;
+        if (this.toolBatch === batch && !stillAudible) this.setChatStatus("ready");
       } else {
         if (result.sideEffectOnly) batch.wantsSpeech = true;
         else batch.needsReply = true;

@@ -6,13 +6,69 @@
  * idle stands (it is retargeted against its last frame), then hands over to
  * idle.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { KhaveeProvider, ShadowFloor, VRMAvatar, type AnimationConfig } from '@khaveeai/react';
+import { KhaveeProvider, ShadowFloor, VRMAvatar, useKhavee, useRealtime, type AnimationConfig } from '@khaveeai/react';
+import type { ChatStatus, RealtimeProvider } from '@khaveeai/core';
 
 const DEFAULT_MODEL = '/models/final-tip.vrm';
 const IDLE = '/models/animations/Idle.fbx';
+const BYE = '/models/animations/wave.fbx';
+
+/**
+ * Stand-in session shaped like a real provider, used the way the share page
+ * uses one: attached to KhaveeProvider while live, with talk controls calling
+ * useRealtime(); ending unmounts those controls, disconnects (reporting
+ * "stopped"), then detaches the provider.
+ */
+function createFakeSession() {
+  const session = {
+    isConnected: true,
+    chatStatus: 'ready' as ChatStatus,
+    conversation: [],
+    currentVolume: 0,
+    onChatStatusChange: undefined as ((status: ChatStatus) => void) | undefined,
+    isMicrophoneEnabled: () => true,
+    connect: async () => {},
+    disconnect: async () => {
+      session.isConnected = false;
+      session.setStatus('stopped');
+    },
+    setStatus(status: ChatStatus) {
+      session.chatStatus = status;
+      session.onChatStatusChange?.(status);
+    },
+  };
+  return session;
+}
+type FakeSession = ReturnType<typeof createFakeSession>;
+
+/** Like the share page's LiveControl: uses useRealtime, disconnects on unmount. */
+function LiveTalkControls() {
+  const { disconnect } = useRealtime();
+  const disconnectRef = useRef(disconnect);
+  disconnectRef.current = disconnect;
+  useEffect(() => () => void disconnectRef.current(), []);
+  return null;
+}
+
+function SessionControls({ session, onStart, onEnd }: { session: FakeSession | null; onStart: () => void; onEnd: () => void }) {
+  const { chatStatus, playAnimationOnce, realtimeProvider } = useKhavee();
+  const button = 'rounded-full bg-gray-800 px-3 py-1.5 text-xs font-medium text-white';
+  return (
+    <div className="absolute bottom-4 left-20 z-10 flex items-center gap-2 rounded-2xl bg-white/90 p-3 text-xs shadow-lg">
+      {/* Like the share page's WhenSessionReady: wait until the context has it. */}
+      {session && realtimeProvider && <LiveTalkControls />}
+      <span className="w-28 font-mono">status: {chatStatus}</span>
+      <button type="button" className={button} onClick={onStart} disabled={!!session}>Start session</button>
+      <button type="button" className={button} onClick={() => session?.setStatus('speaking')}>Speaking</button>
+      <button type="button" className={button} onClick={() => session?.setStatus('ready')}>Ready</button>
+      <button type="button" className={button} onClick={() => playAnimationOnce('bye')}>Wave (stay live)</button>
+      <button type="button" className={button} onClick={onEnd} disabled={!session}>End session</button>
+    </div>
+  );
+}
 
 const WALK = '/models/animations/entrance/happy-walk.fbx';
 
@@ -40,6 +96,7 @@ export default function EntranceDemo() {
   // big-headed mascots don't poke their neck out.
   const [steadyHead, setSteadyHead] = useState(true);
   const [replay, setReplay] = useState(0);
+  const [session, setSession] = useState<FakeSession | null>(null);
 
   // Free the previous upload's blob URL when it is replaced or on unmount.
   useEffect(() => {
@@ -52,16 +109,17 @@ export default function EntranceDemo() {
   const chosen: Entrance = ENTRANCES[entrance];
   const animations: AnimationConfig =
     chosen.kind === 'clip'
-      ? { entrance: chosen.url, idle: IDLE }
+      ? { entrance: chosen.url, idle: IDLE, bye: BYE }
       : chosen.kind === 'walk'
-        ? { entranceWalk: WALK, idle: IDLE }
-        : { idle: IDLE };
+        ? { entranceWalk: WALK, idle: IDLE, bye: BYE }
+        : { idle: IDLE, bye: BYE };
   const entranceWalk =
     chosen.kind === 'walk' ? { from: chosen.from, speed: speed ?? undefined, steadyHead } : undefined;
 
   return (
     <div className="relative h-screen w-screen bg-gradient-to-b from-[#dfe7f5] to-[#f6f1ea]">
-      <KhaveeProvider>
+      <KhaveeProvider config={session ? { realtime: session as unknown as RealtimeProvider } : undefined}>
+        <SessionControls session={session} onStart={() => setSession(createFakeSession())} onEnd={() => setSession(null)} />
         <Canvas shadows camera={{ position: [0, 1.1, 4.2], fov: 32 }}>
           <OrbitControls target={[0, 0.9, 0]} enablePan={false} />
           <Suspense fallback={null}>

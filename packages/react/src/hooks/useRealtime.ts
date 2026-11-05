@@ -75,9 +75,10 @@ export function useRealtime() {
     const provider = realtimeProvider;
 
     // Preserve any existing onChatStatusChange/onError (e.g. KhaveeProvider's,
-    // or a consumer's own 402-handling) so both receive updates. React runs
-    // parent effects before child effects, so upstream callbacks are already
-    // set when this runs.
+    // or a consumer's own 402-handling) so both receive updates. Note React
+    // runs CHILD effects first, so KhaveeProvider may attach its own handler
+    // after this one (replacing it) — cleanup below only restores handlers
+    // that are still ours, never removing a handler set later.
     const upstreamChatStatusChange = provider.onChatStatusChange;
     const upstreamOnError = provider.onError;
     // D-05 primary path: preserve any existing onPhonemeDetected subscriber
@@ -89,7 +90,7 @@ export function useRealtime() {
       setIsConnected(true);
       setConnectError(null);
     };
-    provider.onError = (error) => {
+    const handleError = (error: Error) => {
       upstreamOnError?.(error);
       // A mic or response error during an active session is not a failed
       // connection. Keep connectError reserved for connection attempts.
@@ -98,6 +99,7 @@ export function useRealtime() {
         setRetryCooldownSeconds(5);
       }
     };
+    provider.onError = handleError;
     provider.onDisconnect = () => {
       setIsConnected(false);
       if (lipSyncAnalyzer) {
@@ -111,7 +113,7 @@ export function useRealtime() {
 
     provider.onConversationUpdate = (conv) => setConversation(conv);
 
-    provider.onChatStatusChange = (status) => {
+    const handleChatStatus = (status: ChatStatus) => {
       // Forward to upstream subscriber (KhaveeProvider) first
       upstreamChatStatusChange?.(status);
       setChatStatus(status);
@@ -129,12 +131,13 @@ export function useRealtime() {
       }
       prevChatStatusRef.current = status;
     };
+    provider.onChatStatusChange = handleChatStatus;
 
     // D-05 primary path: providers that forward vendor TTS timing
     // (GenericPipelineProvider -> onViseme, Phase 18 Plan 03) land in the
     // timeline; anything else falls back to the analysis path. No currently
     // wired vendor emits timing yet (RESEARCH Pitfall 1).
-    provider.onPhonemeDetected = (phoneme) => {
+    const handlePhoneme = (phoneme: PhonemeData) => {
       upstreamPhonemeDetected?.(phoneme);
       const p = phoneme as TimedPhoneme;
       if (p.source === "timing") {
@@ -143,6 +146,7 @@ export function useRealtime() {
         visemeChannel.pushAnalysis(p, performance.now());
       }
     };
+    provider.onPhonemeDetected = handlePhoneme;
 
     provider.onVolumeChange = (volume) => setCurrentVolume(volume);
 
@@ -182,11 +186,18 @@ export function useRealtime() {
       provider.onConnect = undefined;
       provider.onDisconnect = undefined;
       provider.onConversationUpdate = undefined;
-      provider.onChatStatusChange = upstreamChatStatusChange;
-      provider.onError = upstreamOnError;
+      // Restoring a handler that was since replaced (KhaveeProvider attaches
+      // after this hook) would strip it: a session ended right after would
+      // then never report "stopped" to the avatar.
+      if (provider.onChatStatusChange === handleChatStatus) {
+        provider.onChatStatusChange = upstreamChatStatusChange;
+      }
+      if (provider.onError === handleError) provider.onError = upstreamOnError;
       provider.onVolumeChange = undefined;
       provider.onAudioData = undefined;
-      provider.onPhonemeDetected = upstreamPhonemeDetected;
+      if (provider.onPhonemeDetected === handlePhoneme) {
+        provider.onPhonemeDetected = upstreamPhonemeDetected;
+      }
 
       // Cleanup state sync interval
       clearInterval(stateSyncInterval);

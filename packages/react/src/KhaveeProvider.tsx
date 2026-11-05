@@ -138,10 +138,15 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
     }
   }, [config?.realtime, realtimeProvider]);
 
-  // Listen to chat status changes from realtime provider
+  // Listen to chat status changes from realtime provider. Removing the
+  // provider (an app ending its session) means the session has stopped, even
+  // if its final status change was never delivered — the goodbye clip and
+  // settle cue key off "stopped".
   useEffect(() => {
     if (realtimeProvider) {
       realtimeProvider.onChatStatusChange = setChatStatus;
+    } else {
+      setChatStatus("stopped");
     }
   }, [realtimeProvider]);
 

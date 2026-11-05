@@ -39,6 +39,18 @@ interface KhaveeContextType {
   emotionHint: EmotionHint;
   setEmotionHint: (emotion: string | null, intensity?: number) => void;
   visemeChannel: VisemeChannel;
+  // One-shot clip (e.g. a goodbye wave during a live conversation): plays
+  // once over whatever the status would show, then hands back. PUBLIC for
+  // the same reason as setGestureHint.
+  oneShotAnimation: OneShotAnimation | null;
+  playAnimationOnce: (name: string) => void;
+  clearOneShotAnimation: () => void;
+}
+
+/** A request to play a loaded clip once; `id` makes repeat requests distinct. */
+export interface OneShotAnimation {
+  name: string;
+  id: number;
 }
 
 const KhaveeContext = createContext<KhaveeContextType | null>(null);
@@ -114,6 +126,7 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
   const [currentVolume, setCurrentVolume] = useState(0);
   const [gestureHint, setGestureHintState] = useState<"nod" | "shake" | null>(null);
   const [emotionHint, setEmotionHintState] = useState<EmotionHint>(null);
+  const [oneShotAnimation, setOneShotAnimation] = useState<OneShotAnimation | null>(null);
   const [visemeChannel] = useState(() => createVisemeChannel());
 
   // Note: Realtime provider connection is now manual - user must call connect() explicitly
@@ -316,6 +329,19 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
    * }];
    * ```
    */
+  /**
+   * playAnimationOnce - Play a loaded clip once, then return to the status clip
+   *
+   * The clip name is a key from the avatar's `animations` config (e.g. "bye"
+   * for a goodbye wave). It plays over whatever the chat status would show
+   * (idle, speaking, …) and hands back when it ends. Unknown names are
+   * ignored. Typically called from an LLM tool's `execute`.
+   */
+  const playAnimationOnce = useCallback((name: string) => {
+    setOneShotAnimation({ name, id: Date.now() + Math.random() });
+  }, []);
+  const clearOneShotAnimation = useCallback(() => setOneShotAnimation(null), []);
+
   const setGestureHint = useCallback((gesture: string | null) => {
     if (gesture === 'nod' || gesture === 'shake') {
       setGestureHintState(gesture);
@@ -379,6 +405,9 @@ export function KhaveeProvider({ config, children }: KhaveeProviderProps) {
       emotionHint,
       setEmotionHint,
       visemeChannel,
+      oneShotAnimation,
+      playAnimationOnce,
+      clearOneShotAnimation,
     }}>
       {children}
     </KhaveeContext.Provider>

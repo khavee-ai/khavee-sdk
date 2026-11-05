@@ -129,6 +129,14 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   private pttActive = false;
   /** Samples sent since startTalking(), to skip committing an empty press. */
   private pttSamples = 0;
+  /**
+   * Voice-paused: the mic keeps streaming so xAI still transcribes (that is
+   * how the app hears its resume word, via onPausedTranscript), but nothing
+   * said is answered or shown. See pauseListening().
+   */
+  private listeningPaused = false;
+  /** A response cancelled on arrival; its remaining events are dropped. */
+  private suppressingResponse = false;
   private thinkingWatchdog: ReturnType<typeof setTimeout> | null = null;
   private static readonly THINKING_WATCHDOG_MS = 20000;
   /** Presses shorter than this are treated as accidental taps. */
@@ -164,6 +172,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
   public onPhonemeDetected?: (phoneme: PhonemeData) => void;
   public onToolCall?: (toolName: string, args: unknown, result: unknown) => void;
   public onUsageReport?: (usage: UsageReport) => void;
+  /** While voice-paused, what the visitor says (cumulative per utterance). */
+  public onPausedTranscript?: (transcript: string) => void;
 
   // ── Constructor ────────────────────────────────────────────────────────────
 
@@ -546,6 +556,46 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     }
   }
 
+  // ── Voice pause ────────────────────────────────────────────────────────────
+
+  /** Whether the assistant is voice-paused (see pauseListening). */
+  get isListeningPaused(): boolean {
+    return this.listeningPaused;
+  }
+
+  /**
+   * Stop answering without turning the mic off. Audio keeps streaming so
+   * xAI still transcribes it, and each utterance is reported through
+   * onPausedTranscript (match a resume word there, then resumeListening()).
+   * Replies the server starts meanwhile are cancelled and dropped, and
+   * nothing said is added to the conversation. A reply already playing
+   * (the "okay" before pausing) finishes normally.
+   */
+  pauseListening(): void {
+    if (this.listeningPaused) return;
+    this.listeningPaused = true;
+    this.clearTurnGrace();
+    if (this.userSpeechActive) {
+      this.userSpeechActive = false;
+      const last = this.conversation[this.conversation.length - 1];
+      if (last?.role === "user" && !last.isFinal && !last.text) {
+        this.conversation.pop();
+        this.onConversationUpdate?.(this.conversation);
+      }
+    }
+    // The resume word can only be heard with the mic on.
+    if (this.isConnected && !this.micEngine?.isEnabled) void this.enableMicrophone();
+    if (this.chatStatus === "listening") this.setChatStatus("ready");
+  }
+
+  /** Answer again after pauseListening(). */
+  resumeListening(): void {
+    if (!this.listeningPaused) return;
+    this.listeningPaused = false;
+    // The resume phrase itself was committed while paused; start clean.
+    this.sendEvent({ type: "input_audio_buffer.clear" });
+  }
+
   // ── Push-to-talk ───────────────────────────────────────────────────────────
 
   /** Whether turns are taken with startTalking()/stopTalking(). */
@@ -665,6 +715,23 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     try {
       const data = JSON.parse(event.data as string) as XAIServerEvent;
       console.log("[xAI event]", data.type);
+
+      // The rest of a response cancelled on arrival (voice-paused, or VAD
+      // answering mid push-to-talk): drop its audio, text and tool calls.
+      if (this.suppressingResponse) {
+        const type = data.type as string;
+        if (type === "response.done") {
+          this.suppressingResponse = false;
+          return;
+        }
+        if (
+          (type.startsWith("response.") && type !== "response.created") ||
+          ((type === "conversation.item.created" || type === "conversation.item.added") &&
+            (data as { item?: { role?: string } }).item?.role === "assistant")
+        ) {
+          return;
+        }
+      }
       // Keep-alive pings arrive regardless, so they don't count as progress.
       if (this.chatStatus === "thinking" && (data.type as string) !== "ping") this.armThinkingWatchdog();
 
@@ -675,6 +742,7 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "input_audio_buffer.speech_started":
+          if (this.listeningPaused) break; // heard, never a turn
           if (!this.hasHeardFirstGreeting || !this.micEnabled || this.userSpeechActive || this.assistantAudioStreaming || this.playbackEngine?.isPlaying || Date.now() < this.micSuppressedUntil) break;
           this.clearSpeechCommitTimer();
           this.clearTurnGrace();
@@ -757,6 +825,10 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "conversation.item.input_audio_transcription.updated":
+          if (this.listeningPaused) {
+            if (typeof data.transcript === "string") this.onPausedTranscript?.(data.transcript);
+            break;
+          }
           // Cumulative transcript update — update the last user message
           this.updateUserTranscript(data.transcript);
           if (this.turnGraceTimer && typeof data.transcript === "string" && data.transcript.trim()) {
@@ -781,10 +853,12 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           break;
 
         case "response.created":
-          // VAD answered a pause while the talk control is still held: the
-          // user isn't done, so drop it; releasing brings the real reply.
-          if (this.pttActive) {
+          // VAD answered a pause while the talk control is still held (the
+          // user isn't done; releasing brings the real reply), or the
+          // visitor spoke while voice-paused: cancel and drop it.
+          if (this.pttActive || this.listeningPaused) {
             this.sendEvent({ type: "response.cancel" });
+            this.suppressingResponse = true;
             break;
           }
           this.responseInFlight = true;
@@ -808,6 +882,13 @@ export class XAIRealtimeProvider implements RealtimeProvider {
           if (this.turnGraceTimer) this.endTurnGrace(true);
           this.handleReplyDelta(data.delta);
           break;
+
+        // Some xAI sessions only send the final transcript.
+        case "conversation.item.input_audio_transcription.completed" as XAIServerEvent["type"]: {
+          const transcript = (data as { transcript?: unknown }).transcript;
+          if (this.listeningPaused && typeof transcript === "string") this.onPausedTranscript?.(transcript);
+          break;
+        }
 
         case "response.text.done":
         case "response.output_text.done":
@@ -1371,6 +1452,8 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     this.toolBatch = null;
     this.heldReplyAudio = null;
     this.pttActive = false;
+    this.listeningPaused = false;
+    this.suppressingResponse = false;
     this.clearPttCommitTimer();
     this.clearThinkingWatchdog();
     this.clearMuteSilenceTimer();

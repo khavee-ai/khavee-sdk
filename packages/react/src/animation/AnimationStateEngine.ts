@@ -996,6 +996,10 @@ export function useAnimationController(params: {
    * loaded, plays once (see entrance.ts).
    */
   entrance?: EntrancePlan | null;
+  /** A clip to play once over the status clip (KhaveeProvider.playAnimationOnce). */
+  oneShotAnimation?: { name: string; id: number } | null;
+  /** Called the frame a one-shot request starts (or is dropped as unknown). */
+  onOneShotConsumed?: () => void;
 }): { update: (delta: number) => void } {
   const {
     adapter,
@@ -1017,6 +1021,8 @@ export function useAnimationController(params: {
     visemeChannel,
     getNowMs,
     entrance: entrancePlan,
+    oneShotAnimation,
+    onOneShotConsumed,
   } = params;
 
   // Sanitize minDwellSeconds: non-finite or negative → default (T-gzb-01).
@@ -1101,6 +1107,11 @@ export function useAnimationController(params: {
   // The goodbye clip (a `stopped`-pattern clip such as "bye") plays once,
   // and only when a live session ends — not on the initial "stopped" before
   // anyone has talked. Afterwards the avatar settles back into idle.
+  const oneShotRef = useRef<{ id: number | null; name: string | null; playing: boolean }>({
+    id: null,
+    name: null,
+    playing: false,
+  });
   const goodbyeRef = useRef<{ phase: "idle" | "playing" | "done"; lastStatus: ChatStatus }>({
     phase: "idle",
     lastStatus: chatStatus,
@@ -1131,6 +1142,49 @@ export function useAnimationController(params: {
       ),
     [currentAnimation, statusNames.join(" "), cycleOrder],
   );
+
+  /**
+   * Plays a requested one-shot clip once over the status clip and reports
+   * whether it still owns the base clip. Hands back shortly before the end,
+   * so the status clip crossfades in from it.
+   */
+  function stepOneShot(): boolean {
+    const request = oneShotAnimation;
+    const state = oneShotRef.current;
+    if (request && request.id !== state.id) {
+      if (!availableNames.includes(request.name)) {
+        // Not loaded (yet): drop unknown names, wait for loading ones.
+        if (availableNames.length > 0) {
+          state.id = request.id;
+          onOneShotConsumed?.();
+        }
+        return state.playing;
+      }
+      const action = getAction(request.name);
+      if (!action || !getRoot()) return state.playing;
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
+      if (currentActionRef.current === action) {
+        // Replaying the clip already showing: restart it in place.
+        action.reset().play();
+      } else {
+        switchToClip(request.name);
+      }
+      state.id = request.id;
+      state.name = request.name;
+      state.playing = true;
+      onOneShotConsumed?.();
+      return true;
+    }
+    if (state.playing) {
+      const action = currentActionRef.current;
+      if (action && currentClipNameRef.current === state.name && !isEntranceHandoffDue(action)) {
+        return true;
+      }
+      state.playing = false;
+    }
+    return false;
+  }
 
   /**
    * The clip to show now: `targetName`, except that "stopped" plays its
@@ -1280,6 +1334,7 @@ export function useAnimationController(params: {
   // status transitions, `animate()` calls).
   useEffect(() => {
     if (stepEntrance()) return;
+    if (stepOneShot()) return;
     const shown = resolveShownClip();
     if (
       shouldTriggerClipSwitch({
@@ -1304,7 +1359,7 @@ export function useAnimationController(params: {
     // (closing over the latest chatStatus/getAction/getRoot) and is called
     // directly, not depended on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetName, chatStatus]);
+  }, [targetName, chatStatus, oneShotAnimation]);
 
   function update(delta: number): void {
     // PERF-01 fixed, documented composition order — every system below runs
@@ -1347,7 +1402,7 @@ export function useAnimationController(params: {
     // `shouldTriggerClipSwitch` returns `false` on every subsequent frame
     // (no repeated re-triggering). The entrance, while it plays, owns the
     // base clip and holds this off.
-    if (!stepEntrance()) {
+    if (!stepEntrance() && !stepOneShot()) {
       const shown = resolveShownClip();
       if (
         shouldTriggerClipSwitch({
@@ -1580,6 +1635,7 @@ export function useAnimationController(params: {
     const cyclePattern = STATUS_CLIP_PATTERNS[chatStatus];
     const variants =
       entranceRef.current === "done" &&
+      !oneShotRef.current.playing &&
       (CYCLING_STATUSES as readonly string[]).includes(chatStatus) &&
       cyclePattern
         ? statusNames.filter((name) => cyclePattern.test(name))

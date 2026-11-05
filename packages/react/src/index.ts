@@ -1,4 +1,5 @@
 export { KhaveeProvider, useKhavee } from "./KhaveeProvider";
+export type { OneShotAnimation } from "./KhaveeProvider";
 export {
   VRMAvatar,
   useVRM,

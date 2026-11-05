@@ -731,3 +731,71 @@ describe("terminal tool during a reply", () => {
     }
   });
 });
+
+describe("voice pause", () => {
+  function live() {
+    vi.stubGlobal("WebSocket", { OPEN: 1 });
+    const p = new XAIRealtimeProvider({});
+    const send = vi.fn();
+    p.ws = { readyState: 1, send };
+    p.isConnected = true;
+    p.hasHeardFirstGreeting = true;
+    p.chatStatus = "ready";
+    p.micEnabled = true;
+    p.micEngine = { isEnabled: true, enable: vi.fn(), destroy: vi.fn() };
+    const played = [];
+    p.playbackEngine = { appendChunk: (c) => played.push(c), cancel: vi.fn(), isPlaying: false, getAnalyser: () => null };
+    const sent = () => send.mock.calls.map(([payload]) => JSON.parse(payload).type);
+    return { p, sent, played };
+  }
+
+  it("hears the visitor but never answers or shows it, and reports the transcript", async () => {
+    try {
+      const { p, sent, played } = live();
+      const heard = [];
+      p.onPausedTranscript = (t) => heard.push(t);
+      p.pauseListening();
+      await p.handleServerEvent(serverEvent("input_audio_buffer.speech_started"));
+      expect(p.chatStatus).toBe("ready");
+      await p.handleServerEvent(serverEvent("conversation.item.input_audio_transcription.updated", { transcript: "เปิดไมค์" }));
+      expect(heard).toEqual(["เปิดไมค์"]);
+      await p.handleServerEvent(serverEvent("response.created", { response: { id: "r" } }));
+      expect(sent()).toContain("response.cancel");
+      await p.handleServerEvent(serverEvent("conversation.item.created", { item: { id: "a", role: "assistant" } }));
+      await p.handleServerEvent(serverEvent("response.output_audio.delta", { delta: "AAAA" }));
+      await p.handleServerEvent(serverEvent("response.output_audio_transcript.delta", { delta: "Hi" }));
+      await p.handleServerEvent(serverEvent("response.done", { response: { id: "r" } }));
+      expect(played).toEqual([]);
+      expect(p.conversation).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("answers again after resuming", async () => {
+    try {
+      const { p, sent, played } = live();
+      p.pauseListening();
+      p.resumeListening();
+      expect(sent()).toContain("input_audio_buffer.clear");
+      await p.handleServerEvent(serverEvent("response.created", { response: { id: "r2" } }));
+      await p.handleServerEvent(serverEvent("response.output_audio.delta", { delta: "BBBB" }));
+      expect(sent()).not.toContain("response.cancel");
+      expect(played).toEqual(["BBBB"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("turns a muted mic on so the resume word can be heard", () => {
+    try {
+      const { p } = live();
+      p.micEngine.isEnabled = false;
+      const enable = vi.spyOn(p, "enableMicrophone").mockResolvedValue();
+      p.pauseListening();
+      expect(enable).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

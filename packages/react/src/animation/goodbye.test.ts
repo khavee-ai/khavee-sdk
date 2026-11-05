@@ -45,7 +45,7 @@ function rig() {
     getHumanoidBoneNode: () => null,
     getExpressionManager: () => null,
   };
-  const render = (chatStatus: ChatStatus) => {
+  const render = (chatStatus: ChatStatus, oneShotAnimation: { name: string; id: number } | null = null) => {
     cursor = 0;
     return useAnimationController({
       adapter,
@@ -55,6 +55,7 @@ function rig() {
       getAction,
       getRoot: () => root,
       enableBlinking: false,
+      oneShotAnimation,
     });
   };
   const run = (controller: { update: (d: number) => void }, seconds: number) => {
@@ -84,5 +85,25 @@ describe("goodbye clip", () => {
     expect(bye.loop).toBe(THREE.LoopOnce);
     run(ended, 3); // past the 2s clip
     expect(getAction("idle")!.getEffectiveWeight()).toBeGreaterThan(0.9);
+  });
+});
+
+describe("one-shot animation during a live session", () => {
+  it("plays the clip once over idle, then hands back, staying live", () => {
+    const { getAction, render, run } = rig();
+    run(render("ready"), 1);
+    const waving = render("ready", { name: "bye", id: 1 });
+    run(waving, 0.5);
+    const bye = getAction("bye")!;
+    expect(bye.isRunning()).toBe(true);
+    expect(bye.loop).toBe(THREE.LoopOnce);
+    run(render("ready"), 3); // request consumed; the wave finishes and hands back
+    expect(getAction("idle")!.getEffectiveWeight()).toBeGreaterThan(0.9);
+  });
+
+  it("ignores a clip name that isn't loaded", () => {
+    const { getAction, render, run } = rig();
+    run(render("ready", { name: "nope", id: 1 }), 1);
+    expect(getAction("idle")!.isRunning()).toBe(true);
   });
 });

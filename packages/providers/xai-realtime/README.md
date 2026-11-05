@@ -194,6 +194,16 @@ Mic capture pauses while assistant audio streams or plays, then resumes 300 ms a
 
 `disableMicrophone()` fully stops the media tracks and closes the capture `AudioContext` — the browser's recording indicator goes away, and nothing streams (so nothing bills). `enableMicrophone()` re-acquires, which means a fresh permission check.
 
+## Voice pause
+
+`pauseListening()` stops the assistant answering without turning the mic off: audio keeps streaming so xAI still transcribes it, each utterance is reported through `onPausedTranscript(text)`, and replies the server starts meanwhile are cancelled and dropped (nothing said reaches the conversation). Match a resume word in that transcript and call `resumeListening()`. A reply already playing finishes normally, so the model can acknowledge "pausing" before calling a pause tool. `isListeningPaused` reads the state.
+
+```ts
+provider.onPausedTranscript = (text) => {
+  if (text.includes("เปิดไมค์")) provider.resumeListening();
+};
+```
+
 ## Push-to-talk
 
 For noisy venues: only audio captured while the user holds the talk control is sent, so other voices and background noise can't start a turn.

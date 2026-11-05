@@ -445,6 +445,8 @@ export function VRMAvatar({
     emotionHint,
     setEmotionHint,
     visemeChannel,
+    oneShotAnimation,
+    clearOneShotAnimation,
   } = useKhavee();
   // D-04: read the R3F active scene camera once per render (NOT inside
   // useFrame) so camera-relative gaze (GAZE-01) has a moving reference to
@@ -785,6 +787,8 @@ export function VRMAvatar({
     onEmotionConsumed: () => setEmotionHint(null),
     visemeChannel,
     entrance: entrancePlan,
+    oneShotAnimation,
+    onOneShotConsumed: clearOneShotAnimation,
   });
 
   const lerpExpression = (name: string, value: number, lerpFactor: number) => {

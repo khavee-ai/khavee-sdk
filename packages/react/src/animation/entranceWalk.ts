@@ -22,6 +22,11 @@ export interface EntranceWalkOptions {
    * mascots the full motion reads as the neck poking forward. Default: true
    */
   steadyHead?: boolean;
+  /**
+   * Wait off-frame instead of starting: the walk begins the moment this
+   * turns false (e.g. on a key press). Default: false
+   */
+  hold?: boolean;
 }
 
 /** Rotation kept per VRM bone when `steadyHead` is on. */

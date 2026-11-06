@@ -29,3 +29,10 @@ describe("sampleEntranceWalk", () => {
     expect(s.yaw).toBeCloseTo(Math.PI / 2);
   });
 });
+
+describe("hold", () => {
+  it("is part of the options (the avatar keeps its clock at the start while held)", () => {
+    // The clock itself lives in VRMAvatar; at t=0 the avatar is off-frame.
+    expect(sampleEntranceWalk(0, { hold: true }).x).toBeCloseTo(3);
+  });
+});

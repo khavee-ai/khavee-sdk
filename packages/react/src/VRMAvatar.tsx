@@ -835,7 +835,8 @@ export function VRMAvatar({
     // frame's sample. Until the clips load the avatar waits off-frame.
     const walkGroup = walkGroupRef.current;
     if (walkGroup && walkOptions && walkEnabled && !walkSampleRef.current?.done) {
-      if (processedClips.length > 0) {
+      // While held, the clock stays at the start: off-frame, waiting.
+      if (processedClips.length > 0 && !walkOptions.hold) {
         walkClockRef.current = walkClockRef.current === null ? 0 : walkClockRef.current + delta;
       }
       const sample = sampleEntranceWalk(walkClockRef.current ?? 0, walkOptions);

@@ -123,6 +123,7 @@ A working example lives at `apps/playground/src/app/xai/page.tsx` in this monore
 | `apiKey` | `string` | — | Direct mode. Server-side or local development only |
 | `baseUrl` | `string` | `"wss://api.x.ai/v1/realtime"` | |
 | `tools` | `RealtimeTool[]` | — | Registered at construction; see Tool-calling |
+| `reasoningEffort` | `"high" \| "none"` | *(xAI default: `"high"`)* | Reasoning before each reply. `"none"` starts replies sooner but follows complex instructions less closely |
 | `turnDetection` | `object` | `{ type: "server_vad" }` | `threshold`, `silence_duration_ms`, `prefix_padding_ms`, `idle_timeout_ms` |
 | `inputAudioFormat` | `"pcm16" \| "opus" \| "pcmu" \| "pcma"` | `"pcm16"` | |
 | `outputAudioFormat` | `"pcm16" \| "opus" \| "pcmu" \| "pcma"` | `"pcm16"` | |

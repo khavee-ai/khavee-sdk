@@ -27,6 +27,12 @@ export interface XAIRealtimeConfig extends Omit<RealtimeConfig, "voice"> {
   voice?: string;
   /** System prompt / session instructions. */
   instructions?: string;
+  /**
+   * Reasoning before each reply, sent as `reasoning.effort`. xAI defaults to
+   * "high"; "none" skips it, so replies start sooner but follow complex
+   * instructions less closely. Omitted from `session.update` when unset.
+   */
+  reasoningEffort?: "high" | "none";
   /** Server-side VAD turn detection configuration. */
   turnDetection?: {
     type: "server_vad";

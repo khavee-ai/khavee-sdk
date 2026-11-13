@@ -1328,6 +1328,9 @@ export class XAIRealtimeProvider implements RealtimeProvider {
     if (this.config.temperature !== undefined) {
       session.temperature = this.config.temperature;
     }
+    if (this.config.reasoningEffort) {
+      session.reasoning = { effort: this.config.reasoningEffort };
+    }
     // Push-to-talk keeps server VAD on: xAI's manual mode (turn_detection
     // null) is for text turns, and a client commit raced VAD and handed the
     // model a clipped turn it answered with wait_for_user. Gating the audio

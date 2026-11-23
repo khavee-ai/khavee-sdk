@@ -448,7 +448,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       audio: {
         input: {
           transcription: {
-            model: "gpt-4o-transcribe",
+            model: this.config.transcriptionModel ?? "gpt-transcribe",
             // Omit `language` when not explicitly configured so the model
             // auto-detects per utterance — defaulting to "en" mistranscribed
             // any non-English speech (e.g. Thai visitors) as English phonemes.

@@ -54,6 +54,13 @@ export interface RealtimeConfig {
   enableLipSync?: boolean;
   language?: string;
   /**
+   * Model that transcribes the visitor's speech into the chat log (OpenAI realtime).
+   * The avatar hears the audio itself; this only shapes the text the visitor sees.
+   * Default: "gpt-transcribe" (read Thai slightly better than "gpt-4o-transcribe" in
+   * testing — พ.ร.บ., ซ่อมอู่ — and costs less per minute).
+   */
+  transcriptionModel?: string;
+  /**
    * Turn-detection tuning for providers using OpenAI's built-in server-side
    * VAD (semantic_vad — waits for a semantically complete utterance instead
    * of a fixed silence duration, more robust to natural pauses and stray
